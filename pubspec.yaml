@@ -1,0 +1,57 @@
+name: muscle_fatigue_tracker
+description: 스마트폰 센서 기반 근피로도 측정 앱
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI & Theming
+  cupertino_icons: ^1.0.6
+  
+  # 센서 데이터 수집
+  sensors_plus: ^4.0.2
+  
+  # 데이터 시각화
+  fl_chart: ^0.66.2
+  syncfusion_flutter_gauges: ^24.2.9
+  
+  # 상태관리
+  provider: ^6.1.1
+  
+  # 로컬 저장소
+  sqflite: ^2.3.2
+  path_provider: ^2.1.2
+  shared_preferences: ^2.2.2
+  
+  # HTTP 통신
+  http: ^1.2.0
+  dio: ^5.4.1
+  
+  # 인증
+  supabase_flutter: ^2.3.4
+  
+  # ML (TensorFlow Lite)
+  tflite_flutter: ^0.10.4
+  
+  # 유틸리티
+  intl: ^0.19.0
+  uuid: ^4.3.3
+  logger: ^2.0.2+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  
+  # assets:
+  #   - assets/models/
+  #   - assets/images/
+
