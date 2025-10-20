@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../model/log.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../model/measure_session.dart';
 import '../model/config.dart';
+import '../utils/responsive.dart';
 
 /// 피로도 게이지 위젯
 class FatigueGaugeWidget extends StatelessWidget {
@@ -18,124 +20,151 @@ class FatigueGaugeWidget extends StatelessWidget {
     final level = FatigueCalculator.getFatigueLevel(fatigueScore);
     final color = FatigueCalculator.getFatigueColor(fatigueScore);
     final gaugeValue = FatigueCalculator.fatigueToGauge(fatigueScore);
+    final isSmall = Responsive.isSmallScreen(context);
 
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            // 게이지 바
-            Stack(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final gaugeWidth = (maxWidth - 40).clamp(200.0, 300.0);
+
+        return Card(
+          elevation: 4,
+          child: Padding(
+            padding: EdgeInsets.all(isSmall ? 16 : 20),
+            child: Column(
               children: [
-                // 배경
-                Container(
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(15),
+                // 게이지 바
+                SizedBox(
+                  width: gaugeWidth,
+                  child: Stack(
+                    children: [
+                      // 배경
+                      Container(
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      // 피로도 바
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        height: 30,
+                        width: (gaugeValue / 100) * gaugeWidth,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              color.withOpacity(0.7),
+                              color,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      // 게이지 값 표시
+                      Container(
+                        height: 30,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${gaugeValue.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color:
+                                gaugeValue > 50 ? Colors.white : Colors.black87,
+                            fontSize: isSmall ? 12 : 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                // 피로도 바
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 500),
-                  height: 30,
-                  width: gaugeValue * 3, // 최대 300px
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        color.withOpacity(0.7),
-                        color,
+                const SizedBox(height: 16),
+
+                // 피로도 점수
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        fatigueScore.toStringAsFixed(3),
+                        style: GoogleFonts.poppins(
+                          fontSize: isSmall ? 36 : 48,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // 트렌드 표시
+                      if (previousScore != null) ...[
+                        Icon(
+                          FatigueCalculator.getFatigueTrendIcon(
+                            previousScore!,
+                            fatigueScore,
+                          ),
+                          color: color,
+                          size: isSmall ? 28 : 32,
+                        ),
                       ],
-                    ),
-                    borderRadius: BorderRadius.circular(15),
+                    ],
                   ),
                 ),
-                // 게이지 값 표시
-                Container(
-                  height: 30,
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${gaugeValue.toStringAsFixed(0)}%',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: gaugeValue > 50 ? Colors.white : Colors.black87,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
+                const SizedBox(height: 8),
 
-            // 피로도 점수
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  fatigueScore.toStringAsFixed(3),
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    fontFamily: 'monospace',
+                // 레벨 배지
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isSmall ? 20 : 24,
+                      vertical: isSmall ? 6 : 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      level,
+                      style: TextStyle(
+                        fontSize: isSmall ? 18 : 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                // 트렌드 표시
+
+                // 트렌드 텍스트
                 if (previousScore != null) ...[
-                  Icon(
-                    FatigueCalculator.getFatigueTrendIcon(
-                        previousScore!, fatigueScore),
-                    color: color,
-                    size: 32,
+                  const SizedBox(height: 12),
+                  Text(
+                    FatigueCalculator.getFatigueTrend(
+                      previousScore!,
+                      fatigueScore,
+                    ),
+                    style: TextStyle(
+                      fontSize: isSmall ? 12 : 14,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
+
+                const SizedBox(height: 16),
+
+                // 상태별 안내 메시지
+                _buildStatusMessage(fatigueScore, isSmall),
               ],
             ),
-            const SizedBox(height: 8),
-
-            // 레벨 배지
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                level,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-
-            // 트렌드 텍스트
-            if (previousScore != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                FatigueCalculator.getFatigueTrend(previousScore!, fatigueScore),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // 상태별 안내 메시지
-            _buildStatusMessage(fatigueScore),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildStatusMessage(double fatigue) {
+  Widget _buildStatusMessage(double fatigue, bool isSmall) {
     String message;
     IconData icon;
     Color messageColor;
@@ -143,39 +172,43 @@ class FatigueGaugeWidget extends StatelessWidget {
     if (fatigue < FatigueConstants.normalThreshold) {
       message = '정상 상태입니다';
       icon = Icons.check_circle;
-      messageColor = Colors.green;
+      messageColor = const Color(0xFF4CAF50); // 초록 (정상)
     } else if (fatigue < FatigueConstants.lightThreshold) {
       message = '약간 피로한 상태입니다';
       icon = Icons.info;
-      messageColor = Colors.yellow.shade700;
+      messageColor = const Color(0xFFFFA726); // 주황 (약간 피로)
     } else if (fatigue < FatigueConstants.midThreshold) {
       message = '피로가 누적되고 있습니다';
       icon = Icons.warning;
-      messageColor = Colors.orange;
+      messageColor = const Color(0xFFFF7043); // 진한 주황 (피로 누적)
     } else {
       message = '휴식이 필요합니다';
       icon = Icons.error;
-      messageColor = Colors.red;
+      messageColor = const Color(0xFFE53935); // 빨강 (고피로)
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(isSmall ? 10 : 12),
       decoration: BoxDecoration(
         color: messageColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: messageColor.withOpacity(0.3)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: messageColor, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 14,
-              color: messageColor,
-              fontWeight: FontWeight.w600,
+          Icon(icon, color: messageColor, size: isSmall ? 18 : 20),
+          SizedBox(width: isSmall ? 6 : 8),
+          Flexible(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: isSmall ? 12 : 14,
+                color: messageColor,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -203,22 +236,26 @@ class FatigueLevelIndicator extends StatelessWidget {
       children: [
         // 색상 인디케이터
         _buildLevelDot(
-            Colors.green, fatigueScore < FatigueConstants.normalThreshold),
+          const Color(0xFF4CAF50), // 초록 (정상)
+          fatigueScore < FatigueConstants.normalThreshold,
+        ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          Colors.yellow,
+          const Color(0xFFFFA726), // 주황 (약간 피로)
           fatigueScore >= FatigueConstants.normalThreshold &&
               fatigueScore < FatigueConstants.lightThreshold,
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          Colors.orange,
+          const Color(0xFFFF7043), // 진한 주황 (피로 누적)
           fatigueScore >= FatigueConstants.lightThreshold &&
               fatigueScore < FatigueConstants.midThreshold,
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-            Colors.red, fatigueScore >= FatigueConstants.midThreshold),
+          const Color(0xFFE53935), // 빨강 (고피로)
+          fatigueScore >= FatigueConstants.midThreshold,
+        ),
         const SizedBox(width: 8),
         Text(
           level,

@@ -13,6 +13,12 @@ dependencies:
   motion_sensors: ^0.1.0
   sqflite: ^2.3.2
   path: ^1.8.3
+  # tflite_flutter: ^0.10.4  # TODO: ML 모델 준비 후 활성화
+  # http: ^1.1.0               # TODO: 서버 준비 후 활성화
+  path_provider: ^2.1.1
+  fl_chart: ^0.68.0
+  table_calendar: ^3.1.2
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:

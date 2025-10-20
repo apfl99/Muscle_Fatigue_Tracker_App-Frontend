@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:google_fonts/google_fonts.dart';
 import 'sensor/streaming.dart';
 import 'sensor/config.dart';
-import 'model/log.dart';
+import 'model/database_helper.dart';
 import 'model/baseline.dart';
+import 'model/measure_session.dart';
 import 'model/config.dart';
+import 'model/ml.dart';
 import 'widgets/fatigue_gauge.dart';
+import 'screens/measurement_history_page.dart';
+import 'screens/profile_page.dart';
+import 'theme/app_theme.dart';
+import 'utils/responsive.dart';
 
 void main() async {
   print('\n🚀 앱 시작...');
@@ -16,15 +23,19 @@ void main() async {
   // 데이터베이스 초기화
   print('🗄️ 데이터베이스 초기화 중...');
   try {
-    final db = await FatigueDatabase.instance.database;
-    print('✅ 측정 데이터 DB 초기화 완료');
+    final db = await DatabaseHelper.instance.database;
+    print('✅ 통합 DB 초기화 완료');
     print('   - DB 경로: ${db.path}');
 
-    // Baseline 데이터베이스 초기화
-    await BaselineManager.instance.database;
-    print('✅ Baseline DB 초기화 완료');
+    // Baseline Manager 초기화
+    await BaselineManager.instance.initialize();
+    print('✅ Baseline Manager 초기화 완료');
+
+    // ML Manager 초기화
+    await MLManager.instance.initialize();
+    print('✅ ML Manager 초기화 완료');
   } catch (e, stackTrace) {
-    print('❌ 데이터베이스 초기화 실패: $e');
+    print('❌ 초기화 실패: $e');
     print('스택 트레이스: $stackTrace');
   }
 
@@ -39,11 +50,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '근피로도 측정',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      title: 'Muscle Care',
+      theme: AppTheme.darkTheme,
+      debugShowCheckedModeBanner: false,
       home: const SensorDataPage(),
     );
   }
@@ -58,12 +67,7 @@ class SensorDataPage extends StatefulWidget {
 
 class _SensorDataPageState extends State<SensorDataPage> {
   final SensorStreaming _sensorStreaming = SensorStreaming();
-  Timer? _updateTimer;
   bool _isCollecting = false;
-
-  // 실시간 표시용
-  int _dataCount = 0;
-  double _currentSamplingRate = 0.0;
 
   // 윈도우 분석 결과
   Map<String, dynamic>? _analysisResult;
@@ -72,75 +76,33 @@ class _SensorDataPageState extends State<SensorDataPage> {
   Timer? _autoStopTimer;
   int _remainingSeconds = 0;
 
-  // 데이터베이스에서 불러온 히스토리
-  List<FatigueResult> _savedResults = [];
-
-  // Baseline 값
-  double _currentRmsBase = 0.1;
-  double _currentFreqBase = 10.0;
-  List<BaselineData> _baselineHistory = [];
+  // (실제 측정 상태를 고정 메시지로 표시)
 
   @override
   void initState() {
     super.initState();
-    _loadSavedResults();
     _loadBaseline();
 
     // 분석 결과 콜백 등록
-    _sensorStreaming.onAnalysisResult = (result) {
+    _sensorStreaming.onAnalysisResult = (result) async {
       if (mounted) {
         setState(() {
           _analysisResult = result;
         });
-        // 저장된 결과 다시 로드
-        _loadSavedResults();
-        _loadBaseline();
+        // Baseline 다시 로드
+        await _loadBaseline();
       }
     };
   }
 
-  // 저장된 결과 불러오기
-  Future<void> _loadSavedResults() async {
-    try {
-      print('📂 저장된 결과 불러오기 시도...');
-      final results = await FatigueDatabase.instance.getRecentResults(
-        DatabaseConstants.defaultQueryLimit,
-      );
-      print('✅ ${results.length}개의 결과를 불러왔습니다');
-
-      if (mounted) {
-        setState(() {
-          _savedResults = results;
-        });
-      }
-    } catch (e) {
-      print('❌ 데이터 로드 실패: $e');
-    }
-  }
-
-  // Baseline 불러오기
+  // Baseline 불러오기 (내 정보 페이지용 - 메인에서는 사용 안 함)
   Future<void> _loadBaseline() async {
-    try {
-      final baselineManager = BaselineManager.instance;
-      final history = await baselineManager.getBaselineHistory(
-        DatabaseConstants.baselineHistoryLimit,
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentRmsBase = baselineManager.rmsBase;
-          _currentFreqBase = baselineManager.freqBase;
-          _baselineHistory = history;
-        });
-      }
-    } catch (e) {
-      print('❌ Baseline 로드 실패: $e');
-    }
+    // DB와 Baseline 카운트 동기화
+    await BaselineManager.instance.syncWithDatabase();
   }
 
   @override
   void dispose() {
-    _updateTimer?.cancel();
     _autoStopTimer?.cancel();
     _sensorStreaming.dispose();
     super.dispose();
@@ -148,6 +110,11 @@ class _SensorDataPageState extends State<SensorDataPage> {
 
   // 데이터 수집 시작
   Future<void> _startCollection() async {
+    // 새로운 측정 시작 시 이전 데이터 초기화
+    setState(() {
+      _analysisResult = null;
+    });
+
     final success = await _sensorStreaming.startSensor();
 
     if (!success) {
@@ -164,18 +131,7 @@ class _SensorDataPageState extends State<SensorDataPage> {
 
     setState(() {
       _isCollecting = true;
-      _analysisResult = null;
       _remainingSeconds = SensorConfig.windowSeconds;
-    });
-
-    // 100ms마다 UI 업데이트
-    _updateTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (mounted) {
-        setState(() {
-          _dataCount = _sensorStreaming.getDataCount();
-          _currentSamplingRate = _sensorStreaming.getCurrentSamplingRate();
-        });
-      }
     });
 
     // 남은 시간 카운트다운
@@ -194,214 +150,285 @@ class _SensorDataPageState extends State<SensorDataPage> {
     // 설정된 시간 후 자동 종료
     _autoStopTimer = Timer(
       Duration(seconds: SensorConfig.windowSeconds),
-      () {
+      () async {
         if (_isCollecting) {
-          _stopCollection();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '${SensorConfig.windowSeconds}초 측정이 완료되었습니다.',
-                ),
-                duration: const Duration(seconds: 2),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
+          await _stopCollection();
+          // 측정 완료 SnackBar 제거 (피로도 결과 카드만 표시)
         }
       },
     );
   }
 
   // 데이터 수집 중지
-  void _stopCollection() {
-    _sensorStreaming.stopSensor();
-    _updateTimer?.cancel();
+  Future<void> _stopCollection() async {
+    await _sensorStreaming.stopSensor();
     _autoStopTimer?.cancel();
 
     setState(() {
       _isCollecting = false;
       _remainingSeconds = 0;
+      // _analysisResult는 유지 (측정 결과 표시를 위해)
     });
-  }
-
-  // 데이터 초기화
-  void _clearData() {
-    _sensorStreaming.clearData();
-
-    setState(() {
-      _dataCount = 0;
-      _currentSamplingRate = 0.0;
-      _analysisResult = null;
-    });
-  }
-
-  // 모든 저장된 데이터 삭제
-  Future<void> _clearAllSavedData() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('확인'),
-        content: const Text('모든 저장된 측정 데이터를 삭제하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('삭제'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await FatigueDatabase.instance.deleteAllResults();
-      _loadSavedResults();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('모든 데이터가 삭제되었습니다.')),
-        );
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('근피로도 측정'),
+        backgroundColor: AppTheme.darkBackground,
+        elevation: 0,
+        titleSpacing: 8,
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = Responsive.isSmallScreen(context);
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(isSmall ? 6 : 8),
+                  decoration: AppTheme.cardDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: 10,
+                  ),
+                  child: Icon(
+                    Icons.monitor_heart_outlined,
+                    size: isSmall ? 18 : 22,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: isSmall ? 6 : 10),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      isSmall ? 'M Care' : 'Muscle Care',
+                      style: GoogleFonts.poppins(
+                        fontSize: isSmall ? 16 : 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _showSettingsDialog,
+          _buildAppBarIcon(
+            icon: Icons.history_outlined,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MeasurementHistoryPage(),
+                ),
+              );
+            },
+            tooltip: '측정 기록',
           ),
+          SizedBox(width: Responsive.isSmallScreen(context) ? 2 : 6),
+          _buildAppBarIcon(
+            icon: Icons.person_outline,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ProfilePage(),
+                ),
+              );
+            },
+            tooltip: '내 정보',
+          ),
+          SizedBox(width: Responsive.isSmallScreen(context) ? 2 : 6),
+          _buildAppBarIcon(
+            icon: Icons.settings_outlined,
+            onPressed: _showSettingsDialog,
+            tooltip: '설정',
+          ),
+          SizedBox(width: Responsive.isSmallScreen(context) ? 4 : 12),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: Responsive.responsivePadding(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 측정 안내 카드
+            _buildInstructionCard(),
+            const SizedBox(height: 16),
+
             // 수집 상태 표시
-            Card(
-              color:
-                  _isCollecting ? Colors.green.shade50 : Colors.grey.shade100,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Icon(
-                      _isCollecting
-                          ? Icons.fiber_manual_record
-                          : Icons.check_circle,
-                      color: _isCollecting ? Colors.green : Colors.grey,
-                      size: 48,
+            Container(
+              decoration: AppTheme.cardDecoration(
+                gradient: _isCollecting
+                    ? const LinearGradient(
+                        colors: [
+                          Color(0xFF1E1E1E),
+                          Color(0xFF2A2A2A),
+                        ],
+                      )
+                    : AppTheme.darkGradient,
+              ),
+              padding: Responsive.cardPadding(context),
+              child: Column(
+                children: [
+                  // 상태 아이콘
+                  Container(
+                    padding: EdgeInsets.all(
+                      Responsive.isSmallScreen(context) ? 16 : 20,
                     ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isCollecting
+                          ? Icons.monitor_heart
+                          : _analysisResult != null
+                              ? Icons.check_circle
+                              : Icons.touch_app_outlined,
+                      color: Colors.white,
+                      size: Responsive.isSmallScreen(context) ? 40 : 48,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 상태 텍스트
+                  Text(
+                    _isCollecting
+                        ? '측정 중...'
+                        : _analysisResult != null
+                            ? '측정 완료'
+                            : '측정 준비',
+                    style: TextStyle(
+                      fontSize: Responsive.isSmallScreen(context) ? 20 : 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (_isCollecting) ...[
                     const SizedBox(height: 8),
                     Text(
-                      _isCollecting
-                          ? '측정 중... ($_remainingSeconds초 남음)'
-                          : _analysisResult != null
-                              ? '측정 완료'
-                              : '대기 중',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: _isCollecting ? Colors.green.shade700 : null,
-                          ),
+                      '$_remainingSeconds초 남음',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        color: Colors.white70,
+                      ),
                     ),
-                    if (_isCollecting) ...[
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
+                    const SizedBox(height: 16),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
                         value: 1 -
                             (_remainingSeconds / SensorConfig.windowSeconds),
-                        backgroundColor: Colors.grey.shade300,
+                        backgroundColor: Colors.white.withOpacity(0.2),
                         valueColor:
-                            const AlwaysStoppedAnimation<Color>(Colors.green),
+                            const AlwaysStoppedAnimation<Color>(Colors.white),
+                        minHeight: 8,
                       ),
-                    ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '총 데이터: $_dataCount 개',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '샘플링: ${_currentSamplingRate.toStringAsFixed(1)} Hz',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey.shade600,
-                          ),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 16),
+
+                  // 실시간 분석 상태 표시 (ML 모드별 색상)
+                  _buildAnalysisStatusBox(),
+                ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // 측정 결과 카드 (주요 값: RMS, Variance, Freq)
-            if (_analysisResult != null) ...[
+            // 측정 결과 카드 (측정 완료 후에만 표시)
+            if (_analysisResult != null && !_isCollecting) ...[
               _buildFatigueScoreCard(_analysisResult!),
               const SizedBox(height: 16),
               _buildMainResultCard(_analysisResult!),
               const SizedBox(height: 16),
-              _buildDetailedAnalysisCard(_analysisResult!),
-              const SizedBox(height: 16),
             ],
-
-            // Baseline 정보 카드
-            _buildBaselineCard(),
-            const SizedBox(height: 16),
-
-            // 저장된 측정 히스토리 (항상 표시)
-            _buildSavedResultsCard(),
-            const SizedBox(height: 16),
 
             // 컨트롤 버튼들
-            ElevatedButton.icon(
-              onPressed: _isCollecting ? null : _startCollection,
-              icon: Icon(
-                _isCollecting ? Icons.hourglass_empty : Icons.play_arrow,
-              ),
-              label: Text(
-                _isCollecting
-                    ? '측정 중... ($_remainingSeconds초)'
-                    : '${SensorConfig.windowSeconds}초 측정 시작',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isCollecting ? Colors.grey : Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            if (!_isCollecting) ...[
+              Container(
+                width: double.infinity,
+                height: Responsive.isSmallScreen(context) ? 56 : 60,
+                decoration: AppTheme.cardDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: 16,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _startCollection,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white,
+                          size: Responsive.isSmallScreen(context) ? 24 : 28,
+                        ),
+                        SizedBox(
+                          width: Responsive.isSmallScreen(context) ? 8 : 12,
+                        ),
+                        Flexible(
+                          child: Text(
+                            '${SensorConfig.windowSeconds}초 측정 시작',
+                            style: TextStyle(
+                              fontSize:
+                                  Responsive.isSmallScreen(context) ? 16 : 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-            if (_isCollecting) ...[
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: _stopCollection,
-                icon: const Icon(Icons.stop),
-                label: const Text('측정 중지'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+            ] else ...[
+              Container(
+                width: double.infinity,
+                height: Responsive.isSmallScreen(context) ? 56 : 60,
+                decoration: AppTheme.cardDecoration(
+                  color: AppTheme.highFatigueColor,
+                  borderRadius: 16,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _stopCollection,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.stop_circle,
+                          color: Colors.white,
+                          size: Responsive.isSmallScreen(context) ? 24 : 28,
+                        ),
+                        SizedBox(
+                          width: Responsive.isSmallScreen(context) ? 8 : 12,
+                        ),
+                        Text(
+                          '측정 중지',
+                          style: TextStyle(
+                            fontSize:
+                                Responsive.isSmallScreen(context) ? 16 : 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _dataCount > 0 ? _clearData : null,
-              icon: const Icon(Icons.clear_all),
-              label: const Text('데이터 초기화'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
           ],
         ),
       ),
@@ -411,138 +438,357 @@ class _SensorDataPageState extends State<SensorDataPage> {
   // 피로도 점수 카드 (게이지 위젯 사용)
   Widget _buildFatigueScoreCard(Map<String, dynamic> result) {
     final fatigueScore = result['fatigueScore'] ?? 1.0;
+    final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
 
-    // 이전 측정값 가져오기 (트렌드 표시용)
-    double? previousScore;
-    if (_savedResults.isNotEmpty) {
-      previousScore = _savedResults.first.fatigue;
+    return Container(
+      decoration: AppTheme.cardDecoration(
+        gradient: AppTheme.fatigueGradient(fatigueScore),
+      ),
+      padding: Responsive.cardPadding(context),
+      child: Column(
+        children: [
+          // 피로도 레벨 배지
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: Responsive.isSmallScreen(context) ? 16 : 20,
+              vertical: Responsive.isSmallScreen(context) ? 8 : 10,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _getFatigueLevelIcon(fatigueLevel),
+                  color: Colors.white,
+                  size: Responsive.isSmallScreen(context) ? 20 : 24,
+                ),
+                SizedBox(width: Responsive.isSmallScreen(context) ? 6 : 8),
+                Text(
+                  fatigueLevel,
+                  style: TextStyle(
+                    fontSize: Responsive.isSmallScreen(context) ? 18 : 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // 게이지 위젯
+          FatigueGaugeWidget(
+            fatigueScore: fatigueScore,
+            previousScore: null,
+          ),
+          const SizedBox(height: 16),
+          // 점수 표시
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  fatigueScore.toStringAsFixed(2),
+                  style: GoogleFonts.inter(
+                    fontSize: Responsive.isSmallScreen(context) ? 36 : 44,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: -1,
+                  ),
+                ),
+                SizedBox(width: Responsive.isSmallScreen(context) ? 6 : 8),
+                Text(
+                  '/ 3.0',
+                  style: TextStyle(
+                    fontSize: Responsive.isSmallScreen(context) ? 14 : 18,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // AppBar 아이콘 버튼 (통일된 스타일)
+  Widget _buildAppBarIcon({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    final isSmall = Responsive.isSmallScreen(context);
+
+    return IconButton(
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints(
+        minWidth: isSmall ? 32 : 36,
+        minHeight: isSmall ? 32 : 36,
+      ),
+      icon: Container(
+        padding: EdgeInsets.all(isSmall ? 5 : 7),
+        decoration: AppTheme.iconButtonDecoration(),
+        child: Icon(
+          icon,
+          size: isSmall ? 16 : 18,
+          color: AppTheme.primaryGreen,
+        ),
+      ),
+      onPressed: onPressed,
+      tooltip: tooltip,
+    );
+  }
+
+  // 분석 상태 박스 (ML 모드별 색상 적용)
+  Widget _buildAnalysisStatusBox() {
+    final currentMode = BaselineManager.instance.getCurrentMLMode();
+    final measurementCount = BaselineManager.instance.totalMeasurementCount + 1;
+
+    // ML 모드별 색상 (명확하게 구분, profile_page와 동일)
+    Color modeColor;
+    IconData modeIcon;
+    String statusMessage;
+
+    switch (currentMode) {
+      case MLMode.ema:
+        modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
+        modeIcon = Icons.functions;
+        statusMessage = '센서 데이터로 내 기준값 학습 중';
+        break;
+      case MLMode.hybrid:
+        modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
+        modeIcon = Icons.hub;
+        statusMessage = 'AI가 보조하여 정확도 향상 중';
+        break;
+      case MLMode.endToEnd:
+        modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
+        modeIcon = Icons.psychology;
+        statusMessage = 'AI가 직접 패턴을 분석 중';
+        break;
     }
 
-    return Column(
-      children: [
-        FatigueGaugeWidget(
-          fatigueScore: fatigueScore,
-          previousScore: previousScore,
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            modeColor.withOpacity(0.15),
+            modeColor.withOpacity(0.05),
+          ],
         ),
-        if (result['dbId'] != null) ...[
-          const SizedBox(height: 8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: modeColor.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [modeColor, modeColor.withOpacity(0.7)],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              modeIcon,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  statusMessage,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: modeColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${currentMode.displayName} • $measurementCount번째 측정',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 6,
+            ),
+            decoration: BoxDecoration(
+              color: modeColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${currentMode.phase}단계',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: modeColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 피로도 레벨별 아이콘
+  IconData _getFatigueLevelIcon(String level) {
+    switch (level) {
+      case '정상':
+        return Icons.sentiment_very_satisfied;
+      case '약간 피로':
+        return Icons.sentiment_satisfied;
+      case '피로 누적':
+        return Icons.sentiment_dissatisfied;
+      case '고피로':
+        return Icons.sentiment_very_dissatisfied;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  // 주요 결과 카드 (RMS, Variance, Freq)
+  Widget _buildMainResultCard(Map<String, dynamic> result) {
+    return Container(
+      decoration: AppTheme.cardDecoration(),
+      padding: Responsive.cardPadding(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 헤더
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.analytics_outlined,
+                  color: AppTheme.primaryGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                '측정 데이터',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // RMS
+          _buildMetricRow(
+            icon: Icons.graphic_eq,
+            label: '근육 활동량',
+            value: result['fatigueRMS'].toStringAsFixed(4),
+            subtitle: '떨림 세기',
+          ),
+          const SizedBox(height: 16),
+
+          // Variance
+          _buildMetricRow(
+            icon: Icons.show_chart,
+            label: '신호 변동',
+            value: result['fatigueVariance'].toStringAsFixed(4),
+            subtitle: '불규칙성',
+          ),
+          const SizedBox(height: 16),
+
+          // Peak Frequency
+          _buildMetricRow(
+            icon: Icons.multiline_chart,
+            label: '진동 빈도',
+            value: '${result['peakFreq'].toStringAsFixed(1)}회/초',
+            subtitle: '주요 주파수',
+          ),
+          const SizedBox(height: 20),
+
+          // 측정 시간
+          Divider(color: Colors.white.withOpacity(0.1)),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.save, size: 16, color: Colors.grey.shade600),
-              const SizedBox(width: 4),
+              Icon(
+                Icons.access_time,
+                size: 16,
+                color: Colors.white.withOpacity(0.6),
+              ),
+              const SizedBox(width: 8),
               Text(
-                '데이터베이스에 저장됨 (ID: ${result['dbId']})',
+                _formatTime(result['timestamp']),
                 style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.7),
                 ),
               ),
             ],
           ),
         ],
-      ],
-    );
-  }
-
-  // 주요 결과 카드 (RMS, Variance, Freq)
-  Widget _buildMainResultCard(Map<String, dynamic> result) {
-    return Card(
-      elevation: 6,
-      color: Colors.purple.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.analytics, color: Colors.purple.shade700, size: 28),
-                const SizedBox(width: 8),
-                Text(
-                  '측정 데이터',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.purple.shade700,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // RMS
-            _buildBigValueCard(
-              'RMS',
-              result['fatigueRMS'].toStringAsFixed(4),
-              '진동 강도',
-              Icons.vibration,
-              Colors.purple,
-            ),
-            const SizedBox(height: 16),
-
-            // Variance
-            _buildBigValueCard(
-              'Variance',
-              result['fatigueVariance'].toStringAsFixed(4),
-              '변동성',
-              Icons.show_chart,
-              Colors.deepPurple,
-            ),
-            const SizedBox(height: 16),
-
-            // Peak Frequency
-            _buildBigValueCard(
-              'Peak Frequency',
-              '${result['peakFreq'].toStringAsFixed(2)} Hz',
-              '최대 진폭 주파수',
-              Icons.waves,
-              Colors.indigo,
-            ),
-
-            const SizedBox(height: 16),
-            Divider(color: Colors.purple.shade200),
-            const SizedBox(height: 8),
-            Text(
-              '측정 시간: ${_formatTime(result['timestamp'])}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
-  // 큰 값 표시 카드
-  Widget _buildBigValueCard(
-    String label,
-    String value,
-    String description,
-    IconData icon,
-    Color color,
-  ) {
+  // 메트릭 행 위젯
+  Widget _buildMetricRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String subtitle,
+  }) {
+    final isSmall = Responsive.isSmallScreen(context);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmall ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3), width: 2),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(isSmall ? 10 : 12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: AppTheme.primaryGreen.withOpacity(0.2),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 32),
+            child: Icon(
+              icon,
+              color: AppTheme.primaryGreen,
+              size: isSmall ? 20 : 24,
+            ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: isSmall ? 12 : 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -550,27 +796,27 @@ class _SensorDataPageState extends State<SensorDataPage> {
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+                    fontSize: isSmall ? 12 : 14,
+                    color: Colors.white.withOpacity(0.6),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: TextStyle(
-                    fontSize: 24,
+                  style: GoogleFonts.poppins(
+                    fontSize: isSmall ? 18 : 22,
                     fontWeight: FontWeight.bold,
-                    color: color,
-                    fontFamily: 'monospace',
+                    color: Colors.white,
+                    letterSpacing: -0.5,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  description,
+                  subtitle,
                   style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade500,
+                    fontSize: isSmall ? 10 : 11,
+                    color: Colors.white.withOpacity(0.5),
                   ),
                 ),
               ],
@@ -578,527 +824,6 @@ class _SensorDataPageState extends State<SensorDataPage> {
           ),
         ],
       ),
-    );
-  }
-
-  // 상세 분석 결과 카드
-  Widget _buildDetailedAnalysisCard(Map<String, dynamic> result) {
-    return Card(
-      elevation: 4,
-      color: Colors.purple.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.analytics, color: Colors.purple, size: 28),
-                const SizedBox(width: 8),
-                Text(
-                  '${result['windowSeconds']}초 윈도우 분석 결과',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.purple.shade700,
-                      ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            _buildAnalysisRow(
-              '샘플 수',
-              '${result['sampleCount']}개',
-              Colors.purple,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '💪 근피로도 특징 (FFT 기반)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.purple.shade700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              'RMS',
-              result['fatigueRMS'].toStringAsFixed(4),
-              Colors.purple,
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              '분산',
-              result['fatigueVariance'].toStringAsFixed(4),
-              Colors.purple,
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              'Peak Frequency',
-              '${result['peakFreq'].toStringAsFixed(2)} Hz',
-              Colors.deepPurple,
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              'Mean Power Freq',
-              '${result['meanPowerFreq'].toStringAsFixed(2)} Hz',
-              Colors.deepPurple,
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              'Median Freq',
-              '${result['medianFreq'].toStringAsFixed(2)} Hz',
-              Colors.deepPurple,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '📊 원본 데이터 (비교용)',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              'RMS',
-              result['rawRMS'].toStringAsFixed(4),
-              Colors.grey,
-            ),
-            const SizedBox(height: 8),
-            _buildAnalysisRow(
-              '분산',
-              result['rawVariance'].toStringAsFixed(4),
-              Colors.grey,
-            ),
-            const SizedBox(height: 12),
-            _buildAnalysisRow(
-              '실시간 샘플링',
-              '${result['samplingRate'].toStringAsFixed(1)} Hz',
-              Colors.blue,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '시간: ${_formatTime(result['timestamp'])}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Baseline 정보 카드
-  Widget _buildBaselineCard() {
-    return Card(
-      elevation: 3,
-      color: Colors.blue.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.balance, color: Colors.blue.shade700, size: 24),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Baseline (기준값)',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loadBaseline,
-                  tooltip: '새로고침',
-                ),
-              ],
-            ),
-            const Divider(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(
-                        children: [
-                          Text(
-                            'RMS Base',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currentRmsBase.toStringAsFixed(4),
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.grey.shade300,
-                      ),
-                      Column(
-                        children: [
-                          Text(
-                            'Freq Base',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_currentFreqBase.toStringAsFixed(2)} Hz',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '최근 5회 측정의 Moving Average',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_baselineHistory.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ExpansionTile(
-                title: Text(
-                  'Baseline 히스토리 (${_baselineHistory.length}개)',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                children: [
-                  SizedBox(
-                    height: 150,
-                    child: ListView.builder(
-                      itemCount: _baselineHistory.length,
-                      itemBuilder: (context, index) {
-                        final baseline = _baselineHistory[index];
-                        return ListTile(
-                          dense: true,
-                          leading: CircleAvatar(
-                            radius: 12,
-                            backgroundColor: Colors.blue.shade100,
-                            child: Text(
-                              '${index + 1}',
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                          ),
-                          title: Text(
-                            _formatDateTime(baseline.timestamp),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          subtitle: Text(
-                            'RMS: ${baseline.rmsBase.toStringAsFixed(4)} | Freq: ${baseline.freqBase.toStringAsFixed(2)} Hz',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 저장된 측정 결과 히스토리
-  Widget _buildSavedResultsCard() {
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.history, color: Colors.blue.shade700, size: 24),
-                    const SizedBox(width: 8),
-                    Text(
-                      '저장된 측정 기록 (${_savedResults.length}개)',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _loadSavedResults,
-                      tooltip: '새로고침',
-                    ),
-                    IconButton(
-                      icon:
-                          Icon(Icons.delete_sweep, color: Colors.red.shade400),
-                      onPressed:
-                          _savedResults.isEmpty ? null : _clearAllSavedData,
-                      tooltip: '전체 삭제',
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const Divider(height: 16),
-            _savedResults.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.inbox,
-                            size: 48,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '저장된 측정 기록이 없습니다',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '측정을 시작하면 자동으로 저장됩니다',
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : SizedBox(
-                    height: 400,
-                    child: ListView.builder(
-                      itemCount: _savedResults.length,
-                      itemBuilder: (context, index) {
-                        final result = _savedResults[index];
-                        return _buildSavedResultItem(result, index);
-                      },
-                    ),
-                  ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 저장된 결과 항목
-  Widget _buildSavedResultItem(FatigueResult result, int index) {
-    final fatigueLevel = FatigueCalculator.getFatigueLevel(result.fatigue);
-    final fatigueColor = FatigueCalculator.getFatigueColor(result.fatigue);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: fatigueColor,
-          child: Text(
-            '${index + 1}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                _formatDateTime(result.timestamp),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: fatigueColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                result.fatigue.toStringAsFixed(2),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-        subtitle: Text(
-          fatigueLevel,
-          style: TextStyle(
-            fontSize: 12,
-            color: fatigueColor,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                _buildResultDetailRow('RMS', result.rms.toStringAsFixed(4)),
-                const SizedBox(height: 8),
-                _buildResultDetailRow(
-                  'Variance',
-                  result.variance.toStringAsFixed(4),
-                ),
-                const SizedBox(height: 8),
-                _buildResultDetailRow(
-                  'Peak Freq',
-                  '${result.peakFreq.toStringAsFixed(2)} Hz',
-                ),
-                const SizedBox(height: 8),
-                _buildResultDetailRow(
-                  'Mean Power Freq',
-                  '${result.meanPowerFreq.toStringAsFixed(2)} Hz',
-                ),
-                const SizedBox(height: 8),
-                _buildResultDetailRow(
-                  'Median Freq',
-                  '${result.medianFreq.toStringAsFixed(2)} Hz',
-                ),
-                const SizedBox(height: 8),
-                _buildResultDetailRow('샘플 수', '${result.sampleCount}개'),
-                const SizedBox(height: 8),
-                _buildResultDetailRow(
-                  '샘플링 레이트',
-                  '${result.samplingRate.toStringAsFixed(1)} Hz',
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    await FatigueDatabase.instance.deleteResult(result.id!);
-                    _loadSavedResults();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('측정 기록이 삭제되었습니다.')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.delete),
-                  label: const Text('삭제'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 결과 상세 행
-  Widget _buildResultDetailRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // 분석 결과 행 위젯
-  Widget _buildAnalysisRow(String label, String value, Color color) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w500,
-            fontSize: 15,
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: color.withValues(alpha: 0.7),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1109,16 +834,9 @@ class _SensorDataPageState extends State<SensorDataPage> {
         '${time.second.toString().padLeft(2, '0')}';
   }
 
-  // 날짜+시간 포맷팅
-  String _formatDateTime(DateTime time) {
-    return '${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}:'
-        '${time.second.toString().padLeft(2, '0')}';
-  }
-
   // 설정 다이얼로그
   void _showSettingsDialog() {
-    int tempWindowSeconds = SensorConfig.windowSeconds;
+    double tempWindowSeconds = SensorConfig.windowSeconds.toDouble();
 
     showDialog(
       context: context,
@@ -1126,75 +844,285 @@ class _SensorDataPageState extends State<SensorDataPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Row(
+              backgroundColor: AppTheme.cardBackground,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
                 children: [
-                  Icon(Icons.settings, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Text('측정 설정'),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.primaryGradient,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.settings,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    '설정',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '윈도우 크기 (초)',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Slider(
-                          value: tempWindowSeconds.toDouble(),
-                          min: 1,
-                          max: 30,
-                          divisions: 29,
-                          label: '$tempWindowSeconds초',
-                          onChanged: _isCollecting
-                              ? null
-                              : (value) {
-                                  setDialogState(() {
-                                    tempWindowSeconds = value.toInt();
-                                  });
-                                },
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 측정 시간 설정
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 20,
+                          color: AppTheme.primaryGreen,
                         ),
-                      ),
-                      SizedBox(
-                        width: 50,
-                        child: Text(
-                          '$tempWindowSeconds초',
-                          style: const TextStyle(
-                            fontSize: 18,
+                        SizedBox(width: 8),
+                        Text(
+                          '측정 시간 (초)',
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.white,
                           ),
-                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              activeTrackColor: AppTheme.primaryGreen,
+                              thumbColor: AppTheme.primaryGreen,
+                              inactiveTrackColor: Colors.white.withOpacity(0.2),
+                              overlayColor:
+                                  AppTheme.primaryGreen.withOpacity(0.2),
+                            ),
+                            child: Slider(
+                              value: tempWindowSeconds,
+                              min: 0.5,
+                              max: 30,
+                              divisions: 59,
+                              label: '${tempWindowSeconds.toStringAsFixed(1)}초',
+                              onChanged: _isCollecting
+                                  ? null
+                                  : (value) {
+                                      setDialogState(() {
+                                        tempWindowSeconds = value;
+                                      });
+                                    },
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${tempWindowSeconds.toStringAsFixed(1)}초',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryGreen,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_isCollecting)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          '⚠️ 측정 중에는 설정을 변경할 수 없습니다.',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                  if (_isCollecting)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        '⚠️ 측정 중에는 설정을 변경할 수 없습니다.',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontSize: 12,
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 16),
+
+                    // 데이터 관리
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.storage_outlined,
+                          size: 20,
+                          color: AppTheme.highFatigueColor,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          '데이터 관리',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // 모든 측정 기록 삭제
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: !_isCollecting
+                            ? () async {
+                                Navigator.of(context).pop();
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.warning, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('확인'),
+                                      ],
+                                    ),
+                                    content: const Text(
+                                      '모든 측정 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('취소'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                        ),
+                                        child: const Text('삭제'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirm == true && mounted) {
+                                  await DatabaseHelper.instance
+                                      .deleteAllMeasureSessions();
+                                  await BaselineManager.instance
+                                      .syncWithDatabase();
+
+                                  // 센서 데이터도 초기화
+                                  _sensorStreaming.clearData();
+
+                                  setState(() {
+                                    _analysisResult = null;
+                                  });
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('모든 측정 기록이 삭제되었습니다.'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            : null,
+                        icon: const Icon(Icons.delete_forever),
+                        label: const Text('모든 측정 기록 삭제'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: BorderSide(
+                            color: !_isCollecting ? Colors.red : Colors.grey,
+                          ),
                         ),
                       ),
                     ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  Text(
-                    '현재 샘플링 레이트: ${SensorConfig.samplingRate.toStringAsFixed(0)} Hz',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    // Baseline 초기화
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: !_isCollecting
+                            ? () async {
+                                Navigator.of(context).pop();
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.orange,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text('개인 기준값 초기화'),
+                                      ],
+                                    ),
+                                    content: const Text(
+                                      '개인 기준값을 초기화하시겠습니까?\n\n'
+                                      '일반인 평균값으로 리셋되며,\n'
+                                      '학습된 내 기준값이 모두 삭제됩니다.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('취소'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orange,
+                                        ),
+                                        child: const Text('초기화'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirm == true && mounted) {
+                                  await BaselineManager.instance
+                                      .clearBaseline();
+                                  await _loadBaseline();
+
+                                  // 센서 데이터도 초기화
+                                  _sensorStreaming.clearData();
+
+                                  setState(() {
+                                    // 데이터 초기화
+                                  });
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('개인 기준값이 초기화되었습니다.'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                }
+                              }
+                            : null,
+                        icon: const Icon(Icons.restore),
+                        label: const Text('개인 기준값 초기화'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.deepOrange,
+                          side: BorderSide(
+                            color: !_isCollecting
+                                ? Colors.deepOrange
+                                : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -1208,13 +1136,23 @@ class _SensorDataPageState extends State<SensorDataPage> {
                       ? null
                       : () {
                           setState(() {
-                            SensorConfig.setWindowSeconds(tempWindowSeconds);
+                            final customPreset = MeasurementPreset(
+                              name: '커스텀 측정',
+                              totalSeconds: tempWindowSeconds.round(),
+                              windowSeconds:
+                                  SensorConfig.currentPreset.windowSeconds,
+                              hopSeconds: SensorConfig.currentPreset.hopSeconds,
+                              expectedWindows: (tempWindowSeconds /
+                                      SensorConfig.currentPreset.hopSeconds)
+                                  .round(),
+                            );
+                            SensorConfig.setPreset(customPreset);
                           });
                           Navigator.of(context).pop();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                '윈도우 크기가 $tempWindowSeconds초로 설정되었습니다.',
+                                '측정 시간이 ${tempWindowSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
                               ),
                               duration: const Duration(seconds: 2),
                             ),
@@ -1227,6 +1165,315 @@ class _SensorDataPageState extends State<SensorDataPage> {
           },
         );
       },
+    );
+  }
+
+  // 측정 안내 카드
+  Widget _buildInstructionCard() {
+    final isSmall = Responsive.isSmallScreen(context);
+
+    // 측정 완료 후
+    if (_analysisResult != null && !_isCollecting) {
+      final currentMode = BaselineManager.instance.getCurrentMLMode();
+
+      // ML 모드별 색상 (명확하게 구분, profile_page와 동일)
+      Color modeColor;
+      IconData modeIcon;
+
+      switch (currentMode) {
+        case MLMode.ema:
+          modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
+          modeIcon = Icons.functions;
+          break;
+        case MLMode.hybrid:
+          modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
+          modeIcon = Icons.hub;
+          break;
+        case MLMode.endToEnd:
+          modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
+          modeIcon = Icons.psychology;
+          break;
+      }
+
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              modeColor.withOpacity(0.15),
+              const Color(0xFF1E1E1E),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: modeColor.withOpacity(0.3),
+            width: 1.5,
+          ),
+        ),
+        padding: EdgeInsets.all(isSmall ? 16 : 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [modeColor, modeColor.withOpacity(0.7)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    modeIcon,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '측정이 완료되었습니다',
+                    style: GoogleFonts.inter(
+                      fontSize: isSmall ? 15 : 17,
+                      fontWeight: FontWeight.bold,
+                      color: modeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '측정 환경을 일정하게 유지하면 더 정확한 결과를 얻을 수 있습니다.',
+              style: TextStyle(
+                fontSize: isSmall ? 13 : 14,
+                color: Colors.white.withOpacity(0.8),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfilePage(),
+                  ),
+                );
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: modeColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: modeColor.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: modeColor,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '정확도 향상 팁 보기',
+                      style: TextStyle(
+                        fontSize: isSmall ? 12 : 13,
+                        color: modeColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: modeColor,
+                      size: 12,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 측정 중
+    if (_isCollecting) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.primaryGreen.withOpacity(0.2),
+              const Color(0xFF1E1E1E),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppTheme.primaryGreen.withOpacity(0.5),
+            width: 1.5,
+          ),
+        ),
+        padding: EdgeInsets.all(isSmall ? 16 : 20),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryGreen,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '측정 중',
+                  style: GoogleFonts.inter(
+                    fontSize: isSmall ? 16 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryGreen,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '움직이지 말고 5초간 그대로 유지하세요.',
+              style: TextStyle(
+                fontSize: isSmall ? 14 : 15,
+                color: Colors.white.withOpacity(0.9),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 측정 전
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2A2A3E), Color(0xFF1E1E1E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      padding: EdgeInsets.all(isSmall ? 16 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.info_outline,
+                  color: Colors.blue,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '측정 전 안내',
+                  style: GoogleFonts.inter(
+                    fontSize: isSmall ? 15 : 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildInstructionItem(
+            '1',
+            '의자에 앉은 상태에서, 팔을 책상 위에 편히 올려주세요.',
+            isSmall,
+          ),
+          const SizedBox(height: 10),
+          _buildInstructionItem(
+            '2',
+            '스마트폰을 한 손으로 가볍게 쥐고, 움직이지 마세요.',
+            isSmall,
+          ),
+          const SizedBox(height: 10),
+          _buildInstructionItem(
+            '3',
+            '화면이 위를 향하도록 평평하게 두세요.',
+            isSmall,
+          ),
+          const SizedBox(height: 10),
+          _buildInstructionItem(
+            '4',
+            '준비가 되면 아래 시작 버튼을 눌러주세요.',
+            isSmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionItem(String number, String text, bool isSmall) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: isSmall ? 22 : 26,
+          height: isSmall ? 22 : 26,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: TextStyle(
+                fontSize: isSmall ? 11 : 13,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryGreen,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: isSmall ? 12 : 13,
+              color: Colors.white.withOpacity(0.8),
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
