@@ -183,6 +183,17 @@ class WorkerManager {
     });
   }
 
+  /// 사용자 상태 업로드 작업 추가
+  Future<String> addUploadStateTask({
+    required String userId,
+    int priority = 1,
+  }) async {
+    return await _queueManager.addUploadStateTask(
+      userId: userId,
+      priority: priority,
+    );
+  }
+
   /// 큐 상태 출력
   void printStatus() {
     final status = getQueueStatus();

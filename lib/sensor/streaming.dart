@@ -9,7 +9,7 @@ import '../model/baseline.dart';
 import '../model/measure_session.dart'; // FatigueCalculator를 위해 필요
 import '../model/config.dart' as model_config;
 import '../model/ml.dart';
-import '../dataset_worker/worker_manager.dart'; // 워커 매니저를 위해 필요
+import '../worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 
 class SensorStreaming {
   // 가속도계 데이터 저장 (전체 기록용)
@@ -558,6 +558,19 @@ class SensorStreaming {
         if (currentMLMode != model_config.MLMode.endToEnd) {
           await baselineManager.updateBaseline(avgRms, avgFreq);
           print('✅ Baseline 업데이트 완료');
+        }
+
+        // User Embedding 계산 및 업데이트
+        await DatabaseHelper.instance.calculateAndUpdateUserEmbedding();
+        print('✅ User Embedding 계산 및 저장 완료');
+
+        // 사용자 상태 업로드 작업 추가 (매 측정마다)
+        try {
+          final workerManager = await getWorkerManager();
+          await workerManager.addUploadStateTask(userId: 'local_user');
+          print('✅ 사용자 상태 업로드 작업 추가 완료');
+        } catch (e) {
+          print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
         }
 
         // DB와 동기화

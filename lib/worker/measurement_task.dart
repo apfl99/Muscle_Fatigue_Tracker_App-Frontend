@@ -118,6 +118,51 @@ enum TaskStatus {
   failed,
 }
 
+/// 사용자 상태 데이터 타입 (user_state 테이블 구조)
+class UserStateData {
+  final String userId;
+  final double? rmsBase;
+  final double? freqBase;
+  final List<double> userEmb;
+  final String? modelVersion;
+  final DateTime lastSync;
+
+  UserStateData({
+    required this.userId,
+    this.rmsBase,
+    this.freqBase,
+    required this.userEmb,
+    this.modelVersion,
+    required this.lastSync,
+  });
+
+  /// SQLite Map에서 생성
+  factory UserStateData.fromMap(Map<String, dynamic> map) {
+    return UserStateData(
+      userId: map['user_id'] as String,
+      rmsBase: map['rms_base'] as double?,
+      freqBase: map['freq_base'] as double?,
+      userEmb: map['user_emb'] != null
+          ? List<double>.from(map['user_emb'] as List)
+          : List.filled(12, 0.0),
+      modelVersion: map['model_version'] as String?,
+      lastSync: DateTime.parse(map['last_sync'] as String),
+    );
+  }
+
+  /// JSON으로 변환
+  Map<String, dynamic> toJson() {
+    return {
+      'user_id': userId,
+      'rms_base': rmsBase,
+      'freq_base': freqBase,
+      'user_emb': userEmb,
+      'model_version': modelVersion,
+      'last_sync': lastSync.toIso8601String(),
+    };
+  }
+}
+
 /// 측정 데이터 타입 (fatigue_logs 테이블 구조)
 class FatigueLogData {
   final String userId;

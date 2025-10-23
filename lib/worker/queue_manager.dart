@@ -239,6 +239,30 @@ class QueueManager {
     }
   }
 
+  /// 사용자 상태 업로드 작업 추가
+  Future<String> addUploadStateTask({
+    required String userId,
+    int priority = 1,
+  }) async {
+    final taskId = 'upload_state_${DateTime.now().millisecondsSinceEpoch}';
+
+    final task = MeasurementTask(
+      taskId: taskId,
+      userId: userId,
+      sessionId: 'upload_state',
+      timestamp: DateTime.now(),
+      data: {
+        'type': 'upload_state',
+        'user_id': userId,
+      },
+      priority: priority,
+    );
+
+    await addTask(task);
+    print('📤 사용자 상태 업로드 작업 추가: $taskId');
+    return taskId;
+  }
+
   /// 큐 초기화
   Future<void> clearQueue() async {
     _pendingTasks.clear();

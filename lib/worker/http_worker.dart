@@ -64,6 +64,9 @@ class HttpWorker {
         case 'dataset_upload':
           await _processDatasetUpload(task);
           break;
+        case 'upload_state':
+          await _processUploadState(task);
+          break;
         default:
           throw Exception('알 수 없는 작업 타입: $taskType');
       }
@@ -126,6 +129,104 @@ class HttpWorker {
               'Content-Type': 'application/json',
             },
             body: jsonEncode(dataset),
+          )
+          .timeout(Duration(seconds: _serverConfig.timeoutSeconds));
+
+      print('📡 서버 응답: ${response.statusCode}');
+      print('📄 응답 내용: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        return {
+          'success': true,
+          'data': responseData,
+        };
+      } else {
+        return {
+          'success': false,
+          'error': 'HTTP ${response.statusCode}: ${response.body}',
+        };
+      }
+    } catch (e) {
+      print('❌ 네트워크 에러: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// 사용자 상태 업로드 처리
+  Future<void> _processUploadState(MeasurementTask task) async {
+    print('📤 사용자 상태 업로드 처리 시작: ${task.taskId}');
+
+    try {
+      // SQLite에서 사용자 상태 조회
+      final userState =
+          await DatabaseHelper.instance.getUserState(userId: task.userId);
+      if (userState == null) {
+        throw Exception('사용자 상태를 찾을 수 없습니다');
+      }
+
+      // 사용자 임베딩 조회
+      final userEmb =
+          await DatabaseHelper.instance.getUserEmbedding(userId: task.userId);
+
+      // 업로드할 데이터 준비
+      final uploadData = {
+        'user_id': task.userId,
+        'rms_base': userState['rms_base'],
+        'freq_base': userState['freq_base'],
+        'user_emb': userEmb,
+        'model_version': userState['model_version'],
+        'last_sync': DateTime.now().toIso8601String(),
+      };
+
+      // 서버로 업로드
+      final result = await _sendUserState(uploadData);
+
+      if (result['success'] == true) {
+        // 동기화 이력 기록
+        await DatabaseHelper.instance.insertSyncHistory(
+          userId: task.userId,
+          syncType: 'upload_state',
+          status: 'success',
+        );
+
+        await _queueManager.completeTask(task.taskId, result: result);
+        print('✅ 사용자 상태 업로드 완료: ${task.taskId}');
+      } else {
+        throw Exception(result['error'] ?? '업로드 실패');
+      }
+    } catch (e) {
+      print('❌ 사용자 상태 업로드 실패: $e');
+
+      // 실패 이력 기록
+      await DatabaseHelper.instance.insertSyncHistory(
+        userId: task.userId,
+        syncType: 'upload_state',
+        status: 'failure',
+      );
+
+      rethrow;
+    }
+  }
+
+  /// 사용자 상태를 서버로 전송
+  Future<Map<String, dynamic>> _sendUserState(
+    Map<String, dynamic> userStateData,
+  ) async {
+    try {
+      final url = Uri.parse('${_serverConfig.baseUrl}/upload_state');
+      print('🌐 사용자 상태 전송 URL: $url');
+
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(userStateData),
           )
           .timeout(Duration(seconds: _serverConfig.timeoutSeconds));
 

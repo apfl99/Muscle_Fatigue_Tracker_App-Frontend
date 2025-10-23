@@ -88,7 +88,7 @@ class ServerConfig {
   }
 
   /// Upload Dataset API URL
-  String get uploadDatasetUrl => getApiUrl('/upload_batch_dataset');
+  String get uploadDatasetUrl => getApiUrl('/upload_logs');
 
   /// 설정 유효성 검사
   bool get isValid {

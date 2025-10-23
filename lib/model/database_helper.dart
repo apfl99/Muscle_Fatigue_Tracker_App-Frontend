@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'user_stats.dart';
 
 /// 통합 데이터베이스 헬퍼 클래스
 /// DB_SCHEMA.md (v1.0.0) 기반으로 전체 DB 관리
@@ -673,6 +674,98 @@ class DatabaseHelper {
     );
 
     print('✅ baseline 재계산 완료: RMS=$rmsMean, Freq=$freqMean (N=${logs.length})');
+  }
+
+  /// User Embedding 계산 및 업데이트
+  Future<void> calculateAndUpdateUserEmbedding({
+    String userId = 'local_user',
+  }) async {
+    try {
+      print('🧮 User Embedding 계산 시작...');
+
+      // 모든 피로도 로그 조회
+      final allLogs = await getAllFatigueLogs(userId: userId);
+
+      if (allLogs.isEmpty) {
+        print('⚠️ 피로도 로그가 없어서 user_emb를 계산할 수 없습니다');
+        return;
+      }
+
+      // UserStats 계산을 위한 데이터 준비
+      final rmsValues = allLogs.map((l) => l['rms'] as double? ?? 0.0).toList();
+      final freqValues =
+          allLogs.map((l) => l['freq'] as double? ?? 0.0).toList();
+      final fatigueValues =
+          allLogs.map((l) => l['fatigue'] as double? ?? 1.0).toList();
+
+      // 통계 계산
+      final rmsMean = _mean(rmsValues);
+      final freqMean = _mean(freqValues);
+      final fatigueMean = _mean(fatigueValues);
+
+      final rmsVar = _variance(rmsValues, rmsMean);
+      final freqVar = _variance(freqValues, freqMean);
+      final fatigueCv = fatigueMean > 0
+          ? _variance(fatigueValues, fatigueMean) / fatigueMean
+          : 0.0;
+
+      // Drift 계산 (첫 번째와 마지막 값의 차이)
+      final driftRms =
+          allLogs.length > 1 ? (rmsValues.last - rmsValues.first).abs() : 0.0;
+      final driftFreq =
+          allLogs.length > 1 ? (freqValues.last - freqValues.first).abs() : 0.0;
+
+      // 시간대별 평균 (현재는 단순화)
+      const timeOfDayMean = 12.0; // 정오 기준
+
+      // 세션 길이 평균 (현재는 단순화)
+      const sessionLenMean = 5.0; // 기본 5분
+
+      // UserStats 객체 생성
+      final userStats = UserStats(
+        sampleWindow: 5,
+        measCount: allLogs.length,
+        rmsMean: rmsMean,
+        freqMean: freqMean,
+        rmsVar: rmsVar,
+        freqVar: freqVar,
+        fatigueMean: fatigueMean,
+        fatigueCv: fatigueCv,
+        driftRms: driftRms,
+        driftFreq: driftFreq,
+        timeOfDayMean: timeOfDayMean,
+        sessionLenMean: sessionLenMean,
+        updatedAt: DateTime.now(),
+      );
+
+      // User Embedding 계산
+      final userEmb = userStats.toUserEmbedding(rmsMean, freqMean);
+
+      print('📊 User Embedding 계산 완료:');
+      print('   - 측정 횟수: ${allLogs.length}회');
+      print('   - RMS 평균: ${rmsMean.toStringAsFixed(4)}');
+      print('   - 주파수 평균: ${freqMean.toStringAsFixed(2)} Hz');
+      print('   - 피로도 평균: ${fatigueMean.toStringAsFixed(2)}');
+      print('   - User Embedding: $userEmb');
+
+      // SQLite에 저장
+      await updateUserState(
+        userId: userId,
+        userEmb: userEmb,
+      );
+
+      print('✅ User Embedding SQLite 저장 완료');
+    } catch (e) {
+      print('❌ User Embedding 계산 실패: $e');
+      print('스택 트레이스: ${StackTrace.current}');
+    }
+  }
+
+  /// 분산 계산 헬퍼 함수
+  double _variance(List<double> values, double mean) {
+    if (values.isEmpty) return 0.0;
+    final squaredDiffs = values.map((v) => (v - mean) * (v - mean)).toList();
+    return squaredDiffs.reduce((a, b) => a + b) / values.length;
   }
 
   /// 데이터베이스 전체 초기화 (개발용)
