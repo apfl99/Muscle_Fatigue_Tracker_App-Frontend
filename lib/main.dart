@@ -13,6 +13,7 @@ import 'screens/measurement_history_page.dart';
 import 'screens/profile_page.dart';
 import 'theme/app_theme.dart';
 import 'utils/responsive.dart';
+import 'dataset_worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 
 void main() async {
   print('\n🚀 앱 시작...');
@@ -34,6 +35,10 @@ void main() async {
     // ML Manager 초기화
     await MLManager.instance.initialize();
     print('✅ ML Manager 초기화 완료');
+
+    // Worker Manager 초기화
+    await initializeWorkerManager();
+    print('✅ Worker Manager 초기화 완료');
   } catch (e, stackTrace) {
     print('❌ 초기화 실패: $e');
     print('스택 트레이스: $stackTrace');
@@ -1014,7 +1019,7 @@ class _SensorDataPageState extends State<SensorDataPage> {
 
                                 if (confirm == true && mounted) {
                                   await DatabaseHelper.instance
-                                      .deleteAllMeasureSessions();
+                                      .deleteAllFatigueLogs();
                                   await BaselineManager.instance
                                       .syncWithDatabase();
 

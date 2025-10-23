@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// 측정 세션 모델 (measure_sessions 테이블)
+/// 측정 세션 모델 (fatigue_logs 테이블에서 변환)
 class MeasureSession {
-  final int? id;
-  final DateTime timestamp;
+  final dynamic id; // session_id (String 또는 int)
+  final DateTime timestamp; // created_at에서 변환
   final double rms;
   final double freq;
   final double fatigue;
-  final String mode; // 'ema', 'hybrid', 'end_to_end'
+  final String mode; // 'ema', 'hybrid', 'endToEnd'
   final int windowCount; // 이 세션에서 생성된 윈도우 수
-  final String? signalPath; // 신호 데이터 파일 경로 (optional)
+  final String? signalPath; // 신호 데이터 파일 경로 (optional, 삭제 예정)
   final int synced; // 서버 동기화 여부 (0=미동기화, 1=동기화됨)
 
   MeasureSession({
@@ -27,27 +27,41 @@ class MeasureSession {
   /// DB에서 Map으로 변환
   Map<String, dynamic> toMap() {
     return {
-      if (id != null) 'id': id,
-      'timestamp': timestamp.toIso8601String(),
+      'session_id': id,
+      'measure_date': timestamp.toIso8601String().split('T')[0], // DATE only
+      'created_at': timestamp.toIso8601String(),
       'rms': rms,
       'freq': freq,
       'fatigue': fatigue,
       'mode': mode,
       'window_count': windowCount,
-      'signal_path': signalPath,
       'synced': synced,
     };
   }
 
-  /// Map에서 생성
+  /// Map에서 생성 (fatigue_logs 테이블)
   factory MeasureSession.fromMap(Map<String, dynamic> map) {
+    // created_at이 있으면 사용, 없으면 measure_date 사용
+    String timestampStr;
+    if (map.containsKey('created_at') && map['created_at'] != null) {
+      timestampStr = map['created_at'] as String;
+    } else if (map.containsKey('measure_date') && map['measure_date'] != null) {
+      timestampStr = map['measure_date'] as String;
+      // DATE만 있는 경우 시간 추가
+      if (!timestampStr.contains('T')) {
+        timestampStr = '${timestampStr}T00:00:00';
+      }
+    } else {
+      timestampStr = DateTime.now().toIso8601String();
+    }
+
     return MeasureSession(
-      id: map['id'] as int?,
-      timestamp: DateTime.parse(map['timestamp'] as String),
-      rms: map['rms'] as double,
-      freq: map['freq'] as double,
-      fatigue: map['fatigue'] as double,
-      mode: map['mode'] as String,
+      id: map['session_id'] ?? map['id'],
+      timestamp: DateTime.parse(timestampStr),
+      rms: (map['rms'] as num?)?.toDouble() ?? 0.0,
+      freq: (map['freq'] as num?)?.toDouble() ?? 0.0,
+      fatigue: (map['fatigue'] as num?)?.toDouble() ?? 1.0,
+      mode: map['mode'] as String? ?? 'ema',
       windowCount: map['window_count'] as int? ?? 0,
       signalPath: map['signal_path'] as String?,
       synced: map['synced'] as int? ?? 0,

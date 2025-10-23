@@ -6,10 +6,10 @@ import 'filter.dart';
 import 'calculateVal.dart';
 import '../model/database_helper.dart';
 import '../model/baseline.dart';
-import '../model/measure_session.dart';
-import '../model/window_feature.dart';
+import '../model/measure_session.dart'; // FatigueCalculator를 위해 필요
 import '../model/config.dart' as model_config;
 import '../model/ml.dart';
+import '../dataset_worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 
 class SensorStreaming {
   // 가속도계 데이터 저장 (전체 기록용)
@@ -38,6 +38,9 @@ class SensorStreaming {
   // 윈도우 타이머
   Timer? _windowTimer;
 
+  // 측정 횟수 추적 (5회마다 워커 실행)
+  int _measurementCount = 0;
+
   // 분석 결과 콜백
   Function(Map<String, dynamic>)? onAnalysisResult;
 
@@ -56,6 +59,10 @@ class SensorStreaming {
   Future<bool> startSensor() async {
     print('\n🚀 센서 시작 시도');
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // 측정 횟수 초기화
+    _measurementCount = 0;
+    print('📊 측정 횟수 초기화: $_measurementCount회');
 
     try {
       final preset = SensorConfig.currentPreset;
@@ -354,10 +361,10 @@ class SensorStreaming {
           // 이전 피로도 가져오기 (없으면 1.0)
           double prevFatigue = 1.0;
           try {
-            final recentSessions =
-                await DatabaseHelper.instance.getRecentMeasureSessions(1);
-            if (recentSessions.isNotEmpty) {
-              prevFatigue = recentSessions.first['fatigue'] as double? ?? 1.0;
+            final recentLogs =
+                await DatabaseHelper.instance.getRecentFatigueLogs(limit: 1);
+            if (recentLogs.isNotEmpty) {
+              prevFatigue = recentLogs.first['fatigue'] as double? ?? 1.0;
             }
           } catch (e) {
             print('⚠️ 이전 피로도 조회 실패: $e');
@@ -425,7 +432,9 @@ class SensorStreaming {
         'mean_power_freq': fatigueFeatures.meanPowerFrequency,
         'median_freq': fatigueFeatures.medianFrequency,
         'sample_count': filteredData.length,
-        'timestamp': result['timestamp'],
+        'timestamp': result['timestamp'] is DateTime
+            ? (result['timestamp'] as DateTime).toIso8601String()
+            : result['timestamp'].toString(),
       };
       _currentSessionWindows.add(windowData);
       _windowIndex++;
@@ -514,37 +523,35 @@ class SensorStreaming {
         // 현재 ML 모드 가져오기
         final currentMLMode = BaselineManager.instance.getCurrentMLMode();
 
-        // MeasureSession 생성
-        final session = MeasureSession(
-          timestamp: DateTime.now(),
+        // 세션 ID 생성 (timestamp 기반)
+        final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
+
+        // fatigue_logs에 저장
+        await DatabaseHelper.instance.insertFatigueLog(
+          sessionId: sessionId,
+          measureDate: DateTime.now(),
           rms: avgRms,
           freq: avgFreq,
           fatigue: avgFatigue,
           mode: currentMLMode.name,
           windowCount: _currentSessionWindows.length,
-          synced: 0,
         );
-
-        // DB에 저장
-        final sessionId =
-            await DatabaseHelper.instance.insertMeasureSession(session.toMap());
-        print('✅ 측정 세션 저장 완료 (ID: $sessionId)');
+        print('✅ 피로도 로그 저장 완료 (ID: $sessionId)');
         print('   - 평균 피로도: ${avgFatigue.toStringAsFixed(2)}');
         print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
         print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
 
-        // Window Features 저장 (ML 학습용)
+        // Window Features를 temp_measurements에 저장 (5회마다 DB 커밋용)
         for (var window in _currentSessionWindows) {
-          final feature = WindowFeature(
+          await DatabaseHelper.instance.insertTempMeasurement(
             sessionId: sessionId,
             windowIndex: window['window_index'] as int,
             rms: window['rms'] as double,
             freq: window['freq'] as double,
-            fatiguePred: window['fatigue'] as double,
+            fatigue: window['fatigue'] as double,
           );
-          await DatabaseHelper.instance.insertWindowFeature(feature.toMap());
         }
-        print('✅ Window Features 저장 완료 (${_currentSessionWindows.length}개)');
+        print('✅ 임시 측정 데이터 저장 완료 (${_currentSessionWindows.length}개)');
 
         // Baseline 업데이트 (EMA 방식)
         final baselineManager = BaselineManager.instance;
@@ -556,9 +563,44 @@ class SensorStreaming {
         // DB와 동기화
         await baselineManager.syncWithDatabase();
 
-        // User Stats 재계산 (최근 5회 기준)
-        await DatabaseHelper.instance.recalculateUserStats(n: 5);
-        print('✅ User Stats 재계산 완료');
+        // Baseline 재계산 (최근 5회 기준)
+        await DatabaseHelper.instance.recalculateBaseline(n: 5);
+        print('✅ Baseline 재계산 완료');
+
+        // 측정 횟수 증가
+        _measurementCount++;
+        print('📊 측정 완료: $_measurementCount회');
+
+        // 현재 측정 데이터를 SQLite에 저장 (synced = 0으로)
+        // 이미 stopSensor()에서 fatigue_logs 테이블에 저장됨
+
+        // SQLite에서 unsynced 데이터 확인 (local_user만)
+        final unsyncedLogs =
+            await DatabaseHelper.instance.getUnsyncedLogs(userId: 'local_user');
+        print('📊 SQLite unsynced 데이터 (local_user): ${unsyncedLogs.length}개');
+
+        // 5개 이상이면 배치로 전송
+        if (unsyncedLogs.length >= 5) {
+          print('🚀 5개 이상 unsynced 데이터 발견 - 배치 전송 시작');
+          try {
+            final workerManager = await getWorkerManager();
+            await workerManager.addDatasetUploadTask(
+              userId: 'local_user',
+              sessionId: sessionId,
+              dataset: {
+                'batch_data': unsyncedLogs,
+                'batch_size': unsyncedLogs.length,
+                'batch_date': DateTime.now().toIso8601String(),
+              },
+              priority: 1,
+            );
+            print('✅ ${unsyncedLogs.length}개 unsynced 데이터 배치 업로드 작업 큐에 추가 완료');
+          } catch (e) {
+            print('⚠️ 워커 매니저 호출 실패: $e');
+          }
+        } else {
+          print('⏳ 다음 배치 전송까지: ${5 - unsyncedLogs.length}개 남음');
+        }
 
         // UI에 결과 전달
         if (_lastWindowResult != null) {

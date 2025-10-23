@@ -30,19 +30,19 @@ class BaselineManager {
   Future<void> initialize() async {
     try {
       print('📊 Baseline 초기화...');
-      final baseline = await DatabaseHelper.instance.getBaseline();
+      final userState = await DatabaseHelper.instance.getUserState();
 
-      if (baseline != null) {
-        _currentRmsBase = baseline['rms_base'] as double;
-        _currentFreqBase = baseline['freq_base'] as double;
-        _alpha = baseline['alpha'] as double? ?? 0.05;
-        _beta = baseline['beta'] as double? ?? 0.05;
+      if (userState != null) {
+        _currentRmsBase = userState['rms_base'] as double? ?? 0.02;
+        _currentFreqBase = userState['freq_base'] as double? ?? 1.5;
+        _alpha = 0.05;
+        _beta = 0.05;
 
-        print('✅ Baseline 로드 완료:');
+        print('✅ User State 로드 완료:');
         print('   - RMS Base: ${_currentRmsBase.toStringAsFixed(4)}');
         print('   - Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz');
       } else {
-        print('⚠️ Baseline 레코드 없음, 기본값 사용');
+        print('⚠️ User State 레코드 없음, 기본값 사용');
       }
 
       // 측정 카운트 동기화
@@ -135,15 +135,13 @@ class BaselineManager {
 
       _updateCount++;
 
-      // DB에 저장
-      await DatabaseHelper.instance.updateBaseline(
+      // DB에 저장 (user_state 업데이트)
+      await DatabaseHelper.instance.updateUserState(
         rmsBase: _currentRmsBase,
         freqBase: _currentFreqBase,
-        alpha: _alpha,
-        beta: _beta,
       );
 
-      print('💾 Baseline DB 저장 완료');
+      print('💾 User State 저장 완료');
       print('   - 업데이트 횟수: $_updateCount회');
       print('   - 현재 모드: ${getCurrentMLMode().displayName}');
     } catch (e) {
@@ -163,11 +161,9 @@ class BaselineManager {
       _calibrationRms.clear();
       _calibrationFreq.clear();
 
-      await DatabaseHelper.instance.updateBaseline(
+      await DatabaseHelper.instance.updateUserState(
         rmsBase: _currentRmsBase,
         freqBase: _currentFreqBase,
-        alpha: _alpha,
-        beta: _beta,
       );
 
       print('🗑️ Baseline 초기화 완료 (일반인 평균값으로 리셋)');
@@ -181,18 +177,18 @@ class BaselineManager {
     try {
       print('\n🔄 DB와 Baseline 카운트 동기화 시도...');
 
-      // 총 측정 세션 수 가져오기
-      final sessions = await DatabaseHelper.instance.getAllMeasureSessions();
-      _totalMeasurementCount = sessions.length;
+      // 총 측정 로그 수 가져오기 (fatigue_logs 테이블)
+      final logs = await DatabaseHelper.instance.getAllFatigueLogs();
+      _totalMeasurementCount = logs.length;
 
-      // 총 윈도우 수 계산 (모든 세션의 window_count 합산)
-      _totalWindowCount = sessions.fold<int>(
+      // 총 윈도우 수 계산 (모든 로그의 window_count 합산)
+      _totalWindowCount = logs.fold<int>(
         0,
-        (sum, session) => sum + (session['window_count'] as int? ?? 0),
+        (sum, log) => sum + (log['window_count'] as int? ?? 0),
       );
 
       print('✅ 카운트 동기화 완료');
-      print('   - 총 측정 세션: $_totalMeasurementCount회');
+      print('   - 총 측정 로그: $_totalMeasurementCount회');
       print('   - 총 윈도우: $_totalWindowCount개');
       print('   - 현재 ML 모드: ${getCurrentMLMode().displayName}');
     } catch (e) {

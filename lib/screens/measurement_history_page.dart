@@ -70,12 +70,11 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     setState(() => _isLoading = true);
 
     try {
-      final sessionsData =
-          await DatabaseHelper.instance.getAllMeasureSessions();
-      print('🔍 로드된 측정 세션 개수: ${sessionsData.length}');
+      final logsData = await DatabaseHelper.instance.getAllFatigueLogs();
+      print('🔍 로드된 피로도 로그 개수: ${logsData.length}');
 
       final sessions =
-          sessionsData.map((data) => MeasureSession.fromMap(data)).toList();
+          logsData.map((data) => MeasureSession.fromMap(data)).toList();
 
       setState(() {
         _allSessions = sessions;
@@ -273,7 +272,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     );
 
     if (confirm == true) {
-      await DatabaseHelper.instance.deleteAllMeasureSessions();
+      await DatabaseHelper.instance.deleteAllFatigueLogs();
       // Baseline Manager 카운트 동기화
       await BaselineManager.instance.syncWithDatabase();
       _loadResults();
@@ -1376,17 +1375,21 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ElevatedButton.icon(
             onPressed: () async {
               Navigator.pop(context);
-              // 측정 세션 삭제
-              await DatabaseHelper.instance.deleteMeasureSession(session.id!);
-              // Baseline Manager 카운트 동기화
-              await BaselineManager.instance.syncWithDatabase();
-              _loadResults();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('측정 기록이 삭제되었습니다'),
-                  ),
+              // 피로도 로그 삭제 (session_id 필드 사용)
+              if (session.id != null) {
+                await DatabaseHelper.instance.deleteFatigueLog(
+                  session.id.toString(),
                 );
+                // Baseline Manager 카운트 동기화
+                await BaselineManager.instance.syncWithDatabase();
+                _loadResults();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('측정 기록이 삭제되었습니다'),
+                    ),
+                  );
+                }
               }
             },
             icon: const Icon(Icons.delete),
