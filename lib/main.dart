@@ -40,9 +40,8 @@ void main() async {
     await initializeWorkerManager();
     print('✅ Worker Manager 초기화 완료');
 
-    // User Embedding 계산 및 업데이트
-    await DatabaseHelper.instance.calculateAndUpdateUserEmbedding();
-    print('✅ User Embedding 계산 및 저장 완료');
+    // User Embedding은 측정 시에만 계산됨
+    print('✅ User Embedding은 측정 시에 자동 계산됩니다');
   } catch (e, stackTrace) {
     print('❌ 초기화 실패: $e');
     print('스택 트레이스: $stackTrace');
@@ -63,6 +62,14 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
       home: const SensorDataPage(),
+      // 오류 발생 시 빨간 화면 대신 에러 위젯 표시
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(1.0)),
+          child: child!,
+        );
+      },
     );
   }
 }
@@ -90,29 +97,41 @@ class _SensorDataPageState extends State<SensorDataPage> {
   @override
   void initState() {
     super.initState();
-    _loadBaseline();
 
-    // 분석 결과 콜백 등록
-    _sensorStreaming.onAnalysisResult = (result) async {
-      if (mounted) {
-        setState(() {
-          _analysisResult = result;
-        });
-        // Baseline 다시 로드
-        await _loadBaseline();
-      }
-    };
+    try {
+      _loadBaseline();
+
+      // 분석 결과 콜백 등록
+      _sensorStreaming.onAnalysisResult = (result) async {
+        if (mounted) {
+          setState(() {
+            _analysisResult = result;
+          });
+          // Baseline 다시 로드
+          await _loadBaseline();
+        }
+      };
+    } catch (e, stackTrace) {
+      print('❌ initState 오류: $e');
+      print('스택 트레이스: $stackTrace');
+    }
   }
 
   // Baseline 불러오기 (내 정보 페이지용 - 메인에서는 사용 안 함)
   Future<void> _loadBaseline() async {
-    // DB와 Baseline 카운트 동기화
-    await BaselineManager.instance.syncWithDatabase();
+    try {
+      // DB와 Baseline 카운트 동기화
+      await BaselineManager.instance.syncWithDatabase();
+    } catch (e, stackTrace) {
+      print('❌ Baseline 로드 실패: $e');
+      print('스택 트레이스: $stackTrace');
+    }
   }
 
   @override
   void dispose() {
     _autoStopTimer?.cancel();
+    // 비동기 작업이 완료되기를 기다리지 않고 즉시 정리
     _sensorStreaming.dispose();
     super.dispose();
   }

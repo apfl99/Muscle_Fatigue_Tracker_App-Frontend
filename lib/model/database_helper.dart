@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'user_stats.dart';
 
 /// 통합 데이터베이스 헬퍼 클래스
@@ -10,11 +11,12 @@ import 'user_stats.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+  static bool _isInitializing = false;
 
   DatabaseHelper._init();
 
   static const String dbName = 'fatigue_tracker.db';
-  static const int dbVersion = 2;
+  static const int dbVersion = 3;
 
   // 테이블 이름 (DB_SCHEMA.md 기준)
   static const String tableUsers = 'users';
@@ -28,8 +30,21 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB();
-    return _database!;
+
+    // 이미 초기화 중이면 대기
+    while (_isInitializing) {
+      await Future.delayed(const Duration(milliseconds: 10));
+    }
+
+    if (_database != null) return _database!;
+
+    _isInitializing = true;
+    try {
+      _database = await _initDB();
+      return _database!;
+    } finally {
+      _isInitializing = false;
+    }
   }
 
   Future<Database> _initDB() async {
@@ -42,6 +57,7 @@ class DatabaseHelper {
 
       print('📂 DB 경로: $path');
 
+      // 데이터베이스 열기
       final db = await openDatabase(
         path,
         version: dbVersion,
@@ -131,6 +147,9 @@ class DatabaseHelper {
       rms REAL,
       freq REAL,
       fatigue REAL,
+      rms_base REAL,
+      freq_base REAL,
+      user_emb TEXT,
       mode TEXT,
       window_count INTEGER,
       created_at TEXT NOT NULL,
@@ -236,6 +255,49 @@ class DatabaseHelper {
         await _createDB(db, newVersion);
       }
     }
+
+    if (oldVersion < 3) {
+      // fatigue_logs 테이블에 새로운 컬럼 추가
+      try {
+        print('📊 fatigue_logs 테이블에 새로운 컬럼 추가 중...');
+
+        // rms_base 컬럼 추가
+        await db
+            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN rms_base REAL');
+        print('✅ rms_base 컬럼 추가 완료');
+
+        // freq_base 컬럼 추가
+        await db
+            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN freq_base REAL');
+        print('✅ freq_base 컬럼 추가 완료');
+
+        // user_emb 컬럼 추가
+        await db
+            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN user_emb TEXT');
+        print('✅ user_emb 컬럼 추가 완료');
+
+        // 기존 데이터에 기본값 설정 (간단한 방식)
+        try {
+          await db.execute(
+            '''
+            UPDATE $tableFatigueLogs 
+            SET rms_base = 0.02, freq_base = 1.5, user_emb = ?
+            WHERE rms_base IS NULL
+          ''',
+            [jsonEncode(List.filled(12, 0.0))],
+          );
+          print('✅ 기존 데이터에 기본값 설정 완료');
+        } catch (e) {
+          print('⚠️ 기존 데이터 기본값 설정 실패: $e');
+          // 실패해도 계속 진행
+        }
+
+        print('✅ fatigue_logs 테이블 업그레이드 완료');
+      } catch (e) {
+        print('❌ fatigue_logs 테이블 업그레이드 실패: $e');
+        rethrow;
+      }
+    }
   }
 
   /// ========================================
@@ -301,8 +363,15 @@ class DatabaseHelper {
     required double fatigue,
     required String mode,
     required int windowCount,
+    double? rmsBase,
+    double? freqBase,
+    List<double>? userEmb,
   }) async {
     final db = await database;
+
+    // 사용자 상태에서 baseline과 embedding 가져오기
+    final userState = await getUserState(userId: userId);
+    final userEmbData = userEmb ?? await getUserEmbedding(userId: userId);
 
     final logData = {
       'user_id': userId,
@@ -311,6 +380,9 @@ class DatabaseHelper {
       'rms': rms,
       'freq': freq,
       'fatigue': fatigue,
+      'rms_base': rmsBase ?? userState?['rms_base'] ?? 0.0,
+      'freq_base': freqBase ?? userState?['freq_base'] ?? 0.0,
+      'user_emb': jsonEncode(userEmbData),
       'mode': mode,
       'window_count': windowCount,
       'created_at': DateTime.now().toIso8601String(),

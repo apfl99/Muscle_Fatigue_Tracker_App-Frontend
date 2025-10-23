@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:motion_sensors/motion_sensors.dart';
 import 'config.dart';
@@ -484,6 +485,7 @@ class SensorStreaming {
     print('\n🛑 센서 측정 중지');
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    // 타이머와 스트림 구독을 먼저 정리
     _accelSubscription?.cancel();
     _gyroSubscription?.cancel();
     _windowTimer?.cancel();
@@ -587,32 +589,36 @@ class SensorStreaming {
         // 현재 측정 데이터를 SQLite에 저장 (synced = 0으로)
         // 이미 stopSensor()에서 fatigue_logs 테이블에 저장됨
 
-        // SQLite에서 unsynced 데이터 확인 (local_user만)
-        final unsyncedLogs =
-            await DatabaseHelper.instance.getUnsyncedLogs(userId: 'local_user');
-        print('📊 SQLite unsynced 데이터 (local_user): ${unsyncedLogs.length}개');
+        // 매 측정마다 upload_logs 호출 (현재 측정 데이터만)
+        try {
+          // 사용자 상태와 임베딩 데이터 가져오기
+          final userState = await DatabaseHelper.instance.getUserState();
+          final userEmbData = await DatabaseHelper.instance.getUserEmbedding();
 
-        // 5개 이상이면 배치로 전송
-        if (unsyncedLogs.length >= 5) {
-          print('🚀 5개 이상 unsynced 데이터 발견 - 배치 전송 시작');
-          try {
-            final workerManager = await getWorkerManager();
-            await workerManager.addDatasetUploadTask(
-              userId: 'local_user',
-              sessionId: sessionId,
-              dataset: {
-                'batch_data': unsyncedLogs,
-                'batch_size': unsyncedLogs.length,
-                'batch_date': DateTime.now().toIso8601String(),
-              },
-              priority: 1,
-            );
-            print('✅ ${unsyncedLogs.length}개 unsynced 데이터 배치 업로드 작업 큐에 추가 완료');
-          } catch (e) {
-            print('⚠️ 워커 매니저 호출 실패: $e');
-          }
-        } else {
-          print('⏳ 다음 배치 전송까지: ${5 - unsyncedLogs.length}개 남음');
+          final workerManager = await getWorkerManager();
+          await workerManager.addDatasetUploadTask(
+            userId: 'local_user',
+            sessionId: sessionId,
+            dataset: {
+              'user_id': 'local_user',
+              'session_id': sessionId,
+              'measure_date': DateTime.now().toIso8601String().split('T')[0],
+              'rms': avgRms,
+              'freq': avgFreq,
+              'fatigue': avgFatigue,
+              'rms_base': userState?['rms_base'] ?? 0.0,
+              'freq_base': userState?['freq_base'] ?? 0.0,
+              'user_emb': userEmbData, // JSON 문자열이 아닌 배열로 전송
+              'mode': currentMLMode.name,
+              'window_count': _currentSessionWindows.length,
+              'created_at': DateTime.now().toIso8601String(),
+              'synced': 0,
+            },
+            priority: 1,
+          );
+          print('✅ 현재 측정 데이터 업로드 작업 큐에 추가 완료');
+        } catch (e) {
+          print('⚠️ upload_logs 작업 추가 실패: $e');
         }
 
         // UI에 결과 전달
@@ -677,7 +683,16 @@ class SensorStreaming {
 
   // 리소스 정리
   void dispose() {
-    stopSensor();
+    // 타이머와 스트림 구독을 즉시 정리
+    _accelSubscription?.cancel();
+    _gyroSubscription?.cancel();
+    _windowTimer?.cancel();
+
+    _accelSubscription = null;
+    _gyroSubscription = null;
+    _windowTimer = null;
+
+    // 데이터 정리
     clearData();
   }
 

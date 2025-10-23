@@ -81,33 +81,25 @@ class HttpWorker {
   Future<void> _processDatasetUpload(MeasurementTask task) async {
     final dataset = task.data['dataset'] as Map<String, dynamic>;
 
-    // batch_data에 measurement_count 추가 (새로운 맵 생성)
-    final originalBatchData = dataset['batch_data'] as List<dynamic>;
-    final newBatchData = <Map<String, dynamic>>[];
+    // 단일 측정 데이터에 measurement_count 추가
+    final measurementData = Map<String, dynamic>.from(dataset);
+    measurementData['measurement_count'] = 1;
 
-    for (int i = 0; i < originalBatchData.length; i++) {
-      final item = Map<String, dynamic>.from(originalBatchData[i]);
-      item['measurement_count'] = i + 1;
-
-      // windows 필드 정리 (null이거나 빈 리스트인 경우 빈 리스트로 설정)
-      if (item['windows'] == null ||
-          item['windows'] is! List ||
-          (item['windows'] as List).isEmpty) {
-        item['windows'] = <Map<String, dynamic>>[];
-      }
-
-      newBatchData.add(item);
+    // windows 필드 정리 (null이거나 빈 리스트인 경우 빈 리스트로 설정)
+    if (measurementData['windows'] == null ||
+        measurementData['windows'] is! List ||
+        (measurementData['windows'] as List).isEmpty) {
+      measurementData['windows'] = <Map<String, dynamic>>[];
     }
 
-    dataset['batch_data'] = newBatchData;
-    print('📊 배치 데이터에 measurement_count 추가 완료');
+    print('📊 단일 측정 데이터에 measurement_count 추가 완료');
 
     // API로 전송
-    final response = await _sendDataset(dataset);
+    final response = await _sendDataset(measurementData);
 
     if (response['success']) {
       // SQLite에서 synced 상태 업데이트
-      await _markBatchAsSynced(dataset);
+      await _markSingleAsSynced(measurementData);
       await _queueManager.completeTask(task.taskId, result: response);
     } else {
       throw Exception('API 전송 실패: ${response['error']}');
@@ -254,15 +246,12 @@ class HttpWorker {
     }
   }
 
-  /// 배치 데이터를 synced로 마킹
-  Future<void> _markBatchAsSynced(Map<String, dynamic> dataset) async {
+  /// 단일 측정 데이터를 synced로 마킹
+  Future<void> _markSingleAsSynced(Map<String, dynamic> measurementData) async {
     try {
-      final batchData = dataset['batch_data'] as List<dynamic>;
-      final sessionIds =
-          batchData.map((item) => item['session_id'] as String).toList();
-
-      await DatabaseHelper.instance.markLogsAsSynced(sessionIds);
-      print('✅ ${sessionIds.length}개 세션 데이터 synced 상태로 업데이트 완료');
+      final sessionId = measurementData['session_id'] as String;
+      await DatabaseHelper.instance.markLogsAsSynced([sessionId]);
+      print('✅ 세션 데이터 synced 상태로 업데이트 완료: $sessionId');
     } catch (e) {
       print('⚠️ synced 상태 업데이트 실패: $e');
     }
