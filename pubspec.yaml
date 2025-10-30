@@ -10,7 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  motion_sensors: ^0.1.0
+  sensors_plus: ^4.0.2
+  rxdart: ^0.27.7
   sqflite: ^2.3.2
   path: ^1.8.3
   # tflite_flutter: ^0.10.4  # TODO: ML 모델 준비 후 활성화

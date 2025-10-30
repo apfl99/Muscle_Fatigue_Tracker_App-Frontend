@@ -639,6 +639,31 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ? chartData.sublist(chartData.length - 30)
           : chartData;
 
+      // Y축 범위 동적 계산
+      if (displayData.isEmpty) {
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Center(
+            child: Text('데이터가 없습니다'),
+          ),
+        );
+      }
+
+      final fatigueValues = displayData.map((e) => e.value).toList();
+      final minFatigue = fatigueValues.reduce((a, b) => a < b ? a : b);
+      final maxFatigue = fatigueValues.reduce((a, b) => a > b ? a : b);
+      
+      // Y축 범위에 여유 공간 추가 (10%)
+      final range = maxFatigue - minFatigue;
+      final padding = range * 0.1;
+      final dynamicMinY = (minFatigue - padding).clamp(0.5, 1.0);
+      final dynamicMaxY = (maxFatigue + padding).clamp(2.0, 4.0);
+
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.all(20),
@@ -739,7 +764,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
-                    horizontalInterval: 0.5,
+                    horizontalInterval: (dynamicMaxY - dynamicMinY) / 4, // 4개 구간으로 나누기
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
                         color: Colors.white.withOpacity(0.05),
@@ -819,8 +844,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                     ),
                   ),
                   borderData: FlBorderData(show: false),
-                  minY: 0.8,
-                  maxY: 2.2,
+                  minY: dynamicMinY,
+                  maxY: dynamicMaxY,
                   lineBarsData: [
                     LineChartBarData(
                       spots: displayData

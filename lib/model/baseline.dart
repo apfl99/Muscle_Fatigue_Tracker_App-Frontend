@@ -4,6 +4,7 @@ library;
 
 import 'database_helper.dart';
 import 'config.dart';
+import '../worker/worker_manager.dart';
 
 class BaselineManager {
   static final BaselineManager instance = BaselineManager._init();
@@ -33,8 +34,17 @@ class BaselineManager {
       final userState = await DatabaseHelper.instance.getUserState();
 
       if (userState != null) {
-        _currentRmsBase = userState['rms_base'] as double? ?? 0.02;
-        _currentFreqBase = userState['freq_base'] as double? ?? 1.5;
+        final rms = userState['rms_base'] as double?;
+        final freq = userState['freq_base'] as double?;
+        if (rms != null && freq != null) {
+          _currentRmsBase = rms;
+          _currentFreqBase = freq;
+        } else {
+          // DB에 기준값이 없으면 내부값을 중립값(0.0)으로 두고 캘리브레이션 상태 유지
+          _currentRmsBase = 0.0;
+          _currentFreqBase = 0.0;
+          _isCalibrating = true;
+        }
         _alpha = 0.05;
         _beta = 0.05;
 
@@ -141,6 +151,15 @@ class BaselineManager {
         freqBase: _currentFreqBase,
       );
 
+      // 서버 동기화: 사용자 상태 업로드 작업 추가 (오프라인 시 워커가 재시도)
+      try {
+        final workerManager = await getWorkerManager();
+        await workerManager.addUploadStateTask(userId: 'local_user');
+        print('☁️ 사용자 상태 업로드 작업 추가 (baseline 업데이트)');
+      } catch (e) {
+        print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
+      }
+
       print('💾 User State 저장 완료');
       print('   - 업데이트 횟수: $_updateCount회');
       print('   - 현재 모드: ${getCurrentMLMode().displayName}');
@@ -149,7 +168,7 @@ class BaselineManager {
     }
   }
 
-  /// Baseline 초기화 (기본값으로 리셋)
+  /// Baseline 초기화 (DB에서는 제거, 내부 상태는 초기값으로 리셋)
   Future<void> clearBaseline() async {
     try {
       _currentRmsBase = BaselineConstants.defaultRmsBase;
@@ -161,12 +180,13 @@ class BaselineManager {
       _calibrationRms.clear();
       _calibrationFreq.clear();
 
+      // DB의 기준값은 제거(null)하여 미설정 상태로 돌린다
       await DatabaseHelper.instance.updateUserState(
-        rmsBase: _currentRmsBase,
-        freqBase: _currentFreqBase,
+        rmsBase: null,
+        freqBase: null,
       );
 
-      print('🗑️ Baseline 초기화 완료 (일반인 평균값으로 리셋)');
+      print('🗑️ Baseline 초기화 완료 (DB 기준값 제거)');
     } catch (e) {
       print('❌ Baseline 초기화 오류: $e');
     }

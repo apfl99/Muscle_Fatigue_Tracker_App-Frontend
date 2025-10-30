@@ -34,7 +34,7 @@ class BaselineConstants {
   static const double alphaFreq = 0.15; // Freq 학습률 (0.1~0.2, 빠른 변화 반영)
 
   // 초기 캘리브레이션 (측정 횟수 기준)
-  static const int calibrationWindows = 3; // 첫 3회 측정 평균
+  static const int calibrationWindows = 1; // 첫 1회만으로 초기화 후 즉시 EMA 시작
 
   // Outlier 임계값 (표준편차의 N배)
   static const double outlierThreshold = 2.0;

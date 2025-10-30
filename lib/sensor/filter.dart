@@ -21,6 +21,9 @@ class MotionFilterAdaptive {
   double _fs = 50.0; // 초기값 (Hz)
   double _dt = 0.02; // 초기값 (초)
 
+  // 디버깅용 카운터
+  int _debugCount = 0;
+
   /// 센서 입력 1회마다 호출
   /// ax, ay, az: raw accelerometer (m/s²)
   /// now: microsecondsSinceEpoch (현재 시각)
@@ -36,11 +39,11 @@ class MotionFilterAdaptive {
     }
     _prevTime = now.toDouble();
 
-    // ② 플랫폼별 cutoff 보정
+    // ② 플랫폼별 cutoff 보정 (정확도 중심 최적화)
     final isAndroid = Platform.isAndroid;
-    final gravityFc = isAndroid ? 0.3 : 0.4; // 중력 LPF
-    final hpFc = isAndroid ? 0.8 : 1.0; // Band-pass 하단
-    final lpFc = isAndroid ? 12.0 : 15.0; // Band-pass 상단
+    final gravityFc = isAndroid ? 0.3 : 0.4; // 중력 LPF (그대로 유지)
+    final hpFc = isAndroid ? 0.3 : 0.4; // Band-pass 하단 (0.3Hz로 완화)
+    final lpFc = isAndroid ? 18.0 : 20.0; // Band-pass 상단 (18-20Hz로 확대)
 
     // ③ 중력 제거 (LPF)
     final gx = _gx.lpf(ax, _dt, gravityFc);
@@ -54,9 +57,33 @@ class MotionFilterAdaptive {
     // ④ magnitude 계산
     final mag = sqrt(lx * lx + ly * ly + lz * lz);
 
-    // ⑤ Band-pass(HP → LP)
+    // ⑤ Band-pass(HP → HP2 → LP) - 2차 필터로 안정화
     final hp = _hp.hpf(mag, _dt, hpFc);
-    final bp = _lp.lpf(hp, _dt, lpFc);
+    final hp2 = _hp.hpf(hp, _dt, hpFc); // 2차 HPF로 더 안정적인 응답
+    final bp = _lp.lpf(hp2, _dt, lpFc);
+
+    // 디버깅 정보 (처음 몇 번만)
+    if (_debugCount < 5) {
+      _debugCount++;
+      print('🔍 필터 디버그 #$_debugCount:');
+      print(
+        '   - Raw: ax=${ax.toStringAsFixed(3)}, ay=${ay.toStringAsFixed(3)}, az=${az.toStringAsFixed(3)}',
+      );
+      print(
+        '   - Gravity: gx=${gx.toStringAsFixed(3)}, gy=${gy.toStringAsFixed(3)}, gz=${gz.toStringAsFixed(3)}',
+      );
+      print(
+        '   - Linear: lx=${lx.toStringAsFixed(3)}, ly=${ly.toStringAsFixed(3)}, lz=${lz.toStringAsFixed(3)}',
+      );
+      print('   - Magnitude: ${mag.toStringAsFixed(3)}');
+      print(
+        '   - HP: ${hp.toStringAsFixed(3)}, HP2: ${hp2.toStringAsFixed(3)}',
+      );
+      print('   - BP (band-passed): ${bp.toStringAsFixed(3)}');
+      print(
+        '   - Sampling: ${_fs.toStringAsFixed(1)}Hz, dt=${_dt.toStringAsFixed(4)}s',
+      );
+    }
 
     return bp;
   }
@@ -74,6 +101,7 @@ class MotionFilterAdaptive {
     _prevTime = 0.0;
     _fs = 50.0;
     _dt = 0.02;
+    _debugCount = 0;
   }
 }
 
@@ -93,8 +121,8 @@ class _IIR1 {
   }
 
   double hpf(double x, double dt, double fc) {
-    final tau = 1.0 / (2 * pi * fc);
-    final alpha = tau / (tau + dt);
+    final rc = 1.0 / (2 * pi * fc); // RC 상수
+    final alpha = rc / (rc + dt); // 최적화된 α 계산
     final y = alpha * (_prevY + x - _prevX);
     _prevY = y;
     _prevX = x;

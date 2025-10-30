@@ -16,13 +16,12 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   // Baseline 값
-  double _currentRmsBase = 0.02;
-  double _currentFreqBase = 1.5;
-  int _baselineUpdateCount = 0;
+  double? _currentRmsBase;
+  double? _currentFreqBase;
   int _totalMeasurementCount = 0;
   int _totalWindowCount = 0;
-  bool _isCalibrating = true;
   MLMode _currentMLMode = MLMode.ema;
+  bool _hasBaseline = false;
 
   // 통계
   Map<String, dynamic> _statistics = {};
@@ -58,6 +57,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   Future<void> _loadBaseline() async {
     try {
       final baselineManager = BaselineManager.instance;
+      final has = await DatabaseHelper.instance.hasBaseline();
 
       print('📊 ProfilePage Baseline 로드:');
       print(
@@ -68,12 +68,11 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
       if (mounted) {
         setState(() {
-          _currentRmsBase = baselineManager.rmsBase;
-          _currentFreqBase = baselineManager.freqBase;
-          _baselineUpdateCount = baselineManager.updateCount;
+          _hasBaseline = has;
+          _currentRmsBase = has ? baselineManager.rmsBase : null;
+          _currentFreqBase = has ? baselineManager.freqBase : null;
           _totalMeasurementCount = baselineManager.totalMeasurementCount;
           _totalWindowCount = baselineManager.totalWindowCount;
-          _isCalibrating = baselineManager.isCalibrating;
           _currentMLMode = baselineManager.getCurrentMLMode();
         });
 
@@ -130,7 +129,10 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
 
     if (confirm == true) {
-      await BaselineManager.instance.clearBaseline();
+      await DatabaseHelper.instance.clearBaseline();
+      // DB → 메모리 동기화 (즉시 반영)
+      await BaselineManager.instance.initialize();
+      await BaselineManager.instance.syncWithDatabase();
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -909,7 +911,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _currentRmsBase.toStringAsFixed(4),
+                            _hasBaseline
+                                ? _currentRmsBase!.toStringAsFixed(4)
+                                : '--',
                             style: GoogleFonts.poppins(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -948,7 +952,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${_currentFreqBase.toStringAsFixed(1)}회/초',
+                            _hasBaseline
+                                ? '${_currentFreqBase!.toStringAsFixed(1)}회/초'
+                                : '--',
                             style: GoogleFonts.poppins(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -965,7 +971,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: (_isCalibrating ? Colors.orange : Colors.green)
+                    color: (!_hasBaseline ? Colors.orange : Colors.green)
                         .withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -973,20 +979,19 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        _isCalibrating ? Icons.settings : Icons.check_circle,
+                        !_hasBaseline ? Icons.info_outline : Icons.check_circle,
                         size: 16,
-                        color: _isCalibrating ? Colors.orange : Colors.green,
+                        color: !_hasBaseline ? Colors.orange : Colors.green,
                       ),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          _isCalibrating
-                              ? '초기 조정 중... ($_baselineUpdateCount/${BaselineConstants.calibrationWindows}회)'
-                              : '개인화 완료 (업데이트 $_baselineUpdateCount회)',
+                          !_hasBaseline
+                              ? '미설정 • 메인 화면에서 기준값을 먼저 설정하세요'
+                              : '개인 기준값 설정됨',
                           style: TextStyle(
                             fontSize: 12,
-                            color:
-                                _isCalibrating ? Colors.orange : Colors.green,
+                            color: !_hasBaseline ? Colors.orange : Colors.green,
                             fontWeight: FontWeight.w600,
                           ),
                           textAlign: TextAlign.center,
@@ -995,93 +1000,25 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '초기값: 근육 활동 0.02, 진동 1.5회/초 (일반인 평균)',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                // 초기값 안내 제거 (DB 값만 표시)
               ],
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-              ),
-            ),
-            child: ExpansionTile(
-              title: const Text(
-                '기준값 상세 정보',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+          if (!_hasBaseline)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.settings_input_component),
+                label: const Text('기준값 설정하러 가기'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: baselineColor,
                 ),
               ),
-              leading: const Icon(
-                Icons.info_outline,
-                color: baselineColor,
-                size: 20,
-              ),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.02),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildDetailRow(
-                        '업데이트 횟수',
-                        '$_baselineUpdateCount회',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildDetailRow(
-                        '적응 속도 (근육)',
-                        '${BaselineConstants.alphaRms}',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildDetailRow(
-                        '적응 속도 (진동)',
-                        '${BaselineConstants.alphaFreq}',
-                      ),
-                      const SizedBox(height: 12),
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      Text(
-                        '학습 방식:',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '새 기준 = 적응속도 × 측정값 + (1-적응속도) × 이전 기준',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
-          ),
         ],
       ),
     );
@@ -1089,7 +1026,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
   // 측정 통계 카드
   Widget _buildStatisticsCard() {
-    final count = _statistics['total_sessions'] ?? 0;
+    final count = _statistics['total_logs'] ?? 0;
     final avgRms = _statistics['avg_rms'] ?? 0.0;
     final avgFreq = _statistics['avg_freq'] ?? 0.0;
     final avgFatigue = _statistics['avg_fatigue'] ?? 1.0;
@@ -1211,26 +1148,5 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
+  // (정리됨) 상세 행 빌더 제거
 }

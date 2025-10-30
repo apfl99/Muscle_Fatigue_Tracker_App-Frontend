@@ -40,94 +40,37 @@ class MeasurementPreset {
       '$name ($totalSeconds초, W:${windowSeconds}s, H:${hopSeconds}s, ~$expectedWindows개)';
 }
 
-/// 센서 측정 설정
+/// 센서 측정 설정 (정확도 중심 최적화)
 class SensorConfig {
-  // 사용 가능한 프리셋들
-  // 각 프리셋은 [측정 1회 = N개 윈도우] 생성
-  static const List<MeasurementPreset> presets = [
-    MeasurementPreset(
-      name: '빠른 측정',
-      totalSeconds: 5, // 5초 측정
-      windowSeconds: 0.5,
-      hopSeconds: 0.25,
-      expectedWindows: 19, // → 19개 윈도우 생성
-    ),
-    MeasurementPreset(
-      name: '표준 측정', // 기본값
-      totalSeconds: 5, // 5초 측정
-      windowSeconds: 0.5,
-      hopSeconds: 0.10,
-      expectedWindows: 46, // → 46개 윈도우 생성
-    ),
-    MeasurementPreset(
-      name: '정밀 측정',
-      totalSeconds: 20,
-      windowSeconds: 1.0,
-      hopSeconds: 0.5,
-      expectedWindows: 39,
-    ),
-    MeasurementPreset(
-      name: '상세 측정',
-      totalSeconds: 30,
-      windowSeconds: 1.0,
-      hopSeconds: 0.5,
-      expectedWindows: 59,
-    ),
-    MeasurementPreset(
-      name: '장시간 측정',
-      totalSeconds: 60,
-      windowSeconds: 2.0,
-      hopSeconds: 1.0,
-      expectedWindows: 59,
-    ),
-  ];
-
-  // 현재 선택된 프리셋 (기본값: 표준 측정)
-  static MeasurementPreset currentPreset = presets[1];
-
-  // 샘플링 레이트 (Hz)
-  static double samplingRate = 50.0;
-
-  // 센서 업데이트 간격 (마이크로초 단위로 계산됨)
-  static int get updateIntervalMicroseconds =>
-      Duration.microsecondsPerSecond ~/ samplingRate.toInt();
+  static const double samplingRate = 50.0; // 센서 목표 주파수 (Hz)
+  static const double totalSeconds = 5.0; // 전체 측정 시간
+  static const double windowSeconds = 2.0; // 윈도우 길이 (2초로 단축)
+  static const double hopSeconds = 0.5; // 슬라이딩 간격 (0.5초로 단축)
+  static const int updateIntervalMicroseconds = 20000; // 20ms → 50Hz
 
   // 분석 히스토리 최대 개수
   static int maxHistoryCount = 10;
 
-  // 하위 호환성을 위한 getter
-  static int get windowSeconds => currentPreset.totalSeconds;
+  // 하위 호환성을 위한 getter들
+  static int get windowSecondsInt => windowSeconds.toInt();
+  static int get totalSecondsInt => totalSeconds.toInt();
 
-  /// 프리셋 변경
-  static void setPreset(MeasurementPreset preset) {
-    currentPreset = preset;
-    print('⚙️ 측정 프리셋 변경: ${preset.name}');
-    print('   - 총 측정 시간: ${preset.totalSeconds}초');
-    print('   - 윈도우 크기: ${preset.windowSeconds}초');
-    print('   - Hop 크기: ${preset.hopSeconds}초');
-    print('   - 예상 윈도우 수: ${preset.expectedWindows}개');
+  // 윈도우 샘플 수 계산 (샘플링 레이트 기준)
+  static int getWindowSamples(double actualSamplingRate) {
+    return (windowSeconds * actualSamplingRate).round();
   }
 
-  /// 프리셋 인덱스로 변경
-  static void setPresetByIndex(int index) {
-    if (index >= 0 && index < presets.length) {
-      setPreset(presets[index]);
-    }
+  // Hop 샘플 수 계산
+  static int getHopSamples(double actualSamplingRate) {
+    return (hopSeconds * actualSamplingRate).round();
   }
 
-  // 윈도우 시간 설정 (deprecated)
-  @Deprecated('Use setPreset instead')
-  static void setWindowSeconds(int seconds) {
-    // 호환성 유지
-    print('⚠️ setWindowSeconds는 deprecated. setPreset을 사용하세요.');
+  // 예상 윈도우 수 계산
+  static int get expectedWindows {
+    return ((totalSeconds - windowSeconds) / hopSeconds + 1).round();
   }
 
-  // 샘플링 레이트 설정
-  static void setSamplingRate(double rate) {
-    if (rate > 0 && rate <= 100) {
-      samplingRate = rate;
-    } else {
-      throw ArgumentError('샘플링 레이트는 0Hz에서 100Hz 사이여야 합니다.');
-    }
-  }
+  @override
+  String toString() =>
+      'SensorConfig(${totalSeconds}s, W:${windowSeconds}s, H:${hopSeconds}s, ~$expectedWindows개)';
 }

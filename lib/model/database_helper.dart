@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:io';
 import 'dart:convert';
+import '../worker/worker_manager.dart';
 import 'dart:async';
 import 'user_stats.dart';
 
@@ -114,11 +115,11 @@ class DatabaseHelper {
     ''');
     print('✅ user_state 테이블 생성 완료');
 
-    // 초기 user_state 레코드 삽입
+    // 초기 user_state 레코드 삽입 (baseline은 미설정 상태 유지)
     await db.insert(tableUserState, {
       'user_id': 'local_user',
-      'rms_base': 0.02,
-      'freq_base': 1.5,
+      // 'rms_base': null,
+      // 'freq_base': null,
       'user_emb': jsonEncode([
         0.0,
         0.0,
@@ -324,21 +325,37 @@ class DatabaseHelper {
     String? modelVersion,
   }) async {
     final db = await database;
-    final updateData = <String, dynamic>{
-      'last_sync': DateTime.now().toIso8601String(),
+    final nowIso = DateTime.now().toIso8601String();
+
+    final existing = await getUserState(userId: userId);
+
+    final data = <String, dynamic>{
+      'user_id': userId,
+      'last_sync': nowIso,
     };
+    if (rmsBase != null) data['rms_base'] = rmsBase;
+    if (freqBase != null) data['freq_base'] = freqBase;
+    if (userEmb != null) data['user_emb'] = jsonEncode(userEmb);
+    if (modelVersion != null) data['model_version'] = modelVersion;
 
-    if (rmsBase != null) updateData['rms_base'] = rmsBase;
-    if (freqBase != null) updateData['freq_base'] = freqBase;
-    if (userEmb != null) updateData['user_emb'] = jsonEncode(userEmb);
-    if (modelVersion != null) updateData['model_version'] = modelVersion;
-
-    await db.update(
-      tableUserState,
-      updateData,
-      where: 'user_id = ?',
-      whereArgs: [userId],
-    );
+    if (existing == null) {
+      // 레코드 없으면 새로 생성 (UPSERT)
+      await db.insert(
+        tableUserState,
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } else {
+      // 있으면 업데이트
+      final updateData = Map<String, dynamic>.from(data);
+      updateData.remove('user_id');
+      await db.update(
+        tableUserState,
+        updateData,
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+    }
   }
 
   Future<List<double>> getUserEmbedding({String userId = 'local_user'}) async {
@@ -851,12 +868,12 @@ class DatabaseHelper {
     await db
         .delete(tableSyncHistory, where: 'user_id = ?', whereArgs: [userId]);
 
-    // user_state 초기화
+    // user_state 초기화 (baseline은 제거)
     await db.update(
       tableUserState,
       {
-        'rms_base': 0.02,
-        'freq_base': 1.5,
+        'rms_base': null,
+        'freq_base': null,
         'user_emb': jsonEncode(
           [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ),
@@ -896,6 +913,95 @@ class DatabaseHelper {
       print('✅ 동기화 완료 처리: $sessionId');
     } catch (e) {
       print('❌ 동기화 완료 처리 실패: $e');
+    }
+  }
+
+  /// ========================================
+  /// Baseline 관리
+  /// ========================================
+
+  /// Baseline 존재 여부 확인
+  Future<bool> hasBaseline() async {
+    try {
+      final userState = await getUserState();
+      if (userState != null) {
+        final rmsBase = userState['rms_base'];
+        final freqBase = userState['freq_base'];
+        return rmsBase != null && freqBase != null;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Baseline 존재 여부 확인 실패: $e');
+      return false;
+    }
+  }
+
+  /// Baseline 데이터 저장/업데이트
+  Future<bool> saveBaseline(Map<String, dynamic> baselineData) async {
+    try {
+      final rmsBase = baselineData['fatigueRMS'] ?? 0.0;
+      final freqBase = baselineData['peakFreq'] ?? 0.0;
+
+      await updateUserState(
+        rmsBase: rmsBase,
+        freqBase: freqBase,
+      );
+
+      print('✅ Baseline 저장 완료: RMS=$rmsBase, Freq=$freqBase');
+
+      // 서버 동기화: 사용자 상태 업로드 작업 추가
+      try {
+        final workerManager = await getWorkerManager();
+        await workerManager.addUploadStateTask(userId: 'local_user');
+        print('☁️ 사용자 상태 업로드 작업 추가 (baseline 저장)');
+      } catch (e) {
+        print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
+      }
+      return true;
+    } catch (e) {
+      print('❌ Baseline 저장 실패: $e');
+      return false;
+    }
+  }
+
+  /// Baseline 초기화
+  Future<bool> clearBaseline() async {
+    try {
+      final db = await database;
+      await db.update(
+        tableUserState,
+        {
+          'rms_base': null,
+          'freq_base': null,
+          'last_sync': DateTime.now().toIso8601String(),
+        },
+        where: 'user_id = ?',
+        whereArgs: ['local_user'],
+      );
+
+      print('✅ Baseline 초기화 완료 (DB null 설정)');
+      return true;
+    } catch (e) {
+      print('❌ Baseline 초기화 실패: $e');
+      return false;
+    }
+  }
+
+  /// 첫 번째 측정인지 확인
+  Future<bool> isFirstMeasurement() async {
+    try {
+      // fatigue_logs 테이블에 데이터가 있는지 확인
+      final db = await database;
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM fatigue_logs WHERE user_id = ?',
+        ['local_user'],
+      );
+
+      final count = result.first['count'] as int;
+      return count == 0;
+    } catch (e) {
+      print('❌ 첫 번째 측정 확인 실패: $e');
+      return false;
     }
   }
 

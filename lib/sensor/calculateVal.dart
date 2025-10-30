@@ -39,7 +39,8 @@ class FatigueFeatures {
 
 /// 근피로도 특징 계산
 FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
-  if (data.isEmpty || fs <= 0) {
+  if (data.isEmpty) {
+    print('⚠️ 데이터가 비어있음');
     return FatigueFeatures(
       rms: 0.0,
       variance: 0.0,
@@ -49,6 +50,11 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
       stdDev: 0.0,
       zeroCrossing: 0.0,
     );
+  }
+
+  if (fs <= 0) {
+    print('⚠️ 샘플링 레이트가 유효하지 않음: $fs Hz, 기본값 50Hz 사용');
+    fs = 50.0;
   }
 
   try {
@@ -89,6 +95,21 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
 
     // ⑤ 간단한 DFT로 주파수 특징 계산 (부분적으로만 계산)
     final maxFreqBin = min(100, n ~/ 2); // 최대 100개 주파수 빈만 계산
+
+    // 안전한 검사 추가
+    if (maxFreqBin <= 0) {
+      print('⚠️ DFT 계산 불가: maxFreqBin=$maxFreqBin, n=$n');
+      return FatigueFeatures(
+        rms: rms,
+        variance: variance,
+        peakFrequency: 0.0,
+        meanPowerFrequency: 0.0,
+        medianFrequency: 0.0,
+        stdDev: stdDev,
+        zeroCrossing: zeroCrossingRate * fs / 2,
+      );
+    }
+
     final magnitudes = List<double>.filled(maxFreqBin, 0.0);
 
     for (int k = 0; k < maxFreqBin; k++) {
@@ -104,25 +125,38 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
       magnitudes[k] = sqrt(real * real + imag * imag) / n;
     }
 
-    // Peak Frequency 찾기
-    int peakIndex = 0;
-    double maxMag = 0.0;
-    for (int i = 1; i < magnitudes.length; i++) {
-      if (magnitudes[i] > maxMag) {
-        maxMag = magnitudes[i];
-        peakIndex = i;
+    // Peak Frequency 찾기 (DC 성분 제외, 1번 빈부터 시작)
+    int peakIndex = 1; // 0번 빈(DC) 제외
+    double maxMag = magnitudes.length > 1 ? magnitudes[1] : 0.0;
+
+    // 안전한 검사
+    if (magnitudes.length > 1) {
+      for (int i = 2; i < magnitudes.length; i++) {
+        if (magnitudes[i] > maxMag) {
+          maxMag = magnitudes[i];
+          peakIndex = i;
+        }
       }
     }
     final peakFreq = peakIndex * fs / n;
 
+    // 디버깅 정보 추가
+    print('🔍 주파수 분석 디버그:');
+    print('   - 샘플 수: $n, 샘플링 레이트: ${fs.toStringAsFixed(1)} Hz');
+    print('   - 최대 magnitude: ${maxMag.toStringAsFixed(4)}');
+    print('   - Peak index: $peakIndex');
+    print('   - Peak frequency: ${peakFreq.toStringAsFixed(2)} Hz');
+
     // Mean Power Frequency 계산
     double sumFreqPower = 0.0;
     double sumPower = 0.0;
-    for (int i = 1; i < magnitudes.length; i++) {
-      final freq = i * fs / n;
-      final power = magnitudes[i] * magnitudes[i];
-      sumFreqPower += freq * power;
-      sumPower += power;
+    if (magnitudes.length > 1) {
+      for (int i = 1; i < magnitudes.length; i++) {
+        final freq = i * fs / n;
+        final power = magnitudes[i] * magnitudes[i];
+        sumFreqPower += freq * power;
+        sumPower += power;
+      }
     }
     final meanPowerFreq = sumPower > 0 ? sumFreqPower / sumPower : 0.0;
 
@@ -130,11 +164,13 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
     double halfPower = sumPower / 2;
     double cumPower = 0.0;
     double medianFreq = 0.0;
-    for (int i = 1; i < magnitudes.length; i++) {
-      cumPower += magnitudes[i] * magnitudes[i];
-      if (cumPower >= halfPower) {
-        medianFreq = i * fs / n;
-        break;
+    if (magnitudes.length > 1) {
+      for (int i = 1; i < magnitudes.length; i++) {
+        cumPower += magnitudes[i] * magnitudes[i];
+        if (cumPower >= halfPower) {
+          medianFreq = i * fs / n;
+          break;
+        }
       }
     }
 

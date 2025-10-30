@@ -45,5 +45,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMotionUsageDescription</key>
+	<string>이 앱은 근육 피로도를 측정하기 위해 모션 센서 데이터를 사용합니다.</string>
+	<key>NSAccelerometerUsageDescription</key>
+	<string>이 앱은 근육 피로도를 측정하기 위해 가속도계 데이터를 사용합니다.</string>
+	<key>NSGyroscopeUsageDescription</key>
+	<string>이 앱은 근육 피로도를 측정하기 위해 자이로스코프 데이터를 사용합니다.</string>
 </dict>
 </plist>
