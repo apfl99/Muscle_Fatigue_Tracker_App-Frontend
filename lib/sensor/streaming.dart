@@ -21,6 +21,13 @@ class SensorStreaming {
   List<double> gyroY = [];
   List<double> gyroZ = [];
 
+  final List<double> _accelBufferX = [];
+  final List<double> _accelBufferY = [];
+  final List<double> _accelBufferZ = [];
+  final List<double> _gyroBufferX = [];
+  final List<double> _gyroBufferY = [];
+  final List<double> _gyroBufferZ = [];
+
   // 분석용 버퍼
   final List<double> _windowBuffer = [];
   final List<double> _filteredBuffer = [];
@@ -44,6 +51,9 @@ class SensorStreaming {
 
   // 윈도우 생성 카운터
   int _windowCount = 0;
+
+  int? _measurementStartMs;
+  double? _prevWindowFatigue;
 
   // 기준값 측정 등 로그/업로드에서 제외해야 하는 세션 플래그
   bool _excludeFromLogging = false;
@@ -79,6 +89,8 @@ class SensorStreaming {
       _currentSessionWindows.clear();
       _windowIndex = 0;
       _windowCount = 0;
+      _measurementStartMs = DateTime.now().millisecondsSinceEpoch;
+      _prevWindowFatigue = null;
 
       int sensorEventCount = 0;
 
@@ -111,6 +123,9 @@ class SensorStreaming {
             accelX.add(event.x);
             accelY.add(event.y);
             accelZ.add(event.z);
+            _accelBufferX.add(event.x);
+            _accelBufferY.add(event.y);
+            _accelBufferZ.add(event.z);
 
             // 필터 처리
             final filtered = _filter.process(event.x, event.y, event.z, now);
@@ -158,6 +173,9 @@ class SensorStreaming {
           gyroX.add(event.x);
           gyroY.add(event.y);
           gyroZ.add(event.z);
+          _gyroBufferX.add(event.x);
+          _gyroBufferY.add(event.y);
+          _gyroBufferZ.add(event.z);
         },
         onError: (error) => print('❌ 자이로스코프 에러: $error'),
       );
@@ -217,7 +235,8 @@ class SensorStreaming {
 
         final windowData = _filteredBuffer.sublist(0, actualSamples);
         final hopSamples = SensorConfig.getHopSamples(effectiveSamplingRate);
-        final actualHopSamples = hopSamples.clamp(0, _filteredBuffer.length);
+        final actualHopSamples =
+            (hopSamples.clamp(0, _filteredBuffer.length) as num).toInt();
         _filteredBuffer.removeRange(0, actualHopSamples);
 
         print('📊 Hop 제거: $actualHopSamples개 샘플');
@@ -227,6 +246,34 @@ class SensorStreaming {
           '✅ 윈도우 추출 완료 (${windowData.length} samples) - 총 $_windowCount개 윈도우',
         );
         _processSegment(windowData);
+        if (_accelBufferX.isNotEmpty) {
+          final removeAccel = _minInt([actualHopSamples, _accelBufferX.length]);
+          if (removeAccel > 0) {
+            _accelBufferX.removeRange(0, removeAccel);
+            _accelBufferY.removeRange(
+              0,
+              _minInt([removeAccel, _accelBufferY.length]),
+            );
+            _accelBufferZ.removeRange(
+              0,
+              _minInt([removeAccel, _accelBufferZ.length]),
+            );
+          }
+        }
+        if (_gyroBufferX.isNotEmpty) {
+          final removeGyro = _minInt([actualHopSamples, _gyroBufferX.length]);
+          if (removeGyro > 0) {
+            _gyroBufferX.removeRange(0, removeGyro);
+            _gyroBufferY.removeRange(
+              0,
+              _minInt([removeGyro, _gyroBufferY.length]),
+            );
+            _gyroBufferZ.removeRange(
+              0,
+              _minInt([removeGyro, _gyroBufferZ.length]),
+            );
+          }
+        }
       },
     );
   }
@@ -351,7 +398,19 @@ class SensorStreaming {
           'FREQ=${fatigueFeatures.peakFrequency.toStringAsFixed(2)} Hz');
 
       // 윈도우 결과를 세션에 저장
+      final windowSizeMs = (SensorConfig.windowSeconds * 1000).toInt();
+      final hopMs = (SensorConfig.hopSeconds * 1000).toInt();
+      final baseStart =
+          _measurementStartMs ?? DateTime.now().millisecondsSinceEpoch;
+      final windowStartMs = baseStart + (_windowIndex * hopMs);
+      final windowEndMs = windowStartMs + windowSizeMs;
+      final timestampUtc = DateTime.now().toUtc().toIso8601String();
+      final fatiguePrev = _prevWindowFatigue;
+      final fatigueLevelInt = _fatigueLevelToInt(fatigueScore);
+      final overlapRate = windowSizeMs > 0 ? 1.0 - (hopMs / windowSizeMs) : 0.5;
+
       final windowData = {
+        'window_id': _windowIndex,
         'window_index': _windowIndex,
         'rms': fatigueFeatures.rms,
         'freq': fatigueFeatures.peakFrequency,
@@ -361,9 +420,153 @@ class SensorStreaming {
         'median_freq': fatigueFeatures.medianFrequency,
         'sample_count': analysisData.length,
         'timestamp': DateTime.now().toIso8601String(),
+        'timestamp_utc': timestampUtc,
+        'window_start_ms': windowStartMs,
+        'window_end_ms': windowEndMs,
+        'rms_acc': fatigueFeatures.rms,
+        'mean_freq_acc': fatigueFeatures.meanPowerFrequency,
+        'stability_index': fatigueFeatures.variance,
+        'fatigue_prev': fatiguePrev ?? 0.0,
+        'fatigue_level': fatigueLevelInt,
+        'quality_flag': 1,
+        'window_size_ms': windowSizeMs,
+        'overlap_rate': overlapRate,
+        'rms_base': rmsBase ?? 0.0,
+        'freq_base': freqBase ?? 0.0,
       };
+
+      final accelSampleCount = _minInt([
+        analysisData.length,
+        _accelBufferX.length,
+        _accelBufferY.length,
+        _accelBufferZ.length,
+      ]);
+      if (accelSampleCount > 0) {
+        final accelWindowX =
+            List<double>.from(_accelBufferX.sublist(0, accelSampleCount));
+        final accelWindowY =
+            List<double>.from(_accelBufferY.sublist(0, accelSampleCount));
+        final accelWindowZ =
+            List<double>.from(_accelBufferZ.sublist(0, accelSampleCount));
+
+        final accMeanX = _calculateMean(accelWindowX);
+        final accMeanY = _calculateMean(accelWindowY);
+        final accMeanZ = _calculateMean(accelWindowZ);
+
+        windowData
+          ..['acc_x_mean'] = accMeanX
+          ..['acc_y_mean'] = accMeanY
+          ..['acc_z_mean'] = accMeanZ
+          ..['acc_x_std'] = sqrt(_calculateVariance(accelWindowX, accMeanX))
+          ..['acc_y_std'] = sqrt(_calculateVariance(accelWindowY, accMeanY))
+          ..['acc_z_std'] = sqrt(_calculateVariance(accelWindowZ, accMeanZ))
+          ..['gravity_x_mean'] = accMeanX
+          ..['gravity_y_mean'] = accMeanY
+          ..['gravity_z_mean'] = accMeanZ
+          ..['linacc_x_mean'] =
+              _calculateMeanAbsoluteDeviation(accelWindowX, accMeanX)
+          ..['linacc_y_mean'] =
+              _calculateMeanAbsoluteDeviation(accelWindowY, accMeanY)
+          ..['linacc_z_mean'] =
+              _calculateMeanAbsoluteDeviation(accelWindowZ, accMeanZ);
+
+        final accelMagnitude = List<double>.generate(
+          accelSampleCount,
+          (i) => sqrt(
+            accelWindowX[i] * accelWindowX[i] +
+                accelWindowY[i] * accelWindowY[i] +
+                accelWindowZ[i] * accelWindowZ[i],
+          ),
+        );
+        final jerkValues = <double>[];
+        for (int i = 1; i < accelMagnitude.length; i++) {
+          final diff = (accelMagnitude[i] - accelMagnitude[i - 1]) *
+              effectiveSamplingRate;
+          jerkValues.add(diff);
+        }
+        if (jerkValues.isNotEmpty) {
+          final jerkMean = _calculateMean(jerkValues);
+          windowData['jerk_mean'] = jerkMean;
+          windowData['jerk_std'] =
+              sqrt(_calculateVariance(jerkValues, jerkMean));
+        } else {
+          windowData['jerk_mean'] = 0.0;
+          windowData['jerk_std'] = 0.0;
+        }
+        windowData['entropy_acc'] = _calculateSpectralEntropy(accelMagnitude);
+      } else {
+        windowData
+          ..['acc_x_mean'] = 0.0
+          ..['acc_y_mean'] = 0.0
+          ..['acc_z_mean'] = 0.0
+          ..['acc_x_std'] = 0.0
+          ..['acc_y_std'] = 0.0
+          ..['acc_z_std'] = 0.0
+          ..['gravity_x_mean'] = 0.0
+          ..['gravity_y_mean'] = 0.0
+          ..['gravity_z_mean'] = 0.0
+          ..['linacc_x_mean'] = 0.0
+          ..['linacc_y_mean'] = 0.0
+          ..['linacc_z_mean'] = 0.0
+          ..['entropy_acc'] = 0.0
+          ..['jerk_mean'] = 0.0
+          ..['jerk_std'] = 0.0;
+      }
+
+      final gyroSampleCount = _minInt([
+        analysisData.length,
+        _gyroBufferX.length,
+        _gyroBufferY.length,
+        _gyroBufferZ.length,
+      ]);
+      if (gyroSampleCount > 0) {
+        final gyroWindowX =
+            List<double>.from(_gyroBufferX.sublist(0, gyroSampleCount));
+        final gyroWindowY =
+            List<double>.from(_gyroBufferY.sublist(0, gyroSampleCount));
+        final gyroWindowZ =
+            List<double>.from(_gyroBufferZ.sublist(0, gyroSampleCount));
+
+        final gyroMeanX = _calculateMean(gyroWindowX);
+        final gyroMeanY = _calculateMean(gyroWindowY);
+        final gyroMeanZ = _calculateMean(gyroWindowZ);
+
+        windowData
+          ..['gyro_x_mean'] = gyroMeanX
+          ..['gyro_y_mean'] = gyroMeanY
+          ..['gyro_z_mean'] = gyroMeanZ
+          ..['gyro_x_std'] = sqrt(_calculateVariance(gyroWindowX, gyroMeanX))
+          ..['gyro_y_std'] = sqrt(_calculateVariance(gyroWindowY, gyroMeanY))
+          ..['gyro_z_std'] = sqrt(_calculateVariance(gyroWindowZ, gyroMeanZ))
+          ..['rms_gyro'] =
+              _calculateVectorRMS(gyroWindowX, gyroWindowY, gyroWindowZ);
+
+        final gyroMagnitude = List<double>.generate(
+          gyroSampleCount,
+          (i) => sqrt(
+            gyroWindowX[i] * gyroWindowX[i] +
+                gyroWindowY[i] * gyroWindowY[i] +
+                gyroWindowZ[i] * gyroWindowZ[i],
+          ),
+        );
+        windowData['mean_freq_gyro'] =
+            _calculateMeanFrequency(gyroMagnitude, effectiveSamplingRate);
+        windowData['entropy_gyro'] = _calculateSpectralEntropy(gyroMagnitude);
+      } else {
+        windowData
+          ..['gyro_x_mean'] = 0.0
+          ..['gyro_y_mean'] = 0.0
+          ..['gyro_z_mean'] = 0.0
+          ..['gyro_x_std'] = 0.0
+          ..['gyro_y_std'] = 0.0
+          ..['gyro_z_std'] = 0.0
+          ..['rms_gyro'] = 0.0
+          ..['mean_freq_gyro'] = 0.0
+          ..['entropy_gyro'] = 0.0;
+      }
       _currentSessionWindows.add(windowData);
       _windowIndex++;
+      _prevWindowFatigue = fatigueScore;
 
       // 마지막 윈도우 결과 저장
       _lastWindowResult = {
@@ -381,12 +584,77 @@ class SensorStreaming {
     }
   }
 
+  int _minInt(List<int> values) =>
+      values.isEmpty ? 0 : values.reduce((a, b) => a < b ? a : b);
+
   double _calculateMean(List<double> d) =>
       d.isEmpty ? 0.0 : d.reduce((a, b) => a + b) / d.length;
   double _calculateRMS(List<double> d) =>
       d.isEmpty ? 0.0 : sqrt(d.fold(0.0, (s, v) => s + v * v) / d.length);
   double _calculateVariance(List<double> d, double m) =>
       d.isEmpty ? 0.0 : d.fold(0.0, (s, v) => s + pow(v - m, 2)) / d.length;
+  double _calculateMeanAbsoluteDeviation(List<double> d, double mean) =>
+      d.isEmpty ? 0.0 : d.fold(0.0, (s, v) => s + (v - mean).abs()) / d.length;
+  double _calculateVectorRMS(
+    List<double> x,
+    List<double> y,
+    List<double> z,
+  ) {
+    final length = min(x.length, min(y.length, z.length));
+    if (length == 0) return 0.0;
+    double sumSquares = 0.0;
+    for (int i = 0; i < length; i++) {
+      sumSquares += x[i] * x[i] + y[i] * y[i] + z[i] * z[i];
+    }
+    return sqrt(sumSquares / length);
+  }
+
+  double _calculateSpectralEntropy(List<double> values) {
+    final n = values.length;
+    if (n <= 1) return 0.0;
+    final absValues = values.map((v) => v.abs()).toList();
+    final total = absValues.fold(0.0, (a, b) => a + b);
+    if (total <= 0.0) return 0.0;
+    double entropy = 0.0;
+    for (final v in absValues) {
+      final p = v / total;
+      if (p > 0) {
+        entropy -= p * (log(p) / log(2));
+      }
+    }
+    final maxEntropy = log(n) / log(2);
+    return maxEntropy > 0 ? entropy / maxEntropy : entropy;
+  }
+
+  double _calculateMeanFrequency(List<double> values, double fs) {
+    final n = values.length;
+    if (n <= 1 || fs <= 0) return 0.0;
+    final maxFreqBin = min(100, n ~/ 2);
+    if (maxFreqBin < 1) return 0.0;
+    double sumFreqPower = 0.0;
+    double sumPower = 0.0;
+    for (int k = 1; k <= maxFreqBin; k++) {
+      double real = 0.0;
+      double imag = 0.0;
+      for (int i = 0; i < n; i++) {
+        final angle = -2 * pi * k * i / n;
+        real += values[i] * cos(angle);
+        imag += values[i] * sin(angle);
+      }
+      final magnitude = sqrt(real * real + imag * imag);
+      final power = magnitude * magnitude;
+      final freq = k * fs / n;
+      sumFreqPower += freq * power;
+      sumPower += power;
+    }
+    return sumPower > 0 ? sumFreqPower / sumPower : 0.0;
+  }
+
+  int _fatigueLevelToInt(double fatigue) {
+    if (fatigue < 1.1) return 0;
+    if (fatigue < 1.4) return 1;
+    return 2;
+  }
 
   // 센서 중지
   Future<void> stopSensor() async {
@@ -450,33 +718,19 @@ class SensorStreaming {
           // 세션 ID 생성 (timestamp 기반)
           final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
 
-          // fatigue_logs에 저장
-          await DatabaseHelper.instance.insertFatigueLog(
+          // 윈도우 단위 데이터 저장
+          await DatabaseHelper.instance.insertFatigueWindows(
             userId: 'local_user',
             sessionId: sessionId,
-            measureDate: DateTime.now(),
-            rms: avgRms,
-            freq: avgFreq,
-            fatigue: avgFatigue,
+            windows: _currentSessionWindows
+                .map((w) => Map<String, dynamic>.from(w))
+                .toList(),
             mode: currentMLMode.name,
-            windowCount: _currentSessionWindows.length,
           );
-          print('✅ 피로도 로그 저장 완료 (ID: $sessionId)');
+          print('✅ 피로도 윈도우 저장 완료 (ID: $sessionId)');
           print('   - 평균 피로도: ${avgFatigue.toStringAsFixed(2)}');
           print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
           print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
-
-          // Window Features를 temp_measurements에 저장
-          for (var window in _currentSessionWindows) {
-            await DatabaseHelper.instance.insertTempMeasurement(
-              sessionId: sessionId,
-              windowIndex: window['window_index'] as int,
-              rms: window['rms'] as double,
-              freq: window['freq'] as double,
-              fatigue: window['fatigue'] as double,
-            );
-          }
-          print('✅ 임시 측정 데이터 저장 완료 (${_currentSessionWindows.length}개)');
 
           // Baseline 업데이트 (EMA 방식) - 세션당 1회만 수행
           final baselineManager = BaselineManager.instance;
@@ -491,15 +745,6 @@ class SensorStreaming {
           await DatabaseHelper.instance.calculateAndUpdateUserEmbedding();
           print('✅ User Embedding 계산 및 저장 완료');
 
-          // 사용자 상태 업로드 작업 추가
-          try {
-            final workerManager = await getWorkerManager();
-            await workerManager.addUploadStateTask(userId: 'local_user');
-            print('✅ 사용자 상태 업로드 작업 추가 완료');
-          } catch (e) {
-            print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
-          }
-
           // 현재 측정 데이터 업로드 작업 추가
           try {
             final userState = await DatabaseHelper.instance.getUserState();
@@ -513,17 +758,18 @@ class SensorStreaming {
               dataset: {
                 'user_id': 'local_user',
                 'session_id': sessionId,
-                'measure_date': DateTime.now().toIso8601String().split('T')[0],
-                'rms': avgRms,
-                'freq': avgFreq,
-                'fatigue': avgFatigue,
+                'mode': currentMLMode.name,
+                'avg_rms': avgRms,
+                'avg_freq': avgFreq,
+                'avg_fatigue': avgFatigue,
                 'rms_base': userState?['rms_base'] ?? 0.0,
                 'freq_base': userState?['freq_base'] ?? 0.0,
                 'user_emb': userEmbData,
-                'mode': currentMLMode.name,
                 'window_count': _currentSessionWindows.length,
-                'created_at': DateTime.now().toIso8601String(),
-                'synced': 0,
+                'windows': _currentSessionWindows
+                    .map((w) => Map<String, dynamic>.from(w))
+                    .toList(),
+                'timestamp_utc': DateTime.now().toUtc().toIso8601String(),
               },
               priority: 1,
             );
@@ -573,6 +819,12 @@ class SensorStreaming {
     gyroX.clear();
     gyroY.clear();
     gyroZ.clear();
+    _accelBufferX.clear();
+    _accelBufferY.clear();
+    _accelBufferZ.clear();
+    _gyroBufferX.clear();
+    _gyroBufferY.clear();
+    _gyroBufferZ.clear();
     _windowBuffer.clear();
     _filteredBuffer.clear();
     _filter.reset();
@@ -581,6 +833,8 @@ class SensorStreaming {
     _windowIndex = 0;
     _lastWindowResult = null;
     _windowCount = 0;
+    _measurementStartMs = null;
+    _prevWindowFatigue = null;
   }
 
   /// 마지막 윈도우 분석 결과 반환

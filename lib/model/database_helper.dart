@@ -8,7 +8,6 @@ import 'user_stats.dart';
 
 /// 통합 데이터베이스 헬퍼 클래스
 /// DB_SCHEMA.md (v1.0.0) 기반으로 전체 DB 관리
-/// Oracle Autonomous Database 스키마를 SQLite로 변환
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
@@ -17,17 +16,15 @@ class DatabaseHelper {
   DatabaseHelper._init();
 
   static const String dbName = 'fatigue_tracker.db';
-  static const int dbVersion = 3;
+  static const int dbVersion = 5;
 
   // 테이블 이름 (DB_SCHEMA.md 기준)
-  static const String tableUsers = 'users';
   static const String tableUserState = 'user_state';
-  static const String tableFatigueLogs = 'fatigue_logs';
+  static const String tableFatigueDataset = 'fatigue_dataset';
   static const String tableModelVersions = 'model_versions';
   static const String tableSyncHistory = 'sync_history';
 
-  // 임시 측정 데이터 (5회마다 DB 저장)
-  static const String tableTempMeasurements = 'temp_measurements';
+  static const String defaultUserId = 'local_user';
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -79,98 +76,114 @@ class DatabaseHelper {
   }
 
   Future<void> _createDB(Database db, int version) async {
-    print('🔨 테이블 생성 중 (DB_SCHEMA.md v1.0.0 기준)...');
+    print('🔨 테이블 생성 중 (SQLite 스키마)...');
 
-    // 1. users 테이블 (로컬 앱용 단순화)
+    // 1. user_state 테이블 (개인화 설정 저장)
     await db.execute('''
-    CREATE TABLE $tableUsers (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT,
-      created_at TEXT NOT NULL
-    )
-    ''');
-    print('✅ users 테이블 생성 완료');
-
-    // 로컬 사용자 기본 레코드 삽입
-    await db.insert(tableUsers, {
-      'id': 'local_user',
-      'email': 'local@device',
-      'password_hash': '',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-    print('✅ users 초기 레코드 삽입 완료');
-
-    // 2. user_state 테이블
-    await db.execute('''
-    CREATE TABLE $tableUserState (
+    CREATE TABLE IF NOT EXISTS $tableUserState (
       user_id TEXT PRIMARY KEY,
       rms_base REAL,
       freq_base REAL,
       user_emb TEXT,
       model_version TEXT,
-      last_sync TEXT,
-      FOREIGN KEY(user_id) REFERENCES $tableUsers(id)
+      last_sync TEXT
     )
     ''');
     print('✅ user_state 테이블 생성 완료');
 
     // 초기 user_state 레코드 삽입 (baseline은 미설정 상태 유지)
-    await db.insert(tableUserState, {
-      'user_id': 'local_user',
-      // 'rms_base': null,
-      // 'freq_base': null,
-      'user_emb': jsonEncode([
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-      ]), // 12D 벡터
-      'model_version': '1.0.0',
-      'last_sync': DateTime.now().toIso8601String(),
-    });
+    await db.insert(
+      tableUserState,
+      {
+        'user_id': defaultUserId,
+        'user_emb': jsonEncode([
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+        ]), // 12D 벡터
+        'model_version': '1.0.0',
+        'last_sync': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
     print('✅ user_state 초기 레코드 삽입 완료');
 
-    // 3. fatigue_logs 테이블
+    // 2. fatigue_dataset 테이블 (윈도우 단위 데이터셋)
     await db.execute('''
-    CREATE TABLE $tableFatigueLogs (
+    CREATE TABLE IF NOT EXISTS $tableFatigueDataset (
       user_id TEXT NOT NULL,
-      session_id TEXT PRIMARY KEY,
-      measure_date TEXT NOT NULL,
-      rms REAL,
-      freq REAL,
-      fatigue REAL,
+      session_id TEXT NOT NULL,
+      window_id INTEGER NOT NULL,
+      window_start_ms INTEGER NOT NULL,
+      window_end_ms INTEGER NOT NULL,
+      timestamp_utc TEXT,
+      acc_x_mean REAL,
+      acc_y_mean REAL,
+      acc_z_mean REAL,
+      gyro_x_mean REAL,
+      gyro_y_mean REAL,
+      gyro_z_mean REAL,
+      linacc_x_mean REAL,
+      linacc_y_mean REAL,
+      linacc_z_mean REAL,
+      gravity_x_mean REAL,
+      gravity_y_mean REAL,
+      gravity_z_mean REAL,
+      acc_x_std REAL,
+      acc_y_std REAL,
+      acc_z_std REAL,
+      gyro_x_std REAL,
+      gyro_y_std REAL,
+      gyro_z_std REAL,
+      rms_acc REAL,
+      rms_gyro REAL,
+      mean_freq_acc REAL,
+      mean_freq_gyro REAL,
+      entropy_acc REAL,
+      entropy_gyro REAL,
+      jerk_mean REAL,
+      jerk_std REAL,
+      stability_index REAL,
       rms_base REAL,
       freq_base REAL,
       user_emb TEXT,
+      fatigue_prev REAL,
+      fatigue REAL,
+      fatigue_level INTEGER,
+      quality_flag INTEGER DEFAULT 1,
+      window_size_ms INTEGER DEFAULT 2000,
+      overlap_rate REAL DEFAULT 0.5,
       mode TEXT,
-      window_count INTEGER,
-      created_at TEXT NOT NULL,
       synced INTEGER DEFAULT 0,
-      FOREIGN KEY(user_id) REFERENCES $tableUsers(id)
+      PRIMARY KEY (user_id, session_id, window_id)
     )
     ''');
-    print('✅ fatigue_logs 테이블 생성 완료');
+    print('✅ fatigue_dataset 테이블 생성 완료');
 
     // 인덱스 생성
-    await db
-        .execute('CREATE INDEX idx_logs_user ON $tableFatigueLogs(user_id)');
     await db.execute(
-      'CREATE INDEX idx_logs_date ON $tableFatigueLogs(measure_date)',
+      'CREATE INDEX IF NOT EXISTS idx_dataset_user ON $tableFatigueDataset(user_id)',
     );
-    print('✅ fatigue_logs 인덱스 생성 완료');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dataset_session ON $tableFatigueDataset(session_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dataset_synced ON $tableFatigueDataset(synced)',
+    );
+    print('✅ fatigue_dataset 인덱스 생성 완료');
 
-    // 4. model_versions 테이블
+    // 3. model_versions 테이블
     await db.execute('''
-    CREATE TABLE $tableModelVersions (
+    CREATE TABLE IF NOT EXISTS $tableModelVersions (
       model_type TEXT PRIMARY KEY,
       version TEXT,
       path TEXT,
@@ -180,124 +193,136 @@ class DatabaseHelper {
     print('✅ model_versions 테이블 생성 완료');
 
     // 초기 모델 버전 레코드
-    await db.insert(tableModelVersions, {
-      'model_type': 'EMA',
-      'version': '1.0.0',
-      'path': 'local',
-      'updated_at': DateTime.now().toIso8601String(),
-    });
-    await db.insert(tableModelVersions, {
-      'model_type': 'Hybrid',
-      'version': '1.0.0',
-      'path': 'local',
-      'updated_at': DateTime.now().toIso8601String(),
-    });
-    await db.insert(tableModelVersions, {
-      'model_type': 'E2E',
-      'version': '1.0.0',
-      'path': 'local',
-      'updated_at': DateTime.now().toIso8601String(),
-    });
+    final nowIso = DateTime.now().toIso8601String();
+    await db.insert(
+      tableModelVersions,
+      {
+        'model_type': 'EMA',
+        'version': '1.0.0',
+        'path': 'local',
+        'updated_at': nowIso,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    await db.insert(
+      tableModelVersions,
+      {
+        'model_type': 'Hybrid',
+        'version': '1.0.0',
+        'path': 'local',
+        'updated_at': nowIso,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    await db.insert(
+      tableModelVersions,
+      {
+        'model_type': 'E2E',
+        'version': '1.0.0',
+        'path': 'local',
+        'updated_at': nowIso,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
     print('✅ model_versions 초기 레코드 삽입 완료');
 
-    // 5. sync_history 테이블
+    // 4. sync_history 테이블
     await db.execute('''
-    CREATE TABLE $tableSyncHistory (
+    CREATE TABLE IF NOT EXISTS $tableSyncHistory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL,
       sync_type TEXT NOT NULL,
       status TEXT NOT NULL,
-      executed_at TEXT NOT NULL,
-      FOREIGN KEY(user_id) REFERENCES $tableUsers(id)
+      executed_at TEXT NOT NULL
     )
     ''');
     print('✅ sync_history 테이블 생성 완료');
-
-    // 6. temp_measurements 테이블 (5회 측정마다 DB 저장용)
-    await db.execute('''
-    CREATE TABLE $tableTempMeasurements (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      window_index INTEGER NOT NULL,
-      rms REAL NOT NULL,
-      freq REAL NOT NULL,
-      fatigue REAL,
-      timestamp TEXT NOT NULL
-    )
-    ''');
-    print('✅ temp_measurements 테이블 생성 완료');
-
-    print('✅ 모든 테이블 생성 완료 (DB_SCHEMA.md v1.0.0)');
+    print('✅ 모든 테이블 생성 완료');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     print('🔄 데이터베이스 업그레이드 중... ($oldVersion → $newVersion)');
 
-    if (oldVersion < 2) {
-      // 기존 데이터 마이그레이션
-      try {
-        // 기존 테이블 확인
-        final tables = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table'",
-        );
-        print('📋 기존 테이블: ${tables.map((t) => t['name']).toList()}');
+    if (oldVersion < 4) {
+      print('🧹 v4 스키마로 마이그레이션: 기존 fatigue_logs 및 관련 테이블 정리');
 
-        // 새 테이블 생성
-        await _createDB(db, newVersion);
+      await db.execute('DROP TABLE IF EXISTS users');
+      await db.execute('DROP TABLE IF EXISTS fatigue_logs');
+      await db.execute('DROP TABLE IF EXISTS temp_measurements');
+      await db.execute('DROP INDEX IF EXISTS idx_logs_user');
+      await db.execute('DROP INDEX IF EXISTS idx_logs_date');
 
-        print('✅ 업그레이드 완료');
-      } catch (e) {
-        print('⚠️ 업그레이드 중 오류: $e');
-        // 기존 테이블이 있다면 삭제하고 재생성
-        await db.execute('DROP TABLE IF EXISTS baseline');
-        await db.execute('DROP TABLE IF EXISTS user_stats');
-        await db.execute('DROP TABLE IF EXISTS measure_sessions');
-        await db.execute('DROP TABLE IF EXISTS window_features');
-        await _createDB(db, newVersion);
-      }
+      // 새로운 스키마 생성
+      await _createDB(db, newVersion);
+
+      print('✅ v4 스키마 마이그레이션 완료');
     }
 
-    if (oldVersion < 3) {
-      // fatigue_logs 테이블에 새로운 컬럼 추가
-      try {
-        print('📊 fatigue_logs 테이블에 새로운 컬럼 추가 중...');
-
-        // rms_base 컬럼 추가
-        await db
-            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN rms_base REAL');
-        print('✅ rms_base 컬럼 추가 완료');
-
-        // freq_base 컬럼 추가
-        await db
-            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN freq_base REAL');
-        print('✅ freq_base 컬럼 추가 완료');
-
-        // user_emb 컬럼 추가
-        await db
-            .execute('ALTER TABLE $tableFatigueLogs ADD COLUMN user_emb TEXT');
-        print('✅ user_emb 컬럼 추가 완료');
-
-        // 기존 데이터에 기본값 설정 (간단한 방식)
-        try {
-          await db.execute(
-            '''
-            UPDATE $tableFatigueLogs 
-            SET rms_base = 0.02, freq_base = 1.5, user_emb = ?
-            WHERE rms_base IS NULL
-          ''',
-            [jsonEncode(List.filled(12, 0.0))],
-          );
-          print('✅ 기존 데이터에 기본값 설정 완료');
-        } catch (e) {
-          print('⚠️ 기존 데이터 기본값 설정 실패: $e');
-          // 실패해도 계속 진행
-        }
-
-        print('✅ fatigue_logs 테이블 업그레이드 완료');
-      } catch (e) {
-        print('❌ fatigue_logs 테이블 업그레이드 실패: $e');
-        rethrow;
-      }
+    if (oldVersion < 5) {
+      print('🧹 v5 스키마로 마이그레이션: fatigue_dataset 기본키 재구성');
+      await db.execute('DROP TABLE IF EXISTS $tableFatigueDataset');
+      await db.execute('DROP INDEX IF EXISTS idx_dataset_user');
+      await db.execute('DROP INDEX IF EXISTS idx_dataset_session');
+      await db.execute('DROP INDEX IF EXISTS idx_dataset_synced');
+      await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableFatigueDataset (
+        user_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        window_id INTEGER NOT NULL,
+        window_start_ms INTEGER NOT NULL,
+        window_end_ms INTEGER NOT NULL,
+        timestamp_utc TEXT,
+        acc_x_mean REAL,
+        acc_y_mean REAL,
+        acc_z_mean REAL,
+        gyro_x_mean REAL,
+        gyro_y_mean REAL,
+        gyro_z_mean REAL,
+        linacc_x_mean REAL,
+        linacc_y_mean REAL,
+        linacc_z_mean REAL,
+        gravity_x_mean REAL,
+        gravity_y_mean REAL,
+        gravity_z_mean REAL,
+        acc_x_std REAL,
+        acc_y_std REAL,
+        acc_z_std REAL,
+        gyro_x_std REAL,
+        gyro_y_std REAL,
+        gyro_z_std REAL,
+        rms_acc REAL,
+        rms_gyro REAL,
+        mean_freq_acc REAL,
+        mean_freq_gyro REAL,
+        entropy_acc REAL,
+        entropy_gyro REAL,
+        jerk_mean REAL,
+        jerk_std REAL,
+        stability_index REAL,
+        rms_base REAL,
+        freq_base REAL,
+        user_emb TEXT,
+        fatigue_prev REAL,
+        fatigue REAL,
+        fatigue_level INTEGER,
+        quality_flag INTEGER DEFAULT 1,
+        window_size_ms INTEGER DEFAULT 2000,
+        overlap_rate REAL DEFAULT 0.5,
+        mode TEXT,
+        synced INTEGER DEFAULT 0,
+        PRIMARY KEY (user_id, session_id, window_id)
+      )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_dataset_user ON $tableFatigueDataset(user_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_dataset_session ON $tableFatigueDataset(session_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_dataset_synced ON $tableFatigueDataset(synced)',
+      );
+      print('✅ v5 스키마 마이그레이션 완료 (id 컬럼 제거)');
     }
   }
 
@@ -306,7 +331,7 @@ class DatabaseHelper {
   /// ========================================
 
   Future<Map<String, dynamic>?> getUserState({
-    String userId = 'local_user',
+    String userId = defaultUserId,
   }) async {
     final db = await database;
     final result = await db.query(
@@ -318,7 +343,7 @@ class DatabaseHelper {
   }
 
   Future<void> updateUserState({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     double? rmsBase,
     double? freqBase,
     List<double>? userEmb,
@@ -358,7 +383,7 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<double>> getUserEmbedding({String userId = 'local_user'}) async {
+  Future<List<double>> getUserEmbedding({String userId = defaultUserId}) async {
     final state = await getUserState(userId: userId);
     if (state == null || state['user_emb'] == null) {
       return List.filled(12, 0.0);
@@ -371,221 +396,284 @@ class DatabaseHelper {
   /// Fatigue Logs 관련 메서드
   /// ========================================
 
-  Future<int> insertFatigueLog({
-    String userId = 'local_user',
+  Future<void> insertFatigueWindows({
+    String userId = defaultUserId,
     required String sessionId,
-    required DateTime measureDate,
-    required double rms,
-    required double freq,
-    required double fatigue,
-    required String mode,
-    required int windowCount,
-    double? rmsBase,
-    double? freqBase,
-    List<double>? userEmb,
+    required List<Map<String, dynamic>> windows,
+    String? mode,
+    double? rmsBaseOverride,
+    double? freqBaseOverride,
+    List<double>? userEmbOverride,
   }) async {
+    if (windows.isEmpty) {
+      print('⚠️ 저장할 윈도우 데이터가 없습니다 (sessionId: $sessionId)');
+      return;
+    }
+
     final db = await database;
 
-    // 사용자 상태에서 baseline과 embedding 가져오기
     final userState = await getUserState(userId: userId);
-    final userEmbData = userEmb ?? await getUserEmbedding(userId: userId);
+    final userEmbData =
+        userEmbOverride ?? await getUserEmbedding(userId: userId);
+    final userEmbList =
+        userEmbData.isNotEmpty ? userEmbData : List<double>.filled(12, 0.0);
+    final rmsBase =
+        rmsBaseOverride ?? (userState?['rms_base'] as num?)?.toDouble() ?? 0.0;
+    final freqBase = freqBaseOverride ??
+        (userState?['freq_base'] as num?)?.toDouble() ??
+        0.0;
 
-    final logData = {
-      'user_id': userId,
-      'session_id': sessionId,
-      'measure_date': measureDate.toIso8601String().split('T')[0], // DATE only
-      'rms': rms,
-      'freq': freq,
-      'fatigue': fatigue,
-      'rms_base': rmsBase ?? userState?['rms_base'] ?? 0.0,
-      'freq_base': freqBase ?? userState?['freq_base'] ?? 0.0,
-      'user_emb': jsonEncode(userEmbData),
-      'mode': mode,
-      'window_count': windowCount,
-      'created_at': DateTime.now().toIso8601String(),
-      'synced': 0,
-    };
+    final batch = db.batch();
+    for (final window in windows) {
+      final windowId = window['window_id'] ?? window['window_index'];
+      final windowStart = window['window_start_ms'];
+      final windowEnd = window['window_end_ms'];
 
-    try {
-      await db.insert(tableFatigueLogs, logData);
-      print('✅ 피로도 로그 저장: $sessionId (피로도: $fatigue)');
-      return 1;
-    } catch (e) {
-      print('❌ 피로도 로그 저장 실패: $e');
-      return 0;
+      if (windowId == null || windowStart == null || windowEnd == null) {
+        print('⚠️ 윈도우 필수 값이 누락되어 저장을 건너뜁니다: $window');
+        continue;
+      }
+
+      final row = <String, dynamic>{
+        'user_id': userId,
+        'session_id': sessionId,
+        'window_id': windowId,
+        'window_start_ms': windowStart,
+        'window_end_ms': windowEnd,
+        'timestamp_utc': (window['timestamp_utc'] as String?) ??
+            DateTime.now().toUtc().toIso8601String(),
+        'acc_x_mean': (window['acc_x_mean'] as num?)?.toDouble() ?? 0.0,
+        'acc_y_mean': (window['acc_y_mean'] as num?)?.toDouble() ?? 0.0,
+        'acc_z_mean': (window['acc_z_mean'] as num?)?.toDouble() ?? 0.0,
+        'gyro_x_mean': (window['gyro_x_mean'] as num?)?.toDouble() ?? 0.0,
+        'gyro_y_mean': (window['gyro_y_mean'] as num?)?.toDouble() ?? 0.0,
+        'gyro_z_mean': (window['gyro_z_mean'] as num?)?.toDouble() ?? 0.0,
+        'linacc_x_mean': (window['linacc_x_mean'] as num?)?.toDouble() ?? 0.0,
+        'linacc_y_mean': (window['linacc_y_mean'] as num?)?.toDouble() ?? 0.0,
+        'linacc_z_mean': (window['linacc_z_mean'] as num?)?.toDouble() ?? 0.0,
+        'gravity_x_mean': (window['gravity_x_mean'] as num?)?.toDouble() ?? 0.0,
+        'gravity_y_mean': (window['gravity_y_mean'] as num?)?.toDouble() ?? 0.0,
+        'gravity_z_mean': (window['gravity_z_mean'] as num?)?.toDouble() ?? 0.0,
+        'acc_x_std': (window['acc_x_std'] as num?)?.toDouble() ?? 0.0,
+        'acc_y_std': (window['acc_y_std'] as num?)?.toDouble() ?? 0.0,
+        'acc_z_std': (window['acc_z_std'] as num?)?.toDouble() ?? 0.0,
+        'gyro_x_std': (window['gyro_x_std'] as num?)?.toDouble() ?? 0.0,
+        'gyro_y_std': (window['gyro_y_std'] as num?)?.toDouble() ?? 0.0,
+        'gyro_z_std': (window['gyro_z_std'] as num?)?.toDouble() ?? 0.0,
+        'rms_acc': (window['rms_acc'] as num?)?.toDouble() ?? 0.0,
+        'rms_gyro': (window['rms_gyro'] as num?)?.toDouble() ?? 0.0,
+        'mean_freq_acc': (window['mean_freq_acc'] as num?)?.toDouble() ?? 0.0,
+        'mean_freq_gyro': (window['mean_freq_gyro'] as num?)?.toDouble() ?? 0.0,
+        'entropy_acc': (window['entropy_acc'] as num?)?.toDouble() ?? 0.0,
+        'entropy_gyro': (window['entropy_gyro'] as num?)?.toDouble() ?? 0.0,
+        'jerk_mean': (window['jerk_mean'] as num?)?.toDouble() ?? 0.0,
+        'jerk_std': (window['jerk_std'] as num?)?.toDouble() ?? 0.0,
+        'stability_index':
+            (window['stability_index'] as num?)?.toDouble() ?? 0.0,
+        'rms_base': rmsBase,
+        'freq_base': freqBase,
+        'user_emb': jsonEncode(userEmbList),
+        'fatigue_prev': (window['fatigue_prev'] as num?)?.toDouble() ?? 0.0,
+        'fatigue': (window['fatigue'] as num?)?.toDouble() ?? 0.0,
+        'fatigue_level': (window['fatigue_level'] as num?)?.toInt() ?? 0,
+        'quality_flag': (window['quality_flag'] as num?)?.toInt() ?? 1,
+        'window_size_ms': (window['window_size_ms'] as num?)?.toInt() ?? 0,
+        'overlap_rate': (window['overlap_rate'] as num?)?.toDouble() ?? 0.0,
+        'mode': mode ?? (window['mode'] as String? ?? 'ema'),
+        'synced': (window['synced'] as num?)?.toInt() ?? 0,
+      };
+
+      batch.insert(tableFatigueDataset, row);
     }
+
+    await batch.commit(noResult: true);
+    print('✅ 피로도 윈도우 ${windows.length}개 저장 완료 (sessionId: $sessionId)');
   }
 
   Future<List<Map<String, dynamic>>> getAllFatigueLogs({
-    String userId = 'local_user',
+    String userId = defaultUserId,
   }) async {
     final db = await database;
-    return await db.query(
-      tableFatigueLogs,
-      where: 'user_id = ?',
-      whereArgs: [userId],
-      orderBy: 'created_at DESC',
+    final result = await db.rawQuery(
+      '''
+      SELECT 
+        session_id,
+        MIN(window_start_ms) AS first_window_start_ms,
+        MAX(window_end_ms) AS last_window_end_ms,
+        MAX(timestamp_utc) AS timestamp_utc,
+        COUNT(*) AS window_count,
+        AVG(rms_acc) AS rms,
+        AVG(mean_freq_acc) AS freq,
+        AVG(fatigue) AS fatigue,
+        MAX(mode) AS mode,
+        MIN(synced) AS synced
+      FROM $tableFatigueDataset
+      WHERE user_id = ?
+      GROUP BY session_id
+      ORDER BY last_window_end_ms DESC
+      ''',
+      [userId],
     );
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> getRecentFatigueLogs({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     int limit = 10,
   }) async {
     final db = await database;
-    return await db.query(
-      tableFatigueLogs,
-      where: 'user_id = ?',
-      whereArgs: [userId],
-      orderBy: 'created_at DESC',
-      limit: limit,
+    final result = await db.rawQuery(
+      '''
+      SELECT 
+        session_id,
+        MIN(window_start_ms) AS first_window_start_ms,
+        MAX(window_end_ms) AS last_window_end_ms,
+        MAX(timestamp_utc) AS timestamp_utc,
+        COUNT(*) AS window_count,
+        AVG(rms_acc) AS rms,
+        AVG(mean_freq_acc) AS freq,
+        AVG(fatigue) AS fatigue,
+        MAX(mode) AS mode,
+        MIN(synced) AS synced
+      FROM $tableFatigueDataset
+      WHERE user_id = ?
+      GROUP BY session_id
+      ORDER BY last_window_end_ms DESC
+      LIMIT ?
+      ''',
+      [userId, limit],
     );
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> getFatigueLogsByDateRange({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
     final db = await database;
-    return await db.query(
-      tableFatigueLogs,
-      where: 'user_id = ? AND measure_date >= ? AND measure_date <= ?',
-      whereArgs: [
-        userId,
-        startDate.toIso8601String().split('T')[0],
-        endDate.toIso8601String().split('T')[0],
-      ],
-      orderBy: 'measure_date DESC',
+    final startMs = startDate.millisecondsSinceEpoch;
+    final endMs = endDate.millisecondsSinceEpoch;
+
+    final result = await db.rawQuery(
+      '''
+      SELECT 
+        session_id,
+        MIN(window_start_ms) AS first_window_start_ms,
+        MAX(window_end_ms) AS last_window_end_ms,
+        MAX(timestamp_utc) AS timestamp_utc,
+        COUNT(*) AS window_count,
+        AVG(rms_acc) AS rms,
+        AVG(mean_freq_acc) AS freq,
+        AVG(fatigue) AS fatigue,
+        MAX(mode) AS mode,
+        MIN(synced) AS synced
+      FROM $tableFatigueDataset
+      WHERE user_id = ?
+        AND window_start_ms >= ?
+        AND window_end_ms <= ?
+      GROUP BY session_id
+      ORDER BY last_window_end_ms DESC
+      ''',
+      [userId, startMs, endMs],
     );
+    return result;
   }
 
   Future<int> deleteFatigueLog(String sessionId) async {
     final db = await database;
     return await db.delete(
-      tableFatigueLogs,
+      tableFatigueDataset,
       where: 'session_id = ?',
       whereArgs: [sessionId],
     );
   }
 
-  Future<int> deleteAllFatigueLogs({String userId = 'local_user'}) async {
+  Future<int> deleteAllFatigueLogs({String userId = defaultUserId}) async {
     final db = await database;
     return await db.delete(
-      tableFatigueLogs,
+      tableFatigueDataset,
       where: 'user_id = ?',
       whereArgs: [userId],
     );
   }
 
   Future<List<Map<String, dynamic>>> getUnsyncedLogs({
-    String userId = 'local_user',
+    String userId = defaultUserId,
   }) async {
     final db = await database;
-    return await db.query(
-      tableFatigueLogs,
-      where: 'user_id = ? AND synced = 0',
-      whereArgs: [userId],
-      orderBy: 'created_at ASC',
+    final result = await db.rawQuery(
+      '''
+      SELECT 
+        session_id,
+        MIN(window_start_ms) AS first_window_start_ms,
+        MAX(window_end_ms) AS last_window_end_ms,
+        MAX(timestamp_utc) AS timestamp_utc,
+        COUNT(*) AS window_count,
+        AVG(rms_acc) AS rms,
+        AVG(mean_freq_acc) AS freq,
+        AVG(fatigue) AS fatigue,
+        MAX(mode) AS mode
+      FROM $tableFatigueDataset
+      WHERE user_id = ? AND synced = 0
+      GROUP BY session_id
+      ORDER BY first_window_start_ms ASC
+      ''',
+      [userId],
     );
+    return result;
   }
 
-  Future<void> markLogsAsSynced(List<String> sessionIds) async {
+  Future<void> markLogsAsSynced(
+    List<String> sessionIds, {
+    String userId = defaultUserId,
+  }) async {
     final db = await database;
     for (final sessionId in sessionIds) {
       await db.update(
-        tableFatigueLogs,
+        tableFatigueDataset,
         {'synced': 1},
-        where: 'session_id = ?',
-        whereArgs: [sessionId],
+        where: 'session_id = ? AND user_id = ?',
+        whereArgs: [sessionId, userId],
       );
     }
     print('✅ ${sessionIds.length}개 로그 동기화 완료 표시');
   }
 
-  /// ========================================
-  /// Temp Measurements 관련 메서드 (5회마다 DB 저장)
-  /// ========================================
-
-  Future<int> insertTempMeasurement({
-    required String sessionId,
-    required int windowIndex,
-    required double rms,
-    required double freq,
-    double? fatigue,
+  Future<List<Map<String, dynamic>>> getWindowsBySession(
+    String sessionId, {
+    String userId = defaultUserId,
+    bool onlyUnsynced = false,
   }) async {
     final db = await database;
-
-    final data = {
-      'session_id': sessionId,
-      'window_index': windowIndex,
-      'rms': rms,
-      'freq': freq,
-      'fatigue': fatigue,
-      'timestamp': DateTime.now().toIso8601String(),
-    };
-
-    return await db.insert(tableTempMeasurements, data);
-  }
-
-  Future<List<Map<String, dynamic>>> getTempMeasurementsBySession(
-    String sessionId,
-  ) async {
-    final db = await database;
+    final whereBuffer = StringBuffer('session_id = ? AND user_id = ?');
+    final whereArgs = <dynamic>[sessionId, userId];
+    if (onlyUnsynced) {
+      whereBuffer.write(' AND (synced IS NULL OR synced = 0)');
+    }
     return await db.query(
-      tableTempMeasurements,
-      where: 'session_id = ?',
-      whereArgs: [sessionId],
-      orderBy: 'window_index ASC',
+      tableFatigueDataset,
+      where: whereBuffer.toString(),
+      whereArgs: whereArgs,
+      orderBy: 'window_id ASC',
     );
   }
 
-  Future<int> getTempMeasurementCount() async {
+  Future<bool> hasUnsyncedWindows(
+    String sessionId, {
+    String userId = defaultUserId,
+  }) async {
     final db = await database;
     final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM $tableTempMeasurements',
+      '''
+      SELECT COUNT(*) AS cnt
+      FROM $tableFatigueDataset
+      WHERE user_id = ? AND session_id = ? AND (synced IS NULL OR synced = 0)
+      ''',
+      [userId, sessionId],
     );
-    return Sqflite.firstIntValue(result) ?? 0;
-  }
-
-  Future<void> clearTempMeasurements() async {
-    final db = await database;
-    await db.delete(tableTempMeasurements);
-    print('✅ 임시 측정 데이터 삭제 완료');
-  }
-
-  /// 5회 측정마다 DB에 저장하는 로직
-  Future<bool> shouldSaveToDatabase() async {
-    final count = await getTempMeasurementCount();
-    return count >= 5;
-  }
-
-  /// 임시 측정 데이터를 fatigue_logs로 이동
-  Future<void> commitTempMeasurementsToLogs({
-    String userId = 'local_user',
-    required String sessionId,
-    required double avgRms,
-    required double avgFreq,
-    required double avgFatigue,
-    required String mode,
-    required int windowCount,
-  }) async {
-    // fatigue_logs에 저장
-    await insertFatigueLog(
-      userId: userId,
-      sessionId: sessionId,
-      measureDate: DateTime.now(),
-      rms: avgRms,
-      freq: avgFreq,
-      fatigue: avgFatigue,
-      mode: mode,
-      windowCount: windowCount,
-    );
-
-    // 임시 데이터 삭제
-    await clearTempMeasurements();
-
-    print('✅ 임시 측정 데이터를 DB에 커밋 완료');
+    final count = (result.isNotEmpty ? result.first['cnt'] : 0) as int? ?? 0;
+    return count > 0;
   }
 
   /// ========================================
@@ -630,7 +718,7 @@ class DatabaseHelper {
   /// ========================================
 
   Future<int> insertSyncHistory({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     required String syncType,
     required String status,
   }) async {
@@ -647,7 +735,7 @@ class DatabaseHelper {
   }
 
   Future<List<Map<String, dynamic>>> getSyncHistory({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     int limit = 20,
   }) async {
     final db = await database;
@@ -661,7 +749,7 @@ class DatabaseHelper {
   }
 
   Future<Map<String, dynamic>?> getLastSync({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     required String syncType,
   }) async {
     final db = await database;
@@ -680,54 +768,80 @@ class DatabaseHelper {
   /// ========================================
 
   Future<Map<String, dynamic>> getOverallStats({
-    String userId = 'local_user',
+    String userId = defaultUserId,
   }) async {
     final db = await database;
 
-    // 피로도 로그 통계
+    // 세션 단위 요약
     final logStats = await db.rawQuery(
       '''
+      WITH session_summary AS (
+        SELECT 
+          session_id,
+          AVG(fatigue) AS fatigue,
+          AVG(rms_acc) AS rms,
+          AVG(mean_freq_acc) AS freq
+        FROM $tableFatigueDataset
+        WHERE user_id = ?
+        GROUP BY session_id
+      )
       SELECT 
-        COUNT(*) as total_logs,
+        COUNT(*) as total_sessions,
         AVG(fatigue) as avg_fatigue,
         MIN(fatigue) as min_fatigue,
         MAX(fatigue) as max_fatigue,
         AVG(rms) as avg_rms,
         AVG(freq) as avg_freq
-      FROM $tableFatigueLogs
-      WHERE user_id = ?
+      FROM session_summary
     ''',
       [userId],
     );
 
     // 오늘 측정 수
     final today = DateTime.now();
-    final todayDate = today.toIso8601String().split('T')[0];
+    final startOfDay =
+        DateTime(today.year, today.month, today.day).millisecondsSinceEpoch;
+    final endOfDay = startOfDay + const Duration(days: 1).inMilliseconds - 1;
 
     final todayCount = await db.rawQuery(
       '''
       SELECT COUNT(*) as count
-      FROM $tableFatigueLogs
-      WHERE user_id = ? AND measure_date = ?
+      FROM (
+        SELECT session_id
+        FROM $tableFatigueDataset
+        WHERE user_id = ?
+          AND window_start_ms BETWEEN ? AND ?
+        GROUP BY session_id
+      )
     ''',
-      [userId, todayDate],
+      [userId, startOfDay, endOfDay],
     );
 
     // 최근 7일 평균
     final weekAgo = today.subtract(const Duration(days: 7));
-    final weekAgoDate = weekAgo.toIso8601String().split('T')[0];
+    final weekAgoMs = DateTime(weekAgo.year, weekAgo.month, weekAgo.day)
+        .millisecondsSinceEpoch;
 
     final weekStats = await db.rawQuery(
       '''
+      WITH session_summary AS (
+        SELECT 
+          session_id,
+          MIN(window_start_ms) AS first_window_start_ms,
+          AVG(fatigue) AS fatigue
+        FROM $tableFatigueDataset
+        WHERE user_id = ?
+        GROUP BY session_id
+      )
       SELECT AVG(fatigue) as week_avg_fatigue
-      FROM $tableFatigueLogs
-      WHERE user_id = ? AND measure_date >= ?
+      FROM session_summary
+      WHERE first_window_start_ms >= ?
     ''',
-      [userId, weekAgoDate],
+      [userId, weekAgoMs],
     );
 
     return {
-      'total_logs': logStats.first['total_logs'] ?? 0,
+      'total_logs': logStats.first['total_sessions'] ?? 0,
       'avg_fatigue': logStats.first['avg_fatigue'] ?? 1.0,
       'min_fatigue': logStats.first['min_fatigue'] ?? 1.0,
       'max_fatigue': logStats.first['max_fatigue'] ?? 1.0,
@@ -740,7 +854,7 @@ class DatabaseHelper {
 
   /// 최근 N회 측정 기준으로 baseline 재계산 (EMA 방식)
   Future<void> recalculateBaseline({
-    String userId = 'local_user',
+    String userId = defaultUserId,
     int n = 5,
   }) async {
     final logs = await getRecentFatigueLogs(userId: userId, limit: n);
@@ -767,7 +881,7 @@ class DatabaseHelper {
 
   /// User Embedding 계산 및 업데이트
   Future<void> calculateAndUpdateUserEmbedding({
-    String userId = 'local_user',
+    String userId = defaultUserId,
   }) async {
     try {
       print('🧮 User Embedding 계산 시작...');
@@ -858,15 +972,20 @@ class DatabaseHelper {
   }
 
   /// 데이터베이스 전체 초기화 (개발용)
-  Future<void> resetDatabase({String userId = 'local_user'}) async {
+  Future<void> resetDatabase({String userId = defaultUserId}) async {
     final db = await database;
 
     // 데이터 삭제
-    await db
-        .delete(tableFatigueLogs, where: 'user_id = ?', whereArgs: [userId]);
-    await db.delete(tableTempMeasurements);
-    await db
-        .delete(tableSyncHistory, where: 'user_id = ?', whereArgs: [userId]);
+    await db.delete(
+      tableFatigueDataset,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+    await db.delete(
+      tableSyncHistory,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
 
     // user_state 초기화 (baseline은 제거)
     await db.update(
@@ -901,14 +1020,17 @@ class DatabaseHelper {
   /// ========================================
 
   /// 동기화 완료 처리
-  Future<void> markFatigueLogAsSynced(String sessionId) async {
+  Future<void> markFatigueLogAsSynced(
+    String sessionId, {
+    String userId = defaultUserId,
+  }) async {
     try {
       final db = await database;
       await db.update(
-        tableFatigueLogs,
+        tableFatigueDataset,
         {'synced': 1},
-        where: 'session_id = ?',
-        whereArgs: [sessionId],
+        where: 'session_id = ? AND user_id = ?',
+        whereArgs: [sessionId, userId],
       );
       print('✅ 동기화 완료 처리: $sessionId');
     } catch (e) {
@@ -949,14 +1071,6 @@ class DatabaseHelper {
 
       print('✅ Baseline 저장 완료: RMS=$rmsBase, Freq=$freqBase');
 
-      // 서버 동기화: 사용자 상태 업로드 작업 추가
-      try {
-        final workerManager = await getWorkerManager();
-        await workerManager.addUploadStateTask(userId: 'local_user');
-        print('☁️ 사용자 상태 업로드 작업 추가 (baseline 저장)');
-      } catch (e) {
-        print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
-      }
       return true;
     } catch (e) {
       print('❌ Baseline 저장 실패: $e');
@@ -976,7 +1090,7 @@ class DatabaseHelper {
           'last_sync': DateTime.now().toIso8601String(),
         },
         where: 'user_id = ?',
-        whereArgs: ['local_user'],
+        whereArgs: [defaultUserId],
       );
 
       print('✅ Baseline 초기화 완료 (DB null 설정)');
@@ -990,11 +1104,11 @@ class DatabaseHelper {
   /// 첫 번째 측정인지 확인
   Future<bool> isFirstMeasurement() async {
     try {
-      // fatigue_logs 테이블에 데이터가 있는지 확인
+      // fatigue_dataset 테이블에 데이터가 있는지 확인
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM fatigue_logs WHERE user_id = ?',
-        ['local_user'],
+        'SELECT COUNT(*) as count FROM $tableFatigueDataset WHERE user_id = ?',
+        [defaultUserId],
       );
 
       final count = result.first['count'] as int;

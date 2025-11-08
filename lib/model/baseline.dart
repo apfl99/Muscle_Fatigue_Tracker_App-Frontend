@@ -151,15 +151,6 @@ class BaselineManager {
         freqBase: _currentFreqBase,
       );
 
-      // 서버 동기화: 사용자 상태 업로드 작업 추가 (오프라인 시 워커가 재시도)
-      try {
-        final workerManager = await getWorkerManager();
-        await workerManager.addUploadStateTask(userId: 'local_user');
-        print('☁️ 사용자 상태 업로드 작업 추가 (baseline 업데이트)');
-      } catch (e) {
-        print('⚠️ 사용자 상태 업로드 작업 추가 실패: $e');
-      }
-
       print('💾 User State 저장 완료');
       print('   - 업데이트 횟수: $_updateCount회');
       print('   - 현재 모드: ${getCurrentMLMode().displayName}');
@@ -197,7 +188,7 @@ class BaselineManager {
     try {
       print('\n🔄 DB와 Baseline 카운트 동기화 시도...');
 
-      // 총 측정 로그 수 가져오기 (fatigue_logs 테이블)
+      // 총 측정 로그 수 가져오기 (fatigue_dataset 집계)
       final logs = await DatabaseHelper.instance.getAllFatigueLogs();
       _totalMeasurementCount = logs.length;
 

@@ -900,7 +900,12 @@ class _SensorDataPageState extends State<SensorDataPage>
   // 분석 상태 박스 (ML 모드별 색상 적용)
   Widget _buildAnalysisStatusBox() {
     final currentMode = BaselineManager.instance.getCurrentMLMode();
-    final measurementCount = BaselineManager.instance.totalMeasurementCount + 1;
+    final totalMeasurements = BaselineManager.instance.totalMeasurementCount;
+    final nextMeasurementIndex = totalMeasurements + 1;
+    const targetMeasurements = 20;
+    final personalizationProgress =
+        (totalMeasurements / targetMeasurements).clamp(0.0, 1.0);
+    final progressPercent = (personalizationProgress * 100).round();
 
     // ML 모드별 색상 (명확하게 구분, profile_page와 동일)
     Color modeColor;
@@ -974,10 +979,39 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${currentMode.displayName} • $measurementCount번째 측정',
+                  '${currentMode.displayName} • $nextMeasurementIndex번째 측정',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '정확도 향상 진행도 $progressPercent% ($totalMeasurements/$targetMeasurements회)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: modeColor.withOpacity(0.85),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: personalizationProgress == 0.0
+                        ? 0.05
+                        : personalizationProgress,
+                    minHeight: 6,
+                    backgroundColor: modeColor.withOpacity(0.15),
+                    valueColor: AlwaysStoppedAnimation<Color>(modeColor),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '측정을 계속하면 개인화 모델 정확도가 올라가요!',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.white.withOpacity(0.55),
                   ),
                 ),
               ],

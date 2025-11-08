@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 측정 세션 모델 (fatigue_logs 테이블에서 변환)
+/// 측정 세션 모델 (fatigue_dataset 집계 결과에서 변환)
 class MeasureSession {
   final dynamic id; // session_id (String 또는 int)
   final DateTime timestamp; // created_at에서 변환
@@ -39,20 +39,26 @@ class MeasureSession {
     };
   }
 
-  /// Map에서 생성 (fatigue_logs 테이블)
+  /// Map에서 생성 (fatigue_dataset 집계 결과)
   factory MeasureSession.fromMap(Map<String, dynamic> map) {
     // created_at이 있으면 사용, 없으면 measure_date 사용
     String timestampStr;
     if (map.containsKey('created_at') && map['created_at'] != null) {
       timestampStr = map['created_at'] as String;
-    } else if (map.containsKey('measure_date') && map['measure_date'] != null) {
-      timestampStr = map['measure_date'] as String;
-      // DATE만 있는 경우 시간 추가
-      if (!timestampStr.contains('T')) {
-        timestampStr = '${timestampStr}T00:00:00';
-      }
+    } else if (map.containsKey('timestamp_utc') && map['timestamp_utc'] != null) {
+      timestampStr = map['timestamp_utc'] as String;
     } else {
-      timestampStr = DateTime.now().toIso8601String();
+      final windowEndMs = map['last_window_end_ms'] as int?;
+      final windowStartMs = map['first_window_start_ms'] as int?;
+      if (windowEndMs != null) {
+        timestampStr =
+            DateTime.fromMillisecondsSinceEpoch(windowEndMs).toIso8601String();
+      } else if (windowStartMs != null) {
+        timestampStr =
+            DateTime.fromMillisecondsSinceEpoch(windowStartMs).toIso8601String();
+      } else {
+        timestampStr = DateTime.now().toIso8601String();
+      }
     }
 
     return MeasureSession(

@@ -8,57 +8,47 @@ import 'measurement_task.dart';
 class DataConverter {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
-  /// 동기화되지 않은 fatigue_logs 데이터를 읽어서 JSON으로 변환
+  /// 동기화되지 않은 fatigue_dataset(세션 단위) 데이터를 읽어서 JSON으로 변환
   Future<List<Map<String, dynamic>>> getUnsyncedFatigueLogs({
     int? limit,
     String? userId,
   }) async {
     try {
-      final db = await _dbHelper.database;
+      final effectiveUserId = userId ?? DatabaseHelper.defaultUserId;
+      final rows = await _dbHelper.getUnsyncedLogs(
+        userId: effectiveUserId,
+      );
 
-      String query = '''
-        SELECT user_id, session_id, measure_date, rms, freq, fatigue, 
-               mode, window_count, created_at, synced
-        FROM fatigue_logs
-        WHERE synced = 0
-      ''';
+      final List<Map<String, dynamic>> sessions = [];
 
-      List<dynamic> whereArgs = [];
+      for (final summary in rows) {
+        final sessionId = summary['session_id'] as String?;
+        if (sessionId == null) continue;
+        if (limit != null && sessions.length >= limit) break;
 
-      if (userId != null) {
-        query += ' AND user_id = ?';
-        whereArgs.add(userId);
+        final windows = await _dbHelper.getWindowsBySession(
+          sessionId,
+          userId: effectiveUserId,
+          onlyUnsynced: true,
+        );
+
+        sessions.add({
+          'user_id': effectiveUserId,
+          'session_id': sessionId,
+          'first_window_start_ms': summary['first_window_start_ms'],
+          'last_window_end_ms': summary['last_window_end_ms'],
+          'window_count': summary['window_count'],
+          'avg_rms': summary['rms'],
+          'avg_freq': summary['freq'],
+          'avg_fatigue': summary['fatigue'],
+          'mode': summary['mode'],
+          'windows': windows,
+        });
       }
 
-      query += ' ORDER BY created_at ASC';
-
-      if (limit != null) {
-        query += ' LIMIT ?';
-        whereArgs.add(limit);
-      }
-
-      final List<Map<String, dynamic>> results =
-          await db.rawQuery(query, whereArgs);
-
-      // JSON 형태로 변환
-      final List<Map<String, dynamic>> jsonData = results.map((row) {
-        return {
-          'user_id': row['user_id'],
-          'session_id': row['session_id'],
-          'measure_date': row['measure_date'],
-          'rms': row['rms'],
-          'freq': row['freq'],
-          'fatigue': row['fatigue'],
-          'mode': row['mode'],
-          'window_count': row['window_count'],
-          'created_at': row['created_at'],
-          'synced': row['synced'],
-        };
-      }).toList();
-
-      return jsonData;
+      return sessions;
     } catch (e) {
-      print('❌ 동기화되지 않은 fatigue_logs 조회 실패: $e');
+      print('❌ 동기화되지 않은 fatigue_dataset 조회 실패: $e');
       return [];
     }
   }
@@ -93,7 +83,7 @@ class DataConverter {
     int priority = 1,
   }) async {
     try {
-      // 동기화되지 않은 fatigue_logs 조회
+      // 동기화되지 않은 피로도 데이터셋 조회
       final fatigueLogs =
           await getUnsyncedFatigueLogs(limit: limit, userId: userId);
 
@@ -109,8 +99,8 @@ class DataConverter {
           sessionId: log['session_id'] ?? '',
           timestamp: DateTime.now(),
           data: {
-            'fatigue_log': log,
-            'type': 'fatigue_log_upload',
+            'fatigue_dataset': log,
+            'type': 'fatigue_dataset_upload',
           },
           priority: priority,
         );
@@ -126,8 +116,10 @@ class DataConverter {
   }
 
   /// 사용자 상태 업로드 작업으로 변환
-  Future<MeasurementTask?> convertUserStateToTask(String userId,
-      {int priority = 1}) async {
+  Future<MeasurementTask?> convertUserStateToTask(
+    String userId, {
+    int priority = 1,
+  }) async {
     try {
       final userState = await getUserStateJson(userId);
 
@@ -178,9 +170,9 @@ class DataConverter {
           sessionId: 'batch_upload_${i ~/ batchSize}',
           timestamp: DateTime.now(),
           data: {
-            'fatigue_logs_batch': batch,
+            'fatigue_dataset_batch': batch,
             'batch_size': batch.length,
-            'type': 'batch_fatigue_logs_upload',
+            'type': 'batch_fatigue_dataset_upload',
           },
           priority: priority,
         );
@@ -217,7 +209,7 @@ class DataConverter {
           COUNT(*) as total,
           SUM(CASE WHEN synced = 0 THEN 1 ELSE 0 END) as unsynced,
           SUM(CASE WHEN synced = 1 THEN 1 ELSE 0 END) as synced
-        FROM fatigue_logs
+        FROM fatigue_dataset
       ''';
 
       List<dynamic> whereArgs = [];

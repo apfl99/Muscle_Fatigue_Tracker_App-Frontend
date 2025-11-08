@@ -7,6 +7,7 @@ import 'measurement_task.dart';
 import 'queue_manager.dart';
 import 'server_config.dart';
 import 'http_worker.dart';
+import '../model/database_helper.dart';
 
 class WorkerManager {
   final QueueManager _queueManager;
@@ -100,6 +101,20 @@ class WorkerManager {
     required Map<String, dynamic> dataset,
     int priority = 1,
   }) async {
+    final hasPendingWindows = await DatabaseHelper.instance.hasUnsyncedWindows(
+      sessionId,
+      userId: userId,
+    );
+    if (!hasPendingWindows) {
+      print('ℹ️ 이미 업로드된 세션이므로 큐에 추가하지 않습니다: $sessionId');
+      return;
+    }
+
+    if (_queueManager.hasTask(sessionId: sessionId, userId: userId)) {
+      print('⚠️ 세션 $sessionId 작업이 이미 큐에 존재합니다 (중복 방지)');
+      return;
+    }
+
     final taskId =
         '${userId}_${sessionId}_${DateTime.now().millisecondsSinceEpoch}';
 

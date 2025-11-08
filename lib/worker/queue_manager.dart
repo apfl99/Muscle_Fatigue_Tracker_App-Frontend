@@ -127,6 +127,16 @@ class QueueManager {
     };
   }
 
+  bool hasTask({
+    required String sessionId,
+    String? userId,
+  }) {
+    bool matches(MeasurementTask task) =>
+        task.sessionId == sessionId &&
+        (userId == null || task.userId == userId);
+    return _pendingTasks.any(matches) || _processingTasks.any(matches);
+  }
+
   /// 완료된 작업 정리 (지정된 개수만 유지)
   Future<void> cleanupCompletedTasks({int keepCount = 50}) async {
     if (_completedTasks.length > keepCount) {

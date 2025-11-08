@@ -163,46 +163,51 @@ class UserStateData {
   }
 }
 
-/// 측정 데이터 타입 (fatigue_logs 테이블 구조)
-class FatigueLogData {
+/// 측정 데이터 타입 (fatigue_dataset 세션 구조)
+class FatigueDatasetSession {
   final String userId;
   final String sessionId;
-  final String measureDate;
-  final double rms;
-  final double freq;
-  final double fatigue;
+  final double avgRms;
+  final double avgFreq;
+  final double avgFatigue;
   final String mode;
   final int windowCount;
-  final DateTime createdAt;
   final int synced;
+  final int? firstWindowStartMs;
+  final int? lastWindowEndMs;
+  final List<Map<String, dynamic>> windows;
 
-  FatigueLogData({
+  FatigueDatasetSession({
     required this.userId,
     required this.sessionId,
-    required this.measureDate,
-    required this.rms,
-    required this.freq,
-    required this.fatigue,
+    required this.avgRms,
+    required this.avgFreq,
+    required this.avgFatigue,
     required this.mode,
     required this.windowCount,
-    required this.createdAt,
     required this.synced,
+    this.firstWindowStartMs,
+    this.lastWindowEndMs,
+    this.windows = const [],
   });
 
   /// SQLite Map에서 생성
-  factory FatigueLogData.fromMap(Map<String, dynamic> map) {
-    return FatigueLogData(
-      userId: map['user_id'] ?? '',
+  factory FatigueDatasetSession.fromMap(
+    Map<String, dynamic> map, {
+    List<Map<String, dynamic>> windows = const [],
+  }) {
+    return FatigueDatasetSession(
+      userId: map['user_id'] ?? 'local_user',
       sessionId: map['session_id'] ?? '',
-      measureDate: map['measure_date'] ?? '',
-      rms: (map['rms'] ?? 0.0).toDouble(),
-      freq: (map['freq'] ?? 0.0).toDouble(),
-      fatigue: (map['fatigue'] ?? 0.0).toDouble(),
-      mode: map['mode'] ?? 'EMA',
-      windowCount: map['window_count'] ?? 0,
-      createdAt:
-          DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
+      avgRms: (map['rms'] ?? 0.0).toDouble(),
+      avgFreq: (map['freq'] ?? 0.0).toDouble(),
+      avgFatigue: (map['fatigue'] ?? 0.0).toDouble(),
+      mode: map['mode'] ?? 'ema',
+      windowCount: map['window_count'] ?? windows.length,
       synced: map['synced'] ?? 0,
+      firstWindowStartMs: map['first_window_start_ms'] as int?,
+      lastWindowEndMs: map['last_window_end_ms'] as int?,
+      windows: windows,
     );
   }
 
@@ -211,18 +216,20 @@ class FatigueLogData {
     return {
       'user_id': userId,
       'session_id': sessionId,
-      'measure_date': measureDate,
-      'rms': rms,
-      'freq': freq,
-      'fatigue': fatigue,
+      'avg_rms': avgRms,
+      'avg_freq': avgFreq,
+      'avg_fatigue': avgFatigue,
       'mode': mode,
       'window_count': windowCount,
       'synced': synced,
+      'first_window_start_ms': firstWindowStartMs,
+      'last_window_end_ms': lastWindowEndMs,
+      'windows': windows,
     };
   }
 
   @override
   String toString() {
-    return 'FatigueLogData(userId: $userId, sessionId: $sessionId, fatigue: $fatigue)';
+    return 'FatigueDatasetSession(userId: $userId, sessionId: $sessionId, avgFatigue: $avgFatigue)';
   }
 }

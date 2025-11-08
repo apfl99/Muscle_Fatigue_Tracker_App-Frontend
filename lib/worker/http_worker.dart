@@ -80,22 +80,165 @@ class HttpWorker {
   /// 데이터셋 업로드 처리
   Future<void> _processDatasetUpload(MeasurementTask task) async {
     final dataset = task.data['dataset'] as Map<String, dynamic>;
-
-    // 단일 측정 데이터에 measurement_count 추가
     final measurementData = Map<String, dynamic>.from(dataset);
-    measurementData['measurement_count'] = 1;
 
-    // windows 필드 정리 (null이거나 빈 리스트인 경우 빈 리스트로 설정)
-    if (measurementData['windows'] == null ||
-        measurementData['windows'] is! List ||
-        (measurementData['windows'] as List).isEmpty) {
-      measurementData['windows'] = <Map<String, dynamic>>[];
+    final sessionId = measurementData['session_id'] as String? ?? '';
+    final userId = measurementData['user_id'] as String? ?? 'local_user';
+    measurementData['user_id'] = userId;
+
+    // 윈도우 데이터 확보 (큐에 들어있는 값이 없으면 DB에서 조회)
+    List<Map<String, dynamic>> windows = [];
+    if (measurementData['windows'] is List) {
+      windows = (measurementData['windows'] as List)
+          .whereType<Map>()
+          .map((w) => Map<String, dynamic>.from(w))
+          .toList();
+    }
+    if (windows.isEmpty && sessionId.isNotEmpty) {
+      windows = await DatabaseHelper.instance.getWindowsBySession(
+        sessionId,
+        userId: userId,
+        onlyUnsynced: true,
+      );
+    } else {
+      windows = windows.where((w) {
+        final synced = w['synced'];
+        if (synced == null) return true;
+        if (synced is int) return synced == 0;
+        if (synced is bool) return !synced;
+        return true;
+      }).toList();
     }
 
-    print('📊 단일 측정 데이터에 measurement_count 추가 완료');
+    if (windows.isEmpty) {
+      print('ℹ️ 이미 업로드된 세션이거나 전송할 윈도우가 없습니다: $sessionId');
+      await _queueManager.completeTask(
+        task.taskId,
+        result: {
+          'skipped': true,
+          'reason': 'already_synced',
+        },
+      );
+      return;
+    }
+
+    // DatasetItem 스펙에 맞게 변환
+    final batchData = windows.map((window) {
+      final windowMap = Map<String, dynamic>.from(window);
+      windowMap['user_id'] = userId;
+      windowMap['session_id'] = sessionId;
+
+      // user_emb JSON 문자열 → 리스트
+      final emb = windowMap['user_emb'];
+      if (emb is String && emb.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(emb) as List<dynamic>;
+          windowMap['user_emb'] =
+              decoded.map((e) => (e as num).toDouble()).toList();
+        } catch (_) {
+          windowMap['user_emb'] = null;
+        }
+      }
+      if (windowMap['user_emb'] == null) {
+        final sessionEmb = measurementData['user_emb'];
+        if (sessionEmb is String && sessionEmb.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(sessionEmb) as List<dynamic>;
+            windowMap['user_emb'] =
+                decoded.map((e) => (e as num).toDouble()).toList();
+          } catch (_) {
+            windowMap['user_emb'] = null;
+          }
+        } else if (sessionEmb is List) {
+          windowMap['user_emb'] =
+              sessionEmb.map((e) => (e as num).toDouble()).toList();
+        }
+        if (windowMap['user_emb'] == null) {
+          windowMap['user_emb'] = List<double>.filled(12, 0.0);
+        }
+      }
+
+      // 기본값 보정
+      windowMap['quality_flag'] ??= 1;
+      windowMap['window_size_ms'] ??= 2000;
+      windowMap['overlap_rate'] ??= 0.5;
+      windowMap['rms_base'] ??=
+          (measurementData['rms_base'] as num?)?.toDouble() ?? 0.0;
+      windowMap['freq_base'] ??=
+          (measurementData['freq_base'] as num?)?.toDouble() ?? 0.0;
+
+      const doubleFields = [
+        'acc_x_mean',
+        'acc_y_mean',
+        'acc_z_mean',
+        'gyro_x_mean',
+        'gyro_y_mean',
+        'gyro_z_mean',
+        'linacc_x_mean',
+        'linacc_y_mean',
+        'linacc_z_mean',
+        'gravity_x_mean',
+        'gravity_y_mean',
+        'gravity_z_mean',
+        'acc_x_std',
+        'acc_y_std',
+        'acc_z_std',
+        'gyro_x_std',
+        'gyro_y_std',
+        'gyro_z_std',
+        'rms_acc',
+        'rms_gyro',
+        'mean_freq_acc',
+        'mean_freq_gyro',
+        'entropy_acc',
+        'entropy_gyro',
+        'jerk_mean',
+        'jerk_std',
+        'stability_index',
+        'overlap_rate',
+        'fatigue_prev',
+        'fatigue',
+        'rms_base',
+        'freq_base',
+      ];
+      for (final key in doubleFields) {
+        windowMap[key] = (windowMap[key] as num?)?.toDouble() ?? 0.0;
+      }
+
+      const intFields = ['fatigue_level', 'quality_flag', 'window_size_ms'];
+      for (final key in intFields) {
+        windowMap[key] = (windowMap[key] as num?)?.toInt() ?? 0;
+      }
+      const longFields = ['window_id', 'window_start_ms', 'window_end_ms'];
+      for (final key in longFields) {
+        windowMap[key] = (windowMap[key] as num?)?.toInt() ?? 0;
+      }
+      final timestampUtc = windowMap['timestamp_utc'];
+      if (timestampUtc == null) {
+        windowMap['timestamp_utc'] = DateTime.now().toUtc().toIso8601String();
+      } else if (timestampUtc is! String) {
+        windowMap['timestamp_utc'] = timestampUtc.toString();
+      }
+
+      windowMap.remove('synced');
+      windowMap.remove('mode');
+      windowMap.remove('timestamp');
+      windowMap.remove('variance');
+      windowMap.remove('mean_power_freq');
+      windowMap.remove('median_freq');
+      windowMap.remove('sample_count');
+      windowMap.remove('rms');
+      windowMap.remove('freq');
+      windowMap.removeWhere((key, value) => value == null);
+      return windowMap;
+    }).toList();
+
+    final payload = {
+      'batch_data': batchData,
+    };
 
     // API로 전송
-    final response = await _sendDataset(measurementData);
+    final response = await _sendDataset(payload);
 
     if (response['success']) {
       // SQLite에서 synced 상태 업데이트
@@ -250,7 +393,12 @@ class HttpWorker {
   Future<void> _markSingleAsSynced(Map<String, dynamic> measurementData) async {
     try {
       final sessionId = measurementData['session_id'] as String;
-      await DatabaseHelper.instance.markLogsAsSynced([sessionId]);
+      final userId =
+          measurementData['user_id'] as String? ?? DatabaseHelper.defaultUserId;
+      await DatabaseHelper.instance.markLogsAsSynced(
+        [sessionId],
+        userId: userId,
+      );
       print('✅ 세션 데이터 synced 상태로 업데이트 완료: $sessionId');
     } catch (e) {
       print('⚠️ synced 상태 업데이트 실패: $e');
