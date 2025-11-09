@@ -87,7 +87,9 @@ class HttpWorker {
     final measurementData = Map<String, dynamic>.from(dataset);
 
     final sessionId = measurementData['session_id'] as String? ?? '';
-    final userId = measurementData['user_id'] as String? ?? 'local_user';
+    final userId = await DatabaseHelper.resolveUserId(
+      measurementData['user_id'] as String?,
+    );
     measurementData['user_id'] = userId;
 
     // 윈도우 데이터 확보 (큐에 들어있는 값이 없으면 DB에서 조회)
@@ -418,8 +420,9 @@ class HttpWorker {
   Future<void> _markSingleAsSynced(Map<String, dynamic> measurementData) async {
     try {
       final sessionId = measurementData['session_id'] as String;
-      final userId =
-          measurementData['user_id'] as String? ?? DatabaseHelper.defaultUserId;
+      final userId = await DatabaseHelper.resolveUserId(
+        measurementData['user_id'] as String?,
+      );
       await DatabaseHelper.instance.markLogsAsSynced(
         [sessionId],
         userId: userId,

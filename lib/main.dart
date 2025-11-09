@@ -18,12 +18,23 @@ import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 import 'worker/model_update_scheduler.dart';
 import 'model/personalization_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'utils/user_identity.dart';
 
 void main() async {
   print('\n🚀 앱 시작...');
   print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  await UserIdentity.instance.ensureInitialized();
+  final migratedFrom = UserIdentity.instance.lastMigratedFrom;
+  if (migratedFrom != null) {
+    final newId = await UserIdentity.instance.userId;
+    await DatabaseHelper.instance.migrateUserId(
+      oldUserId: migratedFrom,
+      newUserId: newId,
+    );
+  }
 
   // 데이터베이스 초기화
   print('🗄️ 데이터베이스 초기화 중...');

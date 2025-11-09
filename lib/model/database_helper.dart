@@ -2,7 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:io';
 import 'dart:convert';
-import '../worker/worker_manager.dart';
+import '../utils/user_identity.dart';
 import 'dart:async';
 import 'user_stats.dart';
 
@@ -25,6 +25,13 @@ class DatabaseHelper {
   static const String tableSyncHistory = 'sync_history';
 
   static const String defaultUserId = 'local_user';
+
+  static Future<String> resolveUserId([String? userId]) async {
+    if (userId != null && userId != defaultUserId) {
+      return userId;
+    }
+    return await UserIdentity.instance.userId;
+  }
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -92,24 +99,12 @@ class DatabaseHelper {
     print('✅ user_state 테이블 생성 완료');
 
     // 초기 user_state 레코드 삽입 (baseline은 미설정 상태 유지)
+    final initialUserId = await resolveUserId();
     await db.insert(
       tableUserState,
       {
-        'user_id': defaultUserId,
-        'user_emb': jsonEncode([
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-        ]), // 12D 벡터
+        'user_id': initialUserId,
+        'user_emb': jsonEncode(List<double>.filled(12, 0.0)),
         'model_version': '1.0.0',
         'last_sync': DateTime.now().toIso8601String(),
       },
@@ -240,6 +235,29 @@ class DatabaseHelper {
     print('✅ 모든 테이블 생성 완료');
   }
 
+  Future<void> migrateUserId({
+    required String oldUserId,
+    required String newUserId,
+  }) async {
+    if (oldUserId == newUserId) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.rawUpdate(
+        'UPDATE $tableUserState SET user_id = ? WHERE user_id = ?',
+        [newUserId, oldUserId],
+      );
+      await txn.rawUpdate(
+        'UPDATE $tableFatigueDataset SET user_id = ? WHERE user_id = ?',
+        [newUserId, oldUserId],
+      );
+      await txn.rawUpdate(
+        'UPDATE $tableSyncHistory SET user_id = ? WHERE user_id = ?',
+        [newUserId, oldUserId],
+      );
+    });
+    print('ℹ️ 사용자 ID 마이그레이션: $oldUserId → $newUserId');
+  }
+
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     print('🔄 데이터베이스 업그레이드 중... ($oldVersion → $newVersion)');
 
@@ -333,6 +351,7 @@ class DatabaseHelper {
   Future<Map<String, dynamic>?> getUserState({
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.query(
       tableUserState,
@@ -349,6 +368,7 @@ class DatabaseHelper {
     List<double>? userEmb,
     String? modelVersion,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final nowIso = DateTime.now().toIso8601String();
 
@@ -384,6 +404,7 @@ class DatabaseHelper {
   }
 
   Future<List<double>> getUserEmbedding({String userId = defaultUserId}) async {
+    userId = await resolveUserId(userId);
     final state = await getUserState(userId: userId);
     if (state == null || state['user_emb'] == null) {
       return List.filled(12, 0.0);
@@ -493,6 +514,7 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getAllFatigueLogs({
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.rawQuery(
       '''
@@ -521,6 +543,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     int limit = 10,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.rawQuery(
       '''
@@ -551,6 +574,7 @@ class DatabaseHelper {
     required DateTime startDate,
     required DateTime endDate,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final startMs = startDate.millisecondsSinceEpoch;
     final endMs = endDate.millisecondsSinceEpoch;
@@ -590,6 +614,7 @@ class DatabaseHelper {
   }
 
   Future<int> deleteAllFatigueLogs({String userId = defaultUserId}) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     return await db.delete(
       tableFatigueDataset,
@@ -601,6 +626,7 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getUnsyncedLogs({
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.rawQuery(
       '''
@@ -628,6 +654,7 @@ class DatabaseHelper {
     List<String> sessionIds, {
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     for (final sessionId in sessionIds) {
       await db.update(
@@ -645,6 +672,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     bool onlyUnsynced = false,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final whereBuffer = StringBuffer('session_id = ? AND user_id = ?');
     final whereArgs = <dynamic>[sessionId, userId];
@@ -663,6 +691,7 @@ class DatabaseHelper {
     String sessionId, {
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.rawQuery(
       '''
@@ -677,6 +706,7 @@ class DatabaseHelper {
   }
 
   Future<int> getValidWindowCount({String userId = defaultUserId}) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.rawQuery(
       '''
@@ -694,6 +724,7 @@ class DatabaseHelper {
     int days = 7,
     int limit = 500,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final cutoff =
         DateTime.now().toUtc().subtract(Duration(days: days)).toIso8601String();
@@ -710,6 +741,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     int days = 7,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final cutoff =
         DateTime.now().toUtc().subtract(Duration(days: days)).toIso8601String();
@@ -766,6 +798,7 @@ class DatabaseHelper {
     required String syncType,
     required String status,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
 
     final data = {
@@ -782,6 +815,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     int limit = 20,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     return await db.query(
       tableSyncHistory,
@@ -796,6 +830,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     required String syncType,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
     final result = await db.query(
       tableSyncHistory,
@@ -814,6 +849,7 @@ class DatabaseHelper {
   Future<Map<String, dynamic>> getOverallStats({
     String userId = defaultUserId,
   }) async {
+    userId = await resolveUserId(userId);
     final db = await database;
 
     // 세션 단위 요약
@@ -901,6 +937,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
     int n = 5,
   }) async {
+    userId = await resolveUserId(userId);
     final logs = await getRecentFatigueLogs(userId: userId, limit: n);
 
     if (logs.isEmpty) {
@@ -928,6 +965,7 @@ class DatabaseHelper {
     String userId = defaultUserId,
   }) async {
     try {
+      userId = await resolveUserId(userId);
       print('🧮 User Embedding 계산 시작...');
 
       // 모든 피로도 로그 조회
@@ -1017,6 +1055,7 @@ class DatabaseHelper {
 
   /// 데이터베이스 전체 초기화 (개발용)
   Future<void> resetDatabase({String userId = defaultUserId}) async {
+    userId = await resolveUserId(userId);
     final db = await database;
 
     // 데이터 삭제
@@ -1125,6 +1164,7 @@ class DatabaseHelper {
   /// Baseline 초기화
   Future<bool> clearBaseline() async {
     try {
+      final userId = await resolveUserId();
       final db = await database;
       await db.update(
         tableUserState,
@@ -1134,7 +1174,7 @@ class DatabaseHelper {
           'last_sync': DateTime.now().toIso8601String(),
         },
         where: 'user_id = ?',
-        whereArgs: [defaultUserId],
+        whereArgs: [userId],
       );
 
       print('✅ Baseline 초기화 완료 (DB null 설정)');
@@ -1149,10 +1189,11 @@ class DatabaseHelper {
   Future<bool> isFirstMeasurement() async {
     try {
       // fatigue_dataset 테이블에 데이터가 있는지 확인
+      final userId = await resolveUserId();
       final db = await database;
       final result = await db.rawQuery(
         'SELECT COUNT(*) as count FROM $tableFatigueDataset WHERE user_id = ?',
-        [defaultUserId],
+        [userId],
       );
 
       final count = result.first['count'] as int;

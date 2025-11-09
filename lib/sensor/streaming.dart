@@ -12,6 +12,7 @@ import '../model/config.dart' as model_config;
 import '../model/ml.dart';
 import '../worker/worker_manager.dart';
 import '../model/personalization_manager.dart';
+import '../utils/user_identity.dart';
 
 class SensorStreaming {
   // Raw 데이터 버퍼
@@ -801,9 +802,11 @@ class SensorStreaming {
           // 세션 ID 생성 (timestamp 기반)
           final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
 
+          final userId = await UserIdentity.instance.userId;
+
           // 윈도우 단위 데이터 저장
           await DatabaseHelper.instance.insertFatigueWindows(
-            userId: 'local_user',
+            userId: userId,
             sessionId: sessionId,
             windows: _currentSessionWindows
                 .map((w) => Map<String, dynamic>.from(w))
@@ -836,10 +839,10 @@ class SensorStreaming {
 
             final workerManager = await getWorkerManager();
             await workerManager.addDatasetUploadTask(
-              userId: 'local_user',
+              userId: userId,
               sessionId: sessionId,
               dataset: {
-                'user_id': 'local_user',
+                'user_id': userId,
                 'session_id': sessionId,
                 'mode': currentMLMode.name,
                 'avg_rms': avgRms,

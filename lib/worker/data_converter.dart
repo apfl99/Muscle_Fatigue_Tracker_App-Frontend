@@ -14,7 +14,7 @@ class DataConverter {
     String? userId,
   }) async {
     try {
-      final effectiveUserId = userId ?? DatabaseHelper.defaultUserId;
+      final effectiveUserId = await DatabaseHelper.resolveUserId(userId);
       final rows = await _dbHelper.getUnsyncedLogs(
         userId: effectiveUserId,
       );
@@ -56,14 +56,15 @@ class DataConverter {
   /// 사용자 상태 데이터를 JSON으로 변환
   Future<Map<String, dynamic>?> getUserStateJson(String userId) async {
     try {
-      final userState = await _dbHelper.getUserState(userId: userId);
+      final resolvedUserId = await DatabaseHelper.resolveUserId(userId);
+      final userState = await _dbHelper.getUserState(userId: resolvedUserId);
 
       if (userState == null) {
         return null;
       }
 
       return {
-        'user_id': userId,
+        'user_id': resolvedUserId,
         'rms_base': userState['rms_base'],
         'freq_base': userState['freq_base'],
         'user_emb': userState['user_emb'],
