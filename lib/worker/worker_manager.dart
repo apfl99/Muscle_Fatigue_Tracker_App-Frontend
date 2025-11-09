@@ -209,6 +209,18 @@ class WorkerManager {
     );
   }
 
+  Future<String> addModelDownloadTask({
+    bool force = false,
+    int? version,
+    int priority = 1,
+  }) async {
+    return await _queueManager.addModelDownloadTask(
+      force: force,
+      version: version,
+      priority: priority,
+    );
+  }
+
   /// 큐 상태 출력
   void printStatus() {
     final status = getQueueStatus();

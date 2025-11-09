@@ -676,6 +676,50 @@ class DatabaseHelper {
     return count > 0;
   }
 
+  Future<int> getValidWindowCount({String userId = defaultUserId}) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS cnt
+      FROM $tableFatigueDataset
+      WHERE user_id = ? AND quality_flag = 1
+      ''',
+      [userId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<List<Map<String, dynamic>>> getRecentWindows({
+    String userId = defaultUserId,
+    int days = 7,
+    int limit = 500,
+  }) async {
+    final db = await database;
+    final cutoff =
+        DateTime.now().toUtc().subtract(Duration(days: days)).toIso8601String();
+    return await db.query(
+      tableFatigueDataset,
+      where: 'user_id = ? AND quality_flag = 1 AND timestamp_utc >= ?',
+      whereArgs: [userId, cutoff],
+      orderBy: 'timestamp_utc DESC',
+      limit: limit,
+    );
+  }
+
+  Future<int> pruneOldWindows({
+    String userId = defaultUserId,
+    int days = 7,
+  }) async {
+    final db = await database;
+    final cutoff =
+        DateTime.now().toUtc().subtract(Duration(days: days)).toIso8601String();
+    return await db.delete(
+      tableFatigueDataset,
+      where: 'user_id = ? AND timestamp_utc < ?',
+      whereArgs: [userId, cutoff],
+    );
+  }
+
   /// ========================================
   /// Model Versions 관련 메서드
   /// ========================================

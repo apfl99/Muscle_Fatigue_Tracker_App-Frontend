@@ -137,6 +137,12 @@ class QueueManager {
     return _pendingTasks.any(matches) || _processingTasks.any(matches);
   }
 
+  bool hasTaskOfType(String type) {
+    bool matches(MeasurementTask task) =>
+        (task.data['type'] as String?) == type;
+    return _pendingTasks.any(matches) || _processingTasks.any(matches);
+  }
+
   /// 완료된 작업 정리 (지정된 개수만 유지)
   Future<void> cleanupCompletedTasks({int keepCount = 50}) async {
     if (_completedTasks.length > keepCount) {
@@ -270,6 +276,39 @@ class QueueManager {
 
     await addTask(task);
     print('📤 사용자 상태 업로드 작업 추가: $taskId');
+    return taskId;
+  }
+
+  Future<String> addModelDownloadTask({
+    bool force = false,
+    int? version,
+    int priority = 1,
+  }) async {
+    if (hasTaskOfType('model_download')) {
+      print('ℹ️ 모델 다운로드 작업이 이미 큐에 존재합니다. (force=$force)');
+      return 'model_download_existing';
+    }
+
+    final taskId = 'model_download_${DateTime.now().millisecondsSinceEpoch}';
+
+    final task = MeasurementTask(
+      taskId: taskId,
+      userId: 'system',
+      sessionId: 'model_download',
+      timestamp: DateTime.now(),
+      data: {
+        'type': 'model_download',
+        'force': force,
+        if (version != null) 'version': version,
+      },
+      priority: priority,
+    );
+
+    await addTask(task);
+    print(
+      '🧠 모델 다운로드 작업 추가: $taskId '
+      '(force=$force, version=${version ?? 'latest'})',
+    );
     return taskId;
   }
 

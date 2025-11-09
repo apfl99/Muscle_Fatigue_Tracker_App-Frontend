@@ -585,48 +585,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
           // Phase 로드맵
           _buildPhaseRoadmap(),
-
-          // ML 구현 안내
-          if (_currentMLMode != MLMode.ema) ...[
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade900,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.construction,
-                    size: 20,
-                    color: Colors.grey.shade600,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'ML 모델 기능은 추후 구현 예정',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '현재는 모든 단계에서 기본 학습 방식 사용',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );

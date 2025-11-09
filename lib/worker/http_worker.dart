@@ -8,6 +8,7 @@ import 'measurement_task.dart';
 import 'queue_manager.dart';
 import 'server_config.dart';
 import '../model/database_helper.dart';
+import '../model/model_downloader.dart';
 
 class HttpWorker {
   final QueueManager _queueManager;
@@ -66,6 +67,9 @@ class HttpWorker {
           break;
         case 'upload_state':
           await _processUploadState(task);
+          break;
+        case 'model_download':
+          await _processModelDownload(task);
           break;
         default:
           throw Exception('알 수 없는 작업 타입: $taskType');
@@ -229,6 +233,7 @@ class HttpWorker {
       windowMap.remove('sample_count');
       windowMap.remove('rms');
       windowMap.remove('freq');
+      windowMap.remove('fatigue_personal');
       windowMap.removeWhere((key, value) => value == null);
       return windowMap;
     }).toList();
@@ -352,7 +357,7 @@ class HttpWorker {
     Map<String, dynamic> userStateData,
   ) async {
     try {
-      final url = Uri.parse('${_serverConfig.baseUrl}/upload_state');
+      final url = Uri.parse(_serverConfig.getApiUrl('/upload_state'));
       print('🌐 사용자 상태 전송 URL: $url');
 
       final response = await http
@@ -389,6 +394,26 @@ class HttpWorker {
     }
   }
 
+  Future<void> _processModelDownload(MeasurementTask task) async {
+    print('🧠 모델 다운로드 작업 처리 시작: ${task.taskId}');
+    final force = task.data['force'] == true;
+    final version = (task.data['version'] as num?)?.toInt();
+
+    try {
+      await ModelDownloader.instance
+          .downloadLatest(force: force, versionOverride: version);
+
+      await _queueManager.completeTask(
+        task.taskId,
+        result: {'success': true},
+      );
+      print('✅ 모델 다운로드 작업 완료: ${task.taskId}');
+    } catch (e) {
+      print('❌ 모델 다운로드 작업 실패: ${task.taskId} - $e');
+      await _queueManager.failTask(task.taskId, e.toString());
+    }
+  }
+
   /// 단일 측정 데이터를 synced로 마킹
   Future<void> _markSingleAsSynced(Map<String, dynamic> measurementData) async {
     try {
@@ -408,7 +433,7 @@ class HttpWorker {
   /// 서버 연결 상태 확인
   Future<bool> checkServerHealth() async {
     try {
-      final url = Uri.parse(_serverConfig.baseUrl);
+      final url = Uri.parse(_serverConfig.apiBaseUrl);
 
       final response = await http.get(url).timeout(
             const Duration(seconds: 10),
@@ -433,7 +458,7 @@ class HttpWorker {
     return {
       'worker_id': _workerId,
       'is_running': _isRunning,
-      'server_url': _serverConfig.baseUrl,
+      'server_url': _serverConfig.apiBaseUrl,
       'timestamp': DateTime.now().toIso8601String(),
     };
   }

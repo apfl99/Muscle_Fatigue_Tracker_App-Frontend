@@ -11,6 +11,7 @@ import '../model/measure_session.dart';
 import '../model/config.dart' as model_config;
 import '../model/ml.dart';
 import '../worker/worker_manager.dart';
+import '../model/personalization_manager.dart';
 
 class SensorStreaming {
   // Raw 데이터 버퍼
@@ -51,6 +52,10 @@ class SensorStreaming {
 
   // 윈도우 생성 카운터
   int _windowCount = 0;
+  List<double>? _cachedUserEmbedding;
+
+  static const double _lowMotionRmsThreshold = 2.0;
+  static const double _lowMotionFreqThreshold = 1.0;
 
   int? _measurementStartMs;
   double? _prevWindowFatigue;
@@ -74,6 +79,7 @@ class SensorStreaming {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     _measurementCount = 0;
     print('📊 측정 횟수 초기화: $_measurementCount회');
+    _cachedUserEmbedding = null;
 
     try {
       print('⚙️ 센서 설정:');
@@ -375,14 +381,12 @@ class SensorStreaming {
           );
           break;
         case model_config.MLMode.endToEnd:
-          fatigueScore = (await calculateEndToEndFatigue(
-                windowData: filteredData,
-                rms: fatigueFeatures.rms,
-                freq: fatigueFeatures.peakFrequency,
-                rmsBase: rmsBase,
-                freqBase: freqBase,
-              )) ??
-              1.0;
+          fatigueScore = FatigueCalculator.calculateFatigue(
+            rms: fatigueFeatures.rms,
+            peakFreq: fatigueFeatures.peakFrequency,
+            rmsBase: rmsBase,
+            freqBase: freqBase,
+          );
           break;
       }
 
@@ -409,6 +413,9 @@ class SensorStreaming {
       final fatigueLevelInt = _fatigueLevelToInt(fatigueScore);
       final overlapRate = windowSizeMs > 0 ? 1.0 - (hopMs / windowSizeMs) : 0.5;
 
+      double gyroRms = 0.0;
+      double gyroMeanFreq = 0.0;
+
       final windowData = {
         'window_id': _windowIndex,
         'window_index': _windowIndex,
@@ -428,11 +435,11 @@ class SensorStreaming {
         'stability_index': fatigueFeatures.variance,
         'fatigue_prev': fatiguePrev ?? 0.0,
         'fatigue_level': fatigueLevelInt,
-        'quality_flag': 1,
         'window_size_ms': windowSizeMs,
         'overlap_rate': overlapRate,
-        'rms_base': rmsBase ?? 0.0,
-        'freq_base': freqBase ?? 0.0,
+        'rms_base': rmsBase,
+        'freq_base': freqBase,
+        'quality_flag': 1,
       };
 
       final accelSampleCount = _minInt([
@@ -537,9 +544,7 @@ class SensorStreaming {
           ..['gyro_z_mean'] = gyroMeanZ
           ..['gyro_x_std'] = sqrt(_calculateVariance(gyroWindowX, gyroMeanX))
           ..['gyro_y_std'] = sqrt(_calculateVariance(gyroWindowY, gyroMeanY))
-          ..['gyro_z_std'] = sqrt(_calculateVariance(gyroWindowZ, gyroMeanZ))
-          ..['rms_gyro'] =
-              _calculateVectorRMS(gyroWindowX, gyroWindowY, gyroWindowZ);
+          ..['gyro_z_std'] = sqrt(_calculateVariance(gyroWindowZ, gyroMeanZ));
 
         final gyroMagnitude = List<double>.generate(
           gyroSampleCount,
@@ -549,8 +554,11 @@ class SensorStreaming {
                 gyroWindowZ[i] * gyroWindowZ[i],
           ),
         );
-        windowData['mean_freq_gyro'] =
+        gyroRms = _calculateVectorRMS(gyroWindowX, gyroWindowY, gyroWindowZ);
+        gyroMeanFreq =
             _calculateMeanFrequency(gyroMagnitude, effectiveSamplingRate);
+        windowData['rms_gyro'] = gyroRms;
+        windowData['mean_freq_gyro'] = gyroMeanFreq;
         windowData['entropy_gyro'] = _calculateSpectralEntropy(gyroMagnitude);
       } else {
         windowData
@@ -563,15 +571,88 @@ class SensorStreaming {
           ..['rms_gyro'] = 0.0
           ..['mean_freq_gyro'] = 0.0
           ..['entropy_gyro'] = 0.0;
+        gyroRms = 0.0;
+        gyroMeanFreq = 0.0;
       }
+      final expectedSamples =
+          (SensorConfig.windowSeconds * effectiveSamplingRate).round();
+      final normalizedExpected = expectedSamples <= 0 ? 1 : expectedSamples;
+      final coverage =
+          analysisData.isEmpty ? 0.0 : analysisData.length / normalizedExpected;
+      final minSampleThreshold = (normalizedExpected * 0.6).ceil();
+      final hasEnoughAccel = accelSampleCount >= minSampleThreshold;
+      final hasEnoughGyro = gyroSampleCount >= minSampleThreshold;
+      final hasFiniteValues = _hasFiniteMetrics(windowData);
+
+      final isHighQuality =
+          coverage >= 0.6 && hasEnoughAccel && hasEnoughGyro && hasFiniteValues;
+      windowData['quality_flag'] = isHighQuality ? 1 : 0;
+
+      if (!isHighQuality) {
+        print(
+          '⚠️ 품질 미달 윈도우 → 제외 (coverage=${coverage.toStringAsFixed(2)}, '
+          'accel=$accelSampleCount, gyro=$gyroSampleCount)',
+        );
+        _windowIndex++;
+        return;
+      }
+
+      final isLowMotion = fatigueFeatures.rms < _lowMotionRmsThreshold &&
+          fatigueFeatures.peakFrequency < _lowMotionFreqThreshold;
+      windowData['low_motion_flag'] = isLowMotion ? 1 : 0;
+
+      final userEmbedding = await _getUserEmbedding();
+      windowData['user_emb'] = List<double>.from(userEmbedding);
+      if (mode == model_config.MLMode.endToEnd && !isLowMotion) {
+        final e2eScore = await calculateEndToEndFatigue(
+          window: windowData,
+          rms: fatigueFeatures.rms,
+          freq: fatigueFeatures.peakFrequency,
+          rmsBase: rmsBase,
+          freqBase: freqBase,
+        );
+        if (e2eScore != null) {
+          fatigueScore = e2eScore;
+        } else {
+          print('⚠️ E2E 추론 실패 → EMA fallback 유지');
+        }
+      } else if (mode == model_config.MLMode.endToEnd && isLowMotion) {
+        print(
+          'ℹ️ 저활동 구간 감지 → EMA 결과 사용 (rms=${fatigueFeatures.rms.toStringAsFixed(3)}, '
+          'freq=${fatigueFeatures.peakFrequency.toStringAsFixed(3)})',
+        );
+      }
+
+      double finalFatigueScore = fatigueScore;
+      final personalizationManager = PersonalizationManager.instance;
+      if (personalizationManager.isPersonalizationActive) {
+        final features = {
+          'rms_acc': fatigueFeatures.rms,
+          'mean_freq_acc': fatigueFeatures.meanPowerFrequency,
+          'rms_gyro': gyroRms,
+          'mean_freq_gyro': gyroMeanFreq,
+          'fatigue': fatigueScore,
+        };
+        finalFatigueScore = personalizationManager.applyPersonalization(
+          features: features,
+          fallback: fatigueScore,
+        );
+      }
+      final finalFatigueLevel =
+          FatigueCalculator.getFatigueLevel(finalFatigueScore);
+      final finalFatigueLevelInt = _fatigueLevelToInt(finalFatigueScore);
+      windowData['fatigue_level'] = finalFatigueLevelInt;
+      windowData['fatigue_personal'] = finalFatigueScore;
+      windowData['fatigue'] = finalFatigueScore;
+
       _currentSessionWindows.add(windowData);
       _windowIndex++;
-      _prevWindowFatigue = fatigueScore;
+      _prevWindowFatigue = finalFatigueScore;
 
       // 마지막 윈도우 결과 저장
       _lastWindowResult = {
-        'fatigueScore': fatigueScore,
-        'fatigueLevel': fatigueLevel,
+        'fatigueScore': finalFatigueScore,
+        'fatigueLevel': finalFatigueLevel,
         'rms': fatigueFeatures.rms,
         'peakFreq': fatigueFeatures.peakFrequency,
         'fatigueRMS': fatigueFeatures.rms,
@@ -684,6 +765,8 @@ class SensorStreaming {
           return;
         }
 
+        final currentMLMode = BaselineManager.instance.getCurrentMLMode();
+
         // 세션 평균값 계산
         final avgRms = _currentSessionWindows
                 .map((w) => w['rms'] as double)
@@ -696,7 +779,9 @@ class SensorStreaming {
             _currentSessionWindows.length;
 
         final avgFatigue = _currentSessionWindows
-                .map((w) => w['fatigue'] as double)
+                .map(
+                  (w) => (w['fatigue_personal'] ?? w['fatigue']) as double,
+                )
                 .reduce((a, b) => a + b) /
             _currentSessionWindows.length;
 
@@ -713,8 +798,6 @@ class SensorStreaming {
         } else {
           // 일반 측정은 기존대로 저장
           // 현재 ML 모드 가져오기
-          final currentMLMode = BaselineManager.instance.getCurrentMLMode();
-
           // 세션 ID 생성 (timestamp 기반)
           final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -777,6 +860,8 @@ class SensorStreaming {
           } catch (e) {
             print('⚠️ upload_logs 작업 추가 실패: $e');
           }
+
+          await PersonalizationManager.instance.ensurePersonalization();
         }
 
         // UI에 결과 전달
@@ -810,6 +895,31 @@ class SensorStreaming {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     // 다음 세션 대비 플래그 초기화
     _baselineUpdatedThisStop = false;
+    _cachedUserEmbedding = null;
+  }
+
+  Future<List<double>> _getUserEmbedding() async {
+    if (_cachedUserEmbedding != null) {
+      return _cachedUserEmbedding!;
+    }
+    try {
+      final embedding = await DatabaseHelper.instance.getUserEmbedding();
+      _cachedUserEmbedding = List<double>.from(embedding);
+    } catch (_) {
+      _cachedUserEmbedding = <double>[];
+    }
+    return _cachedUserEmbedding!;
+  }
+
+  bool _hasFiniteMetrics(Map<String, dynamic> window) {
+    for (final entry in window.entries) {
+      final value = entry.value;
+      if (value is double && (!value.isFinite || value.isNaN)) {
+        print('⚠️ 비정상 피처 감지 → ${entry.key}=$value');
+        return false;
+      }
+    }
+    return true;
   }
 
   void clearData() {
@@ -835,6 +945,7 @@ class SensorStreaming {
     _windowCount = 0;
     _measurementStartMs = null;
     _prevWindowFatigue = null;
+    _cachedUserEmbedding = null;
   }
 
   /// 마지막 윈도우 분석 결과 반환

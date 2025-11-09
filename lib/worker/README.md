@@ -22,7 +22,8 @@ lib/worker/
 ```dart
 // 서버 설정
 final serverConfig = await getServerConfig();
-serverConfig.baseUrl = 'https://your-huggingface-space.hf.space';
+serverConfig.apiBaseUrl = 'https://your-api-space.hf.space';
+serverConfig.modelBaseUrl = 'https://your-model-space.hf.space';
 await updateServerConfig(serverConfig);
 
 // 워커 매니저 초기화

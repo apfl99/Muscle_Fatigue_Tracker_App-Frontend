@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'sensor/streaming.dart';
 import 'sensor/config.dart';
@@ -15,6 +15,9 @@ import 'screens/profile_page.dart';
 import 'theme/app_theme.dart';
 import 'utils/responsive.dart';
 import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
+import 'worker/model_update_scheduler.dart';
+import 'model/personalization_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   print('\n🚀 앱 시작...');
@@ -43,6 +46,13 @@ void main() async {
 
     // User Embedding은 측정 시에만 계산됨
     print('✅ User Embedding은 측정 시에 자동 계산됩니다');
+
+    await ModelUpdateScheduler.instance.start();
+    print('✅ 모델 자동 다운로드 스케줄러 시작');
+
+    await PersonalizationManager.instance.initialize();
+    await PersonalizationManager.instance.ensurePersonalization();
+    print('✅ 개인화 매니저 초기화 및 점검 완료');
   } catch (e, stackTrace) {
     print('❌ 초기화 실패: $e');
     print('스택 트레이스: $stackTrace');
@@ -96,6 +106,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 동적 측정시간 설정
   double _customMeasurementSeconds = SensorConfig.totalSeconds;
+  static const String _prefsKeyDailyHintDate = 'daily_measure_hint_date';
 
   // Baseline 설정 상태
   bool _hasBaseline = false;
@@ -104,6 +115,7 @@ class _SensorDataPageState extends State<SensorDataPage>
   // 인라인 기준값 설정 상태
   bool _isBaselineSetting = false;
   double _baselineProgress = 0.0;
+  // ignore: unused_field
   String _baselineStatus = '';
   Timer? _baselineTimer;
   bool _justCompletedBaseline = false;
@@ -214,6 +226,36 @@ class _SensorDataPageState extends State<SensorDataPage>
     }
   }
 
+  Future<void> _maybeShowDailyHint(BuildContext context) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey = _dateKey(DateTime.now());
+      final lastKey = prefs.getString(_prefsKeyDailyHintDate);
+      if (lastKey == todayKey) return;
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Tip: 하루 1~2회, 같은 시간대에 측정하면 개인화 예측이 더 정밀해집니다.'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.black.withOpacity(0.85),
+          elevation: 6,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+
+      await prefs.setString(_prefsKeyDailyHintDate, todayKey);
+    } catch (e) {
+      print('⚠️ 일일 측정 힌트 표시 실패: $e');
+    }
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
   // 데이터 수집 시작
   Future<void> _startCollection() async {
     // Baseline이 설정되지 않은 경우 먼저 설정하도록 안내
@@ -221,6 +263,8 @@ class _SensorDataPageState extends State<SensorDataPage>
       _showBaselineSetupDialog();
       return;
     }
+
+    await _maybeShowDailyHint(context);
 
     // 새로운 측정 시작 시 이전 데이터 초기화
     setState(() {
@@ -987,7 +1031,9 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '정확도 향상 진행도 $progressPercent% ($totalMeasurements/$targetMeasurements회)',
+                  totalMeasurements >= targetMeasurements
+                      ? '정확도 향상 진행도 $progressPercent%'
+                      : '정확도 향상 진행도 $progressPercent% ($totalMeasurements/$targetMeasurements회)',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1008,7 +1054,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '측정을 계속하면 개인화 모델 정확도가 올라가요!',
+                  '규칙적인 측정이 개인화 모델의 예측력을 높여줘요.',
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.white.withOpacity(0.55),

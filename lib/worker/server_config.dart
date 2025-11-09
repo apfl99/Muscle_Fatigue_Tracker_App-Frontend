@@ -8,7 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ServerConfig {
   static const String _configKey = 'server_config';
 
-  String baseUrl;
+  String apiBaseUrl;
+  String modelBaseUrl;
   String apiVersion;
   int timeoutSeconds;
   int maxRetries;
@@ -16,7 +17,8 @@ class ServerConfig {
   bool isTestMode;
 
   ServerConfig({
-    this.baseUrl = 'https://merry99-musclecare-fastapi.hf.space',
+    this.apiBaseUrl = 'https://merry99-musclecare-fastapi.hf.space',
+    this.modelBaseUrl = 'https://merry99-musclecare-train-ai.hf.space',
     this.apiVersion = '',
     this.timeoutSeconds = 30,
     this.maxRetries = 3,
@@ -57,7 +59,8 @@ class ServerConfig {
   /// JSON으로 변환
   Map<String, dynamic> toJson() {
     return {
-      'base_url': baseUrl,
+      'api_base_url': apiBaseUrl,
+      'model_base_url': modelBaseUrl,
       'api_version': apiVersion,
       'timeout_seconds': timeoutSeconds,
       'max_retries': maxRetries,
@@ -69,7 +72,10 @@ class ServerConfig {
   /// JSON에서 객체 생성
   factory ServerConfig.fromJson(Map<String, dynamic> json) {
     return ServerConfig(
-      baseUrl: json['base_url'] ?? 'http://localhost:7860',
+      apiBaseUrl:
+          json['api_base_url'] ?? json['base_url'] ?? 'http://localhost:7860',
+      modelBaseUrl:
+          json['model_base_url'] ?? json['base_url'] ?? 'http://localhost:7860',
       apiVersion: json['api_version'] ?? 'v1',
       timeoutSeconds: json['timeout_seconds'] ?? 30,
       maxRetries: json['max_retries'] ?? 3,
@@ -79,21 +85,19 @@ class ServerConfig {
   }
 
   /// API 엔드포인트 URL 생성
-  String getApiUrl(String endpoint) {
-    final cleanBaseUrl = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/$endpoint';
-    return '$cleanBaseUrl$cleanEndpoint';
-  }
+  String getApiUrl(String endpoint) => _buildUrl(apiBaseUrl, endpoint);
+
+  String getModelUrl(String endpoint) => _buildUrl(modelBaseUrl, endpoint);
 
   /// Upload Dataset API URL
   String get uploadDatasetUrl => getApiUrl('/upload_dataset');
 
   /// 설정 유효성 검사
   bool get isValid {
-    return baseUrl.isNotEmpty &&
-        Uri.tryParse(baseUrl) != null &&
+    return apiBaseUrl.isNotEmpty &&
+        Uri.tryParse(apiBaseUrl) != null &&
+        modelBaseUrl.isNotEmpty &&
+        Uri.tryParse(modelBaseUrl) != null &&
         timeoutSeconds > 0 &&
         maxRetries >= 0;
   }
@@ -102,7 +106,8 @@ class ServerConfig {
   void printConfig() {
     if (enableLogging) {
       print('📡 서버 설정:');
-      print('   Base URL: $baseUrl');
+      print('   API Base URL: $apiBaseUrl');
+      print('   Model Base URL: $modelBaseUrl');
       print('   API Version: $apiVersion');
       print('   Timeout: ${timeoutSeconds}s');
       print('   Max Retries: $maxRetries');
@@ -112,7 +117,14 @@ class ServerConfig {
 
   @override
   String toString() {
-    return 'ServerConfig(baseUrl: $baseUrl, apiVersion: $apiVersion)';
+    return 'ServerConfig(apiBaseUrl: $apiBaseUrl, modelBaseUrl: $modelBaseUrl, apiVersion: $apiVersion)';
+  }
+
+  String _buildUrl(String base, String endpoint) {
+    final cleanBase =
+        base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    return '$cleanBase$cleanEndpoint';
   }
 }
 
