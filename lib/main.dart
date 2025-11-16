@@ -466,15 +466,19 @@ class _SensorDataPageState extends State<SensorDataPage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: EdgeInsets.all(isSmall ? 6 : 8),
+                  padding: EdgeInsets.all(isSmall ? 4 : 6),
                   decoration: AppTheme.cardDecoration(
-                    gradient: AppTheme.primaryGradient,
-                    borderRadius: 10,
+                    color: AppTheme.darkBackground,
+                    borderRadius: 12,
                   ),
-                  child: Icon(
-                    Icons.monitor_heart_outlined,
-                    size: isSmall ? 18 : 22,
-                    color: Colors.white,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/images/icon.png',
+                      width: isSmall ? 26 : 32,
+                      height: isSmall ? 26 : 32,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 SizedBox(width: isSmall ? 6 : 10),
