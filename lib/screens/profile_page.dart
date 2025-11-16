@@ -172,26 +172,28 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: Responsive.responsivePadding(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 사용자 프로필 요약
-            _buildProfileSummary(),
-            const SizedBox(height: 16),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: Responsive.responsivePadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 사용자 프로필 요약
+              _buildProfileSummary(),
+              const SizedBox(height: 16),
 
-            // ML Phase 정보
-            _buildMLModeCard(),
-            const SizedBox(height: 16),
+              // ML Phase 정보
+              _buildMLModeCard(),
+              const SizedBox(height: 16),
 
-            // Baseline 정보
-            _buildBaselineCard(),
-            const SizedBox(height: 16),
+              // Baseline 정보
+              _buildBaselineCard(),
+              const SizedBox(height: 16),
 
-            // 측정 통계
-            _buildStatisticsCard(),
-          ],
+              // 측정 통계
+              _buildStatisticsCard(),
+            ],
+          ),
         ),
       ),
     );

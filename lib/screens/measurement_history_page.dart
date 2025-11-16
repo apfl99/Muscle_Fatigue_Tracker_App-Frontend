@@ -327,17 +327,19 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _allSessions.isEmpty
-              ? _buildEmptyState()
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildTrendView(),
-                    _buildCalendarView(),
-                  ],
-                ),
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _allSessions.isEmpty
+                ? _buildEmptyState()
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildTrendView(),
+                      _buildCalendarView(),
+                    ],
+                  ),
+      ),
     );
   }
 
@@ -657,7 +659,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       final fatigueValues = displayData.map((e) => e.value).toList();
       final minFatigue = fatigueValues.reduce((a, b) => a < b ? a : b);
       final maxFatigue = fatigueValues.reduce((a, b) => a > b ? a : b);
-      
+
       // Y축 범위에 여유 공간 추가 (10%)
       final range = maxFatigue - minFatigue;
       final padding = range * 0.1;
@@ -764,7 +766,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
-                    horizontalInterval: (dynamicMaxY - dynamicMinY) / 4, // 4개 구간으로 나누기
+                    horizontalInterval:
+                        (dynamicMaxY - dynamicMinY) / 4, // 4개 구간으로 나누기
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
                         color: Colors.white.withOpacity(0.05),

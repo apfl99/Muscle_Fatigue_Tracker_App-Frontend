@@ -12,6 +12,7 @@ import 'model/ml.dart';
 import 'widgets/fatigue_gauge.dart';
 import 'screens/measurement_history_page.dart';
 import 'screens/profile_page.dart';
+import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/responsive.dart';
 import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
@@ -83,7 +84,7 @@ class MyApp extends StatelessWidget {
       title: 'Muscle Care',
       theme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      home: const SensorDataPage(),
+      home: const SplashScreen(),
       // 오류 발생 시 빨간 화면 대신 에러 위젯 표시
       builder: (context, child) {
         return MediaQuery(
@@ -465,20 +466,13 @@ class _SensorDataPageState extends State<SensorDataPage>
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: EdgeInsets.all(isSmall ? 4 : 6),
-                  decoration: AppTheme.cardDecoration(
-                    color: AppTheme.darkBackground,
-                    borderRadius: 12,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      'assets/images/icon.png',
-                      width: isSmall ? 26 : 32,
-                      height: isSmall ? 26 : 32,
-                      fit: BoxFit.cover,
-                    ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/images/icon.png',
+                    width: isSmall ? 26 : 32,
+                    height: isSmall ? 26 : 32,
+                    fit: BoxFit.cover,
                   ),
                 ),
                 SizedBox(width: isSmall ? 6 : 10),
@@ -539,308 +533,311 @@ class _SensorDataPageState extends State<SensorDataPage>
           SizedBox(width: Responsive.isSmallScreen(context) ? 4 : 12),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: Responsive.responsivePadding(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 측정 안내 카드
-            _buildInstructionCard(),
-            const SizedBox(height: 16),
-            if (_isBaselineSetting) ...[
-              Container(
-                width: double.infinity,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: LinearProgressIndicator(
-                  value: _baselineProgress,
-                  backgroundColor: Colors.transparent,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    AppTheme.primaryGreen,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: Responsive.responsivePadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 측정 안내 카드
+              _buildInstructionCard(),
+              const SizedBox(height: 16),
+              if (_isBaselineSetting) ...[
+                Container(
+                  width: double.infinity,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: LinearProgressIndicator(
+                    value: _baselineProgress,
+                    backgroundColor: Colors.transparent,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryGreen,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
 
-            // 수집 상태 표시
-            Container(
-              decoration: AppTheme.cardDecoration(
-                gradient: _isCollecting
-                    ? const LinearGradient(
-                        colors: [
-                          Color(0xFF1E1E1E),
-                          Color(0xFF2A2A2A),
-                        ],
-                      )
-                    : AppTheme.darkGradient,
-              ),
-              padding: Responsive.cardPadding(context),
-              child: Column(
-                children: [
-                  // 상태 아이콘
-                  Container(
-                    padding: EdgeInsets.all(
-                      Responsive.isSmallScreen(context) ? 16 : 20,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isCollecting
-                          ? Icons.monitor_heart
-                          : _analysisResult != null
-                              ? Icons.check_circle
-                              : Icons.touch_app_outlined,
-                      color: Colors.white,
-                      size: Responsive.isSmallScreen(context) ? 40 : 48,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // 상태 텍스트
-                  Text(
-                    _isCollecting
-                        ? '측정 중...'
-                        : _analysisResult != null
-                            ? '측정 완료'
-                            : (!_hasBaseline && !_isCheckingBaseline
-                                ? '기준값 설정 준비'
-                                : '측정 준비'),
-                    style: TextStyle(
-                      fontSize: Responsive.isSmallScreen(context) ? 20 : 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (_isCollecting) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_remainingSeconds.toStringAsFixed(1)}초 남음',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value:
-                            1 - (_remainingSeconds / _customMeasurementSeconds),
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(Colors.white),
-                        minHeight: 8,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-
-                  // 실시간 분석 상태 표시 (ML 모드별 색상)
-                  _buildAnalysisStatusBox(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // 기준값 설정 완료 배너 (값 + 선택지)
-            if (_justCompletedBaseline && _completedBaseline != null) ...[
+              // 수집 상태 표시
               Container(
                 decoration: AppTheme.cardDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E3C34), Color(0xFF1E1E1E)],
-                  ),
+                  gradient: _isCollecting
+                      ? const LinearGradient(
+                          colors: [
+                            Color(0xFF1E1E1E),
+                            Color(0xFF2A2A2A),
+                          ],
+                        )
+                      : AppTheme.darkGradient,
                 ),
                 padding: Responsive.cardPadding(context),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: Colors.greenAccent,
-                          size: 22,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          '기준값 설정이 완료되었습니다',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                    // 상태 아이콘
+                    Container(
+                      padding: EdgeInsets.all(
+                        Responsive.isSmallScreen(context) ? 16 : 20,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isCollecting
+                            ? Icons.monitor_heart
+                            : _analysisResult != null
+                                ? Icons.check_circle
+                                : Icons.touch_app_outlined,
+                        color: Colors.white,
+                        size: Responsive.isSmallScreen(context) ? 40 : 48,
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildBaselineSummaryValue(
-                          'RMS',
-                          ((_completedBaseline?['fatigueRMS'] ?? 0.0) as double)
-                              .toStringAsFixed(4),
-                          'm/s²',
-                        ),
-                        _buildBaselineSummaryValue(
-                          'Freq',
-                          ((_completedBaseline?['peakFreq'] ?? 0.0) as double)
-                              .toStringAsFixed(1),
-                          'Hz',
-                        ),
-                      ],
+                    const SizedBox(height: 16),
+                    // 상태 텍스트
+                    Text(
+                      _isCollecting
+                          ? '측정 중...'
+                          : _analysisResult != null
+                              ? '측정 완료'
+                              : (!_hasBaseline && !_isCheckingBaseline
+                                  ? '기준값 설정 준비'
+                                  : '측정 준비'),
+                      style: TextStyle(
+                        fontSize: Responsive.isSmallScreen(context) ? 20 : 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        OutlinedButton(
-                          onPressed: () {
-                            setState(() {
-                              _justCompletedBaseline = false;
-                              _completedBaseline = null;
-                            });
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                          ),
-                          child: const Text('나중에'),
+                    if (_isCollecting) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_remainingSeconds.toStringAsFixed(1)}초 남음',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white70,
                         ),
-                        const SizedBox(width: 10),
-                        ElevatedButton(
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProfilePage(),
-                              ),
-                            );
-                            if (!mounted) return;
-                            setState(() {
-                              _justCompletedBaseline = false;
-                              _completedBaseline = null;
-                            });
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryGreen,
-                          ),
-                          child: const Text('내 정보에서 보기'),
+                      ),
+                      const SizedBox(height: 16),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: 1 -
+                              (_remainingSeconds / _customMeasurementSeconds),
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                          valueColor:
+                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                          minHeight: 8,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+
+                    // 실시간 분석 상태 표시 (ML 모드별 색상)
+                    _buildAnalysisStatusBox(),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-            ],
+              const SizedBox(height: 20),
 
-            // 측정 결과 카드 (기준값 설정 중/직후에는 숨김)
-            if (_analysisResult != null &&
-                !_isCollecting &&
-                _hasBaseline &&
-                !_isBaselineSetting &&
-                !_justCompletedBaseline) ...[
-              _buildFatigueScoreCard(_analysisResult!),
-              const SizedBox(height: 16),
-              _buildMainResultCard(_analysisResult!),
-              const SizedBox(height: 16),
-            ],
-
-            // 컨트롤 버튼들
-            if (!_isCollecting) ...[
-              Container(
-                width: double.infinity,
-                height: Responsive.isSmallScreen(context) ? 56 : 60,
-                decoration: AppTheme.cardDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: 16,
+              // 기준값 설정 완료 배너 (값 + 선택지)
+              if (_justCompletedBaseline && _completedBaseline != null) ...[
+                Container(
+                  decoration: AppTheme.cardDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E3C34), Color(0xFF1E1E1E)],
+                    ),
+                  ),
+                  padding: Responsive.cardPadding(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            color: Colors.greenAccent,
+                            size: 22,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            '기준값 설정이 완료되었습니다',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildBaselineSummaryValue(
+                            'RMS',
+                            ((_completedBaseline?['fatigueRMS'] ?? 0.0)
+                                    as double)
+                                .toStringAsFixed(4),
+                            'm/s²',
+                          ),
+                          _buildBaselineSummaryValue(
+                            'Freq',
+                            ((_completedBaseline?['peakFreq'] ?? 0.0) as double)
+                                .toStringAsFixed(1),
+                            'Hz',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: () {
+                              setState(() {
+                                _justCompletedBaseline = false;
+                                _completedBaseline = null;
+                              });
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                            ),
+                            child: const Text('나중에'),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ProfilePage(),
+                                ),
+                              );
+                              if (!mounted) return;
+                              setState(() {
+                                _justCompletedBaseline = false;
+                                _completedBaseline = null;
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                            ),
+                            child: const Text('내 정보에서 보기'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _isCheckingBaseline
-                        ? null
-                        : (!_hasBaseline
-                            ? _startBaselineInline
-                            : _startCollection),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.play_circle_fill,
-                          color: Colors.white,
-                          size: Responsive.isSmallScreen(context) ? 24 : 28,
-                        ),
-                        SizedBox(
-                          width: Responsive.isSmallScreen(context) ? 8 : 12,
-                        ),
-                        Flexible(
-                          child: Text(
-                            _isCheckingBaseline
-                                ? '기준값 확인 중...'
-                                : !_hasBaseline
-                                    ? '기준값 설정 시작'
-                                    : '${_customMeasurementSeconds.toStringAsFixed(1)}초 측정 시작',
+                const SizedBox(height: 16),
+              ],
+
+              // 측정 결과 카드 (기준값 설정 중/직후에는 숨김)
+              if (_analysisResult != null &&
+                  !_isCollecting &&
+                  _hasBaseline &&
+                  !_isBaselineSetting &&
+                  !_justCompletedBaseline) ...[
+                _buildFatigueScoreCard(_analysisResult!),
+                const SizedBox(height: 16),
+                _buildMainResultCard(_analysisResult!),
+                const SizedBox(height: 16),
+              ],
+
+              // 컨트롤 버튼들
+              if (!_isCollecting) ...[
+                Container(
+                  width: double.infinity,
+                  height: Responsive.isSmallScreen(context) ? 56 : 60,
+                  decoration: AppTheme.cardDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: 16,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isCheckingBaseline
+                          ? null
+                          : (!_hasBaseline
+                              ? _startBaselineInline
+                              : _startCollection),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.play_circle_fill,
+                            color: Colors.white,
+                            size: Responsive.isSmallScreen(context) ? 24 : 28,
+                          ),
+                          SizedBox(
+                            width: Responsive.isSmallScreen(context) ? 8 : 12,
+                          ),
+                          Flexible(
+                            child: Text(
+                              _isCheckingBaseline
+                                  ? '기준값 확인 중...'
+                                  : !_hasBaseline
+                                      ? '기준값 설정 시작'
+                                      : '${_customMeasurementSeconds.toStringAsFixed(1)}초 측정 시작',
+                              style: TextStyle(
+                                fontSize:
+                                    Responsive.isSmallScreen(context) ? 16 : 18,
+                                fontWeight: FontWeight.bold,
+                                color: _isCheckingBaseline
+                                    ? Colors.orange
+                                    : Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  width: double.infinity,
+                  height: Responsive.isSmallScreen(context) ? 56 : 60,
+                  decoration: AppTheme.cardDecoration(
+                    color: AppTheme.highFatigueColor,
+                    borderRadius: 16,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _stopCollection,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.stop_circle,
+                            color: Colors.white,
+                            size: Responsive.isSmallScreen(context) ? 24 : 28,
+                          ),
+                          SizedBox(
+                            width: Responsive.isSmallScreen(context) ? 8 : 12,
+                          ),
+                          Text(
+                            '측정 중지',
                             style: TextStyle(
                               fontSize:
                                   Responsive.isSmallScreen(context) ? 16 : 18,
                               fontWeight: FontWeight.bold,
-                              color: _isCheckingBaseline
-                                  ? Colors.orange
-                                  : Colors.white,
+                              color: Colors.white,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ] else ...[
-              Container(
-                width: double.infinity,
-                height: Responsive.isSmallScreen(context) ? 56 : 60,
-                decoration: AppTheme.cardDecoration(
-                  color: AppTheme.highFatigueColor,
-                  borderRadius: 16,
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _stopCollection,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.stop_circle,
-                          color: Colors.white,
-                          size: Responsive.isSmallScreen(context) ? 24 : 28,
-                        ),
-                        SizedBox(
-                          width: Responsive.isSmallScreen(context) ? 8 : 12,
-                        ),
-                        Text(
-                          '측정 중지',
-                          style: TextStyle(
-                            fontSize:
-                                Responsive.isSmallScreen(context) ? 16 : 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

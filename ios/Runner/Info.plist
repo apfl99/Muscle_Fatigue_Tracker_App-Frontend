@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Muscle Fatigue Tracker</string>
+	<string>MuscleCare</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>muscle_fatigue_tracker</string>
+	<string>MuscleCare</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -51,5 +51,7 @@
 	<string>이 앱은 근육 피로도를 측정하기 위해 가속도계 데이터를 사용합니다.</string>
 	<key>NSGyroscopeUsageDescription</key>
 	<string>이 앱은 근육 피로도를 측정하기 위해 자이로스코프 데이터를 사용합니다.</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8223579217523211~5784777359</string>
 </dict>
 </plist>
