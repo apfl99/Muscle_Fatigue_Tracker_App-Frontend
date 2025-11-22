@@ -20,35 +20,42 @@ class AdManager {
   // Ad initialization
   Future<void> initialize() async {
     try {
-      debugPrint('📱 MobileAds 초기화 시작...');
-      await MobileAds.instance.initialize();
+      final platform =
+          Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown');
+      const mode = kReleaseMode ? 'Release' : 'Debug';
+      debugPrint('📱 MobileAds 초기화 시작... (Platform: $platform, Mode: $mode)');
+
+      final initStatus = await MobileAds.instance.initialize();
       debugPrint('✅ MobileAds 초기화 완료');
+      debugPrint('   초기화 상태: ${initStatus.adapterStatuses}');
 
       debugPrint('📥 전면 광고 로드 시작...');
       // 스플래시 화면에서 InterstitialAd만 사용하므로 InterstitialAd만 로드
-      await loadInterstitialAd();
-      debugPrint('✅ 광고 로드 완료');
-    } catch (e) {
+      // InterstitialAd.load()는 콜백 기반이므로 await 사용하지 않음
+      loadInterstitialAd();
+      debugPrint('✅ 광고 로드 요청 완료 (콜백으로 처리됨)');
+    } catch (e, stackTrace) {
       debugPrint('❌ AdMob 초기화 실패: $e');
+      debugPrint('스택 트레이스: $stackTrace');
     }
   }
 
   // Show splash ad (AppOpenAd)
-  Future<void> showSplashAd({required Function onClosed}) async {
+  void showSplashAd({required Function onClosed}) {
     onSplashAdClosed = onClosed;
     if (_isSplashAdReady && _splashAd != null) {
       try {
-        debugPrint('Attempting to show Splash Ad');
-        await _splashAd!.show();
+        debugPrint('📺 스플래시 광고 표시 시도');
+        _splashAd!.show();
       } catch (e) {
-        debugPrint('Error showing Splash Ad: $e');
+        debugPrint('❌ 스플래시 광고 표시 오류: $e');
         _isSplashAdReady = false;
         _splashAd?.dispose();
         onSplashAdClosed?.call();
         onSplashAdClosed = null;
       }
     } else {
-      debugPrint('Splash Ad not ready, skipping');
+      debugPrint('⚠️ 스플래시 광고가 준비되지 않음');
       onClosed();
     }
   }
@@ -101,7 +108,7 @@ class AdManager {
     throw UnsupportedError('Unsupported platform');
   }
 
-  Future<void> loadSplashAd() async {
+  void loadSplashAd() {
     if (_isSplashAdReady) {
       debugPrint('✅ 스플래시 광고 이미 준비됨');
       return;
@@ -111,7 +118,8 @@ class AdManager {
     debugPrint('📥 스플래시 광고 로드 시작: $adUnitId');
 
     try {
-      await AppOpenAd.load(
+      // AppOpenAd.load()는 콜백 기반이므로 await 사용하지 않음
+      AppOpenAd.load(
         adUnitId: adUnitId,
         request: const AdRequest(),
         adLoadCallback: AppOpenAdLoadCallback(
@@ -160,17 +168,24 @@ class AdManager {
     }
   }
 
-  Future<void> loadInterstitialAd() async {
+  void loadInterstitialAd() {
     if (_isInterstitialAdReady) {
       debugPrint('✅ 전면 광고 이미 준비됨');
       return;
     }
 
     final adUnitId = interstitialAdUnitId;
-    debugPrint('📥 전면 광고 로드 시작: $adUnitId');
+    final platform =
+        Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown');
+    const mode = kReleaseMode ? 'Release' : 'Debug';
+    debugPrint('📥 전면 광고 로드 시작');
+    debugPrint('   플랫폼: $platform');
+    debugPrint('   모드: $mode');
+    debugPrint('   광고 Unit ID: $adUnitId');
 
     try {
-      await InterstitialAd.load(
+      // InterstitialAd.load()는 콜백 기반이므로 await 사용하지 않음
+      InterstitialAd.load(
         adUnitId: adUnitId,
         request: const AdRequest(),
         adLoadCallback: InterstitialAdLoadCallback(
@@ -196,6 +211,7 @@ class AdManager {
                 debugPrint(
                   '❌ 전면 광고 표시 실패: ${error.message} (code: ${error.code})',
                 );
+                debugPrint('   에러 도메인: ${error.domain}');
                 _isInterstitialAdReady = false;
                 ad.dispose();
                 onInterstitialAdClosed?.call();
@@ -206,16 +222,23 @@ class AdManager {
             );
           },
           onAdFailedToLoad: (error) {
-            debugPrint('❌ 전면 광고 로드 실패: ${error.message} (code: ${error.code})');
-            debugPrint('   광고 Unit ID: $adUnitId');
+            debugPrint('❌ 전면 광고 로드 실패');
+            debugPrint('   에러 메시지: ${error.message}');
+            debugPrint('   에러 코드: ${error.code}');
             debugPrint('   에러 도메인: ${error.domain}');
-            debugPrint('   에러 원인: ${error.responseInfo}');
+            debugPrint('   광고 Unit ID: $adUnitId');
+            debugPrint('   플랫폼: $platform');
+            debugPrint('   모드: $mode');
+            if (error.responseInfo != null) {
+              debugPrint('   응답 정보: ${error.responseInfo}');
+            }
             _isInterstitialAdReady = false;
           },
         ),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 전면 광고 로드 예외: $e');
+      debugPrint('스택 트레이스: $stackTrace');
       _isInterstitialAdReady = false;
     }
   }
