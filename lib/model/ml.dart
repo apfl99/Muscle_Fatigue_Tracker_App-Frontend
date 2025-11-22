@@ -6,10 +6,64 @@ import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:http/http.dart' as http;
 
 import 'config.dart';
 import 'database_helper.dart';
 import 'measure_session.dart';
+
+class HybridFatiguePayload {
+  HybridFatiguePayload({
+    required this.rmsAcc,
+    required this.rmsGyro,
+    required this.meanFreqAcc,
+    required this.meanFreqGyro,
+    required this.rmsBase,
+    required this.freqBase,
+    required this.userEmbedding,
+  });
+
+  final double rmsAcc;
+  final double rmsGyro;
+  final double meanFreqAcc;
+  final double meanFreqGyro;
+  final double rmsBase;
+  final double freqBase;
+  final List<double> userEmbedding;
+
+  Map<String, dynamic> toJson() {
+    final sanitizedEmb = List<double>.from(userEmbedding);
+    const targetLength = 12;
+    if (sanitizedEmb.length < targetLength) {
+      sanitizedEmb
+          .addAll(List<double>.filled(targetLength - sanitizedEmb.length, 0.0));
+    } else if (sanitizedEmb.length > targetLength) {
+      sanitizedEmb.removeRange(targetLength, sanitizedEmb.length);
+    }
+
+    return {
+      'rms_acc': rmsAcc,
+      'rms_gyro': rmsGyro,
+      'mean_freq_acc': meanFreqAcc,
+      'mean_freq_gyro': meanFreqGyro,
+      'rms_base': rmsBase,
+      'freq_base': freqBase,
+      'user_emb': sanitizedEmb,
+    };
+  }
+}
+
+class HybridFatigueResponse {
+  HybridFatigueResponse({
+    required this.fatigue,
+    this.modelVersion,
+    required this.latencyMs,
+  });
+
+  final double fatigue;
+  final String? modelVersion;
+  final int latencyMs;
+}
 
 /// ========================================
 /// ML 모델 관리자 (싱글톤)
@@ -33,6 +87,9 @@ class MLManager {
 
   // 서버 설정 (개발자가 실제 서버 URL로 변경 필요)
   static const String serverBaseUrl = 'https://your-ml-server.com/api';
+  static const String hybridPredictUrl =
+      'https://merry99-musclecare-train-hybrid.hf.space/predict';
+  static const Duration _aiLatencyMask = Duration(milliseconds: 320);
   static const String trainEndpoint = '/model/train';
   static const String downloadHybridEndpoint = '/model/hybrid/download';
   static const String downloadEndToEndEndpoint = '/model/endtoend/download';
@@ -312,6 +369,99 @@ class MLManager {
   }
 
   /// ========================================
+  /// Hybrid/AI 예측 API 호출 (서버 사이드 모델)
+  /// ========================================
+  Future<HybridFatigueResponse?> requestHybridFatigue({
+    required HybridFatiguePayload payload,
+    required MLMode mode,
+  }) async {
+    final uri = Uri.parse(hybridPredictUrl);
+    final stopwatch = Stopwatch()..start();
+    http.Response? response;
+    try {
+      print('🌐 Hybrid API 요청 시작 → mode=${mode.name}');
+      response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload.toJson()),
+          )
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode != 200) {
+        print('❌ Hybrid API 실패 (status=${response.statusCode})');
+        return null;
+      }
+
+      var body = response.body.trim();
+      if (body.endsWith('%')) {
+        body = body.substring(0, body.length - 1).trim();
+      }
+      final decoded = jsonDecode(body);
+
+      final fatigueRaw = decoded['fatigue'];
+      if (fatigueRaw is! num) {
+        print('❌ Hybrid API 응답에 fatigue 값이 없습니다: $body');
+        return null;
+      }
+
+      final fatigue = fatigueRaw.toDouble();
+      final safeFatigue =
+          fatigue.isFinite ? fatigue.clamp(1.0, 3.0).toDouble() : 1.0;
+      final version = decoded['model_version']?.toString();
+      final latency = stopwatch.elapsedMilliseconds;
+
+      print(
+        '🤖 Hybrid API 결과 → fatigue=${safeFatigue.toStringAsFixed(3)}, '
+        'version=$version, latency=${latency}ms',
+      );
+
+      return HybridFatigueResponse(
+        fatigue: safeFatigue,
+        modelVersion: version,
+        latencyMs: latency,
+      );
+    } catch (e, stackTrace) {
+      print('❌ Hybrid API 호출 실패: $e');
+      print(stackTrace);
+      return null;
+    } finally {
+      stopwatch.stop();
+      final elapsed = stopwatch.elapsedMilliseconds;
+      final maskMs =
+          _aiLatencyMask.inMilliseconds.clamp(0, double.infinity).toInt();
+      if (elapsed < maskMs) {
+        await Future.delayed(Duration(milliseconds: maskMs - elapsed));
+      }
+    }
+  }
+
+  Future<HybridFatigueResponse?> predictHybridFatigue({
+    required double rmsAcc,
+    required double meanFreqAcc,
+    required double rmsGyro,
+    required double meanFreqGyro,
+    required double rmsBase,
+    required double freqBase,
+    required List<double> userEmbedding,
+    MLMode mode = MLMode.hybrid,
+  }) async {
+    final payload = HybridFatiguePayload(
+      rmsAcc: rmsAcc,
+      rmsGyro: rmsGyro,
+      meanFreqAcc: meanFreqAcc,
+      meanFreqGyro: meanFreqGyro,
+      rmsBase: rmsBase,
+      freqBase: freqBase,
+      userEmbedding: userEmbedding,
+    );
+    return await requestHybridFatigue(
+      payload: payload,
+      mode: mode,
+    );
+  }
+
+  /// ========================================
   /// 서버에서 End-to-End 모델 다운로드 (TODO: 서버 준비 후 활성화)
   /// ========================================
   Future<bool> downloadEndToEndModel({required String userId}) async {
@@ -362,7 +512,6 @@ class MLManager {
     required double freq,
     required double prevFatigue,
   }) {
-    print('⚠️ Hybrid 모델 추론은 추후 구현 예정 (현재는 null 반환)');
     return null; // TODO: 모델 준비 후 실제 추론 결과 반환
 
     // TODO: 모델 파일 준비 후 아래 코드 활성화

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:rxdart/rxdart.dart';
 import 'config.dart';
@@ -42,6 +43,8 @@ class SensorStreaming {
 
   int _measurementCount = 0;
   Function(Map<String, dynamic>)? onAnalysisResult;
+  VoidCallback? onAiProcessingStart;
+  VoidCallback? onAiProcessingEnd;
 
   double _currentSamplingRate = 0.0;
   int? _lastSampleTime;
@@ -54,6 +57,12 @@ class SensorStreaming {
   // 윈도우 생성 카운터
   int _windowCount = 0;
   List<double>? _cachedUserEmbedding;
+  HybridFatigueResponse? _lastHybridResponse;
+  HybridFatigueResponse? _prefetchedHybridResponse;
+  Future<HybridFatigueResponse?>? _inFlightHybridRequest;
+  bool _isHybridPrefetching = false;
+
+  static const int _hybridPrefetchWindowThreshold = 4;
 
   static const double _lowMotionRmsThreshold = 2.0;
   static const double _lowMotionFreqThreshold = 1.0;
@@ -649,6 +658,9 @@ class SensorStreaming {
       _currentSessionWindows.add(windowData);
       _windowIndex++;
       _prevWindowFatigue = finalFatigueScore;
+      if (mode == model_config.MLMode.hybrid) {
+        _maybeStartHybridPrefetch();
+      }
 
       // 마지막 윈도우 결과 저장
       _lastWindowResult = {
@@ -766,7 +778,11 @@ class SensorStreaming {
           return;
         }
 
-        final currentMLMode = BaselineManager.instance.getCurrentMLMode();
+        final baselineManager = BaselineManager.instance;
+        final currentMLMode = baselineManager.getCurrentMLMode();
+        if (currentMLMode == model_config.MLMode.hybrid) {
+          _maybeStartHybridPrefetch();
+        }
 
         // 세션 평균값 계산
         final avgRms = _currentSessionWindows
@@ -779,12 +795,69 @@ class SensorStreaming {
                 .reduce((a, b) => a + b) /
             _currentSessionWindows.length;
 
-        final avgFatigue = _currentSessionWindows
+        double avgFatigue = _currentSessionWindows
                 .map(
                   (w) => (w['fatigue_personal'] ?? w['fatigue']) as double,
                 )
                 .reduce((a, b) => a + b) /
             _currentSessionWindows.length;
+
+        HybridFatigueResponse? aiResponse = _prefetchedHybridResponse;
+        if (currentMLMode == model_config.MLMode.hybrid) {
+          if (aiResponse == null && _inFlightHybridRequest != null) {
+            onAiProcessingStart?.call();
+            try {
+              aiResponse = await _inFlightHybridRequest;
+              _prefetchedHybridResponse = aiResponse;
+            } catch (e, stackTrace) {
+              print('⚠️ Hybrid 프리페치 대기 중 오류: $e');
+              print(stackTrace);
+            } finally {
+              onAiProcessingEnd?.call();
+              _inFlightHybridRequest = null;
+            }
+          }
+
+          if (aiResponse == null) {
+            onAiProcessingStart?.call();
+            try {
+              aiResponse = await _performHybridRequest();
+              _prefetchedHybridResponse = aiResponse;
+            } catch (e, stackTrace) {
+              print('⚠️ Hybrid 원격 추론 실패: $e');
+              print(stackTrace);
+            } finally {
+              onAiProcessingEnd?.call();
+            }
+          }
+        }
+
+        if (aiResponse != null) {
+          avgFatigue = aiResponse.fatigue;
+          final aiLevel = _fatigueLevelToInt(avgFatigue);
+          for (final window in _currentSessionWindows) {
+            window['fatigue'] = avgFatigue;
+            window['fatigue_personal'] = avgFatigue;
+            window['fatigue_level'] = aiLevel;
+            if (aiResponse.modelVersion != null) {
+              window['ai_model_version'] = aiResponse.modelVersion;
+            }
+            window['ai_latency_ms'] = aiResponse.latencyMs;
+          }
+          _lastHybridResponse = aiResponse;
+          _lastWindowResult?['fatigueScore'] = avgFatigue;
+          try {
+            await DatabaseHelper.instance.updateModelVersion(
+              modelType: 'Hybrid',
+              version: aiResponse.modelVersion ?? 'server',
+              path: 'remote',
+            );
+          } catch (e) {
+            print('⚠️ 모델 버전 업데이트 실패: $e');
+          }
+        } else {
+          _lastHybridResponse = null;
+        }
 
         // 첫 측정/기준값 상태 확인
         final isFirstMeasurement =
@@ -819,7 +892,6 @@ class SensorStreaming {
           print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
 
           // Baseline 업데이트 (EMA 방식) - 세션당 1회만 수행
-          final baselineManager = BaselineManager.instance;
           if (!_baselineUpdatedThisStop &&
               currentMLMode != model_config.MLMode.endToEnd) {
             await baselineManager.updateBaseline(avgRms, avgFreq);
@@ -881,6 +953,12 @@ class SensorStreaming {
           sessionAvgResult['fatiguePeakFreq'] = avgFreq;
           sessionAvgResult['fatigueLevel'] =
               FatigueCalculator.getFatigueLevel(avgFatigue);
+          sessionAvgResult['mlMode'] = currentMLMode.name;
+          final hybridResponse = _lastHybridResponse;
+          if (hybridResponse != null) {
+            sessionAvgResult['aiModelVersion'] = hybridResponse.modelVersion;
+            sessionAvgResult['aiLatencyMs'] = hybridResponse.latencyMs;
+          }
           onAnalysisResult?.call(sessionAvgResult);
         }
 
@@ -893,12 +971,83 @@ class SensorStreaming {
       }
     } else {
       print('⚠️ 저장할 측정 데이터가 없습니다');
+      onAnalysisResult?.call({
+        'fatigueScore': null,
+        'qualityWarning': true,
+        'mlMode': BaselineManager.instance.getCurrentMLMode().name,
+      });
     }
 
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     // 다음 세션 대비 플래그 초기화
     _baselineUpdatedThisStop = false;
     _cachedUserEmbedding = null;
+    _lastHybridResponse = null;
+    _prefetchedHybridResponse = null;
+    _inFlightHybridRequest = null;
+    _isHybridPrefetching = false;
+  }
+
+  void _maybeStartHybridPrefetch() {
+    if (_isHybridPrefetching) return;
+    if (_prefetchedHybridResponse != null) return;
+    if (_currentSessionWindows.length < _hybridPrefetchWindowThreshold) return;
+    _isHybridPrefetching = true;
+    _inFlightHybridRequest = _performHybridRequest();
+    _inFlightHybridRequest?.then((response) {
+      if (response != null) {
+        _prefetchedHybridResponse = response;
+      }
+    }).catchError((e, stackTrace) {
+      print('⚠️ Hybrid 프리페치 실패: $e');
+      if (stackTrace != null) {
+        print(stackTrace);
+      }
+    }).whenComplete(() {
+      _isHybridPrefetching = false;
+      _inFlightHybridRequest = null;
+    });
+  }
+
+  Future<HybridFatigueResponse?> _performHybridRequest() async {
+    final payload = await _buildHybridPayloadFromSession();
+    if (payload == null) return null;
+    return MLManager.instance.requestHybridFatigue(
+      payload: payload,
+      mode: model_config.MLMode.hybrid,
+    );
+  }
+
+  Future<HybridFatiguePayload?> _buildHybridPayloadFromSession() async {
+    if (_currentSessionWindows.isEmpty) return null;
+    final baselineManager = BaselineManager.instance;
+    final userEmb = await _getUserEmbedding();
+    return HybridFatiguePayload(
+      rmsAcc: _averageSessionMetric('rms'),
+      meanFreqAcc: _averageSessionMetric('mean_freq_acc'),
+      rmsGyro: _averageSessionMetric('rms_gyro'),
+      meanFreqGyro: _averageSessionMetric('mean_freq_gyro'),
+      rmsBase: baselineManager.rmsBase,
+      freqBase: baselineManager.freqBase,
+      userEmbedding: userEmb,
+    );
+  }
+
+  double _averageSessionMetric(String key) {
+    if (_currentSessionWindows.isEmpty) return 0.0;
+    double sum = 0.0;
+    int count = 0;
+    for (final window in _currentSessionWindows) {
+      final value = window[key];
+      if (value is num) {
+        final doubleValue = value.toDouble();
+        if (doubleValue.isFinite) {
+          sum += doubleValue;
+          count++;
+        }
+      }
+    }
+    return count == 0 ? 0.0 : sum / count;
   }
 
   Future<List<double>> _getUserEmbedding() async {
@@ -949,6 +1098,10 @@ class SensorStreaming {
     _measurementStartMs = null;
     _prevWindowFatigue = null;
     _cachedUserEmbedding = null;
+    _lastHybridResponse = null;
+    _prefetchedHybridResponse = null;
+    _inFlightHybridRequest = null;
+    _isHybridPrefetching = false;
   }
 
   /// 마지막 윈도우 분석 결과 반환

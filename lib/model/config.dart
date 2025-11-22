@@ -91,9 +91,10 @@ class FatigueColors {
 /// 새로운 스키마에서는 측정 세션 수 기준으로 변경
 class MLPhaseConstants {
   // 단계 전환 임계값 (총 측정 세션 수 기준)
-  static const int emaPhaseThreshold = 5; // Phase 1: EMA (최근 5회 측정)
-  static const int hybridPhaseThreshold = 10; // Phase 2: Hybrid (10회 이상)
-  static const int endToEndPhaseThreshold = 20; // Phase 3: End-to-End (20회 이상)
+  static const int emaPhaseThreshold = 10; // Phase 1: FMA (최근 10회 측정)
+  static const int hybridPhaseThreshold = 20; // Phase 2: Hybrid (다음 10회)
+  static const int endToEndPhaseThreshold =
+      20; // Phase 3: End-to-End (20회 이상, 추가 확장 시 조정)
 
   // Hybrid 모드 가중치
   static const double emaWeight = 0.7; // EMA baseline 가중치

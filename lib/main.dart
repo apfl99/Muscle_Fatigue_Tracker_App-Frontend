@@ -111,6 +111,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 윈도우 분석 결과
   Map<String, dynamic>? _analysisResult;
+  bool _isAiProcessing = false;
 
   // 자동 종료 타이머
   Timer? _autoStopTimer;
@@ -132,6 +133,8 @@ class _SensorDataPageState extends State<SensorDataPage>
   Timer? _baselineTimer;
   bool _justCompletedBaseline = false;
   Map<String, dynamic>? _completedBaseline;
+  String? _qualityWarningMessage;
+  Timer? _qualityWarningTimer;
 
   // (실제 측정 상태를 고정 메시지로 표시)
 
@@ -180,18 +183,99 @@ class _SensorDataPageState extends State<SensorDataPage>
 
       // 분석 결과 콜백 등록
       _sensorStreaming.onAnalysisResult = (result) async {
+        final hasQualityWarning = result['qualityWarning'] == true;
+        if (hasQualityWarning) {
+          _showQualityWarning(result);
+          if (result['fatigueScore'] == null) {
+            if (mounted) {
+              setState(() {
+                _analysisResult = null;
+                _qualityWarningMessage = null;
+              });
+            }
+            return;
+          }
+        }
         if (mounted) {
           setState(() {
             _analysisResult = result;
           });
-          // Baseline 다시 로드
           await _loadBaseline();
         }
+      };
+      _sensorStreaming.onAiProcessingStart = () {
+        if (!mounted) return;
+        setState(() {
+          _isAiProcessing = true;
+        });
+      };
+      _sensorStreaming.onAiProcessingEnd = () {
+        if (!mounted) return;
+        setState(() {
+          _isAiProcessing = false;
+        });
       };
     } catch (e, stackTrace) {
       print('❌ initState 오류: $e');
       print('스택 트레이스: $stackTrace');
     }
+  }
+
+  void _showQualityWarning(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final coverage = (data['coverage'] as double?) ?? 0.0;
+    final accel = data['accel'] ?? 0;
+    final gyro = data['gyro'] ?? 0;
+    final message =
+        '센서를 더 안정적으로 유지해주세요 • coverage ${coverage.toStringAsFixed(2)} • accel $accel / gyro $gyro';
+    _qualityWarningTimer?.cancel();
+    setState(() {
+      _qualityWarningMessage = message;
+    });
+    _qualityWarningTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() {
+        _qualityWarningMessage = null;
+      });
+    });
+  }
+
+  Widget _buildQualityWarningBanner() {
+    final isSmall = Responsive.isSmallScreen(context);
+    return Container(
+      decoration: AppTheme.cardDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF3B0F0F), Color(0xFF1B0707)],
+        ),
+      ),
+      padding: Responsive.cardPadding(context),
+      child: Row(
+        children: [
+          Container(
+            width: isSmall ? 32 : 36,
+            height: isSmall ? 32 : 36,
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.redAccent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _qualityWarningMessage ?? '',
+              style: TextStyle(
+                fontSize: isSmall ? 12 : 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Baseline 불러오기 (내 정보 페이지용 - 메인에서는 사용 안 함)
@@ -211,6 +295,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     WidgetsBinding.instance.removeObserver(this);
     _autoStopTimer?.cancel();
     _baselineTimer?.cancel();
+    _qualityWarningTimer?.cancel();
     // 비동기 작업이 완료되기를 기다리지 않고 즉시 정리
     _sensorStreaming.dispose();
     super.dispose();
@@ -281,6 +366,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     // 새로운 측정 시작 시 이전 데이터 초기화
     setState(() {
       _analysisResult = null;
+      _isAiProcessing = false;
     });
 
     final success = await _sensorStreaming.startSensor();
@@ -641,6 +727,11 @@ class _SensorDataPageState extends State<SensorDataPage>
               ),
               const SizedBox(height: 20),
 
+              if (_qualityWarningMessage != null) ...[
+                _buildQualityWarningBanner(),
+                const SizedBox(height: 16),
+              ],
+
               // 기준값 설정 완료 배너 (값 + 선택지)
               if (_justCompletedBaseline && _completedBaseline != null) ...[
                 Container(
@@ -730,6 +821,11 @@ class _SensorDataPageState extends State<SensorDataPage>
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+              ],
+
+              if (_isAiProcessing) ...[
+                _buildAiProcessingBanner(),
                 const SizedBox(height: 16),
               ],
 
@@ -958,10 +1054,32 @@ class _SensorDataPageState extends State<SensorDataPage>
     final currentMode = BaselineManager.instance.getCurrentMLMode();
     final totalMeasurements = BaselineManager.instance.totalMeasurementCount;
     final nextMeasurementIndex = totalMeasurements + 1;
-    const targetMeasurements = 20;
-    final personalizationProgress =
-        (totalMeasurements / targetMeasurements).clamp(0.0, 1.0);
+
+    int phaseStart = 0;
+    int phaseTarget = MLPhaseConstants.emaPhaseThreshold;
+    switch (currentMode) {
+      case MLMode.ema:
+        phaseStart = 0;
+        phaseTarget = MLPhaseConstants.emaPhaseThreshold;
+        break;
+      case MLMode.hybrid:
+        phaseStart = MLPhaseConstants.emaPhaseThreshold;
+        phaseTarget = MLPhaseConstants.hybridPhaseThreshold;
+        break;
+      case MLMode.endToEnd:
+        phaseStart = MLPhaseConstants.hybridPhaseThreshold;
+        phaseTarget = MLPhaseConstants.endToEndPhaseThreshold;
+        break;
+    }
+    int phaseSpan = phaseTarget - phaseStart;
+    if (phaseSpan <= 0) {
+      phaseSpan = 1;
+    }
+    final phaseCount =
+        ((totalMeasurements - phaseStart).clamp(0, phaseSpan).toDouble());
+    final personalizationProgress = (phaseCount / phaseSpan).clamp(0.0, 1.0);
     final progressPercent = (personalizationProgress * 100).round();
+    final showPhaseCounter = phaseSpan > 1;
 
     // ML 모드별 색상 (명확하게 구분, profile_page와 동일)
     Color modeColor;
@@ -1043,9 +1161,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  totalMeasurements >= targetMeasurements
-                      ? '정확도 향상 진행도 $progressPercent%'
-                      : '정확도 향상 진행도 $progressPercent% ($totalMeasurements/$targetMeasurements회)',
+                  showPhaseCounter
+                      ? '정확도 향상 진행도 $progressPercent% '
+                          '(${phaseCount.toInt()}/$phaseSpan회)'
+                      : '정확도 향상 진행도 $progressPercent%',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -2295,6 +2414,54 @@ class _SensorDataPageState extends State<SensorDataPage>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAiProcessingBanner() {
+    final isSmall = Responsive.isSmallScreen(context);
+    return Container(
+      decoration: AppTheme.cardDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1F1B2C), Color(0xFF131313)],
+        ),
+      ),
+      padding: Responsive.cardPadding(context),
+      child: Row(
+        children: [
+          SizedBox(
+            height: isSmall ? 32 : 36,
+            width: isSmall ? 32 : 36,
+            child: const CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI 분석 중',
+                  style: TextStyle(
+                    fontSize: isSmall ? 14 : 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '결과가 곧 반영됩니다.',
+                  style: TextStyle(
+                    fontSize: isSmall ? 11 : 12,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

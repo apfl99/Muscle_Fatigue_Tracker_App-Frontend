@@ -13,7 +13,7 @@ class ModelUpdateScheduler {
   Timer? _retryTimer;
   bool _started = false;
 
-  static const Duration _daily = Duration(days: 1);
+  static const Duration _weekly = Duration(days: 7);
   static const Duration _retryDelay = Duration(hours: 1);
 
   Future<void> start() async {
@@ -21,7 +21,7 @@ class ModelUpdateScheduler {
     _started = true;
 
     await _enqueueDownload(force: true);
-    _scheduleDailyTask();
+    _scheduleWeeklyTask();
   }
 
   void dispose() {
@@ -31,25 +31,32 @@ class ModelUpdateScheduler {
     _started = false;
   }
 
-  void _scheduleDailyTask() {
+  void _scheduleWeeklyTask() {
     _initialTimer?.cancel();
     _periodicTimer?.cancel();
 
     final now = DateTime.now();
     DateTime nextRun = DateTime(now.year, now.month, now.day, 4);
-    if (!now.isBefore(nextRun)) {
-      nextRun = nextRun.add(const Duration(days: 1));
+
+    int daysToSunday = (DateTime.sunday - now.weekday) % 7;
+    if (daysToSunday == 0 && !now.isBefore(nextRun)) {
+      daysToSunday = 7;
     }
+    nextRun = nextRun.add(Duration(days: daysToSunday));
+
     final initialDelay = nextRun.difference(now);
 
     _initialTimer = Timer(initialDelay, () async {
       await _enqueueDownload();
-      _periodicTimer = Timer.periodic(_daily, (_) async {
+      _periodicTimer = Timer.periodic(_weekly, (_) async {
         await _enqueueDownload();
       });
     });
 
-    print('🕓 모델 다운로드 백그라운드 스케줄 시작: 첫 실행 ${nextRun.toLocal()}');
+    print(
+      '🕓 모델 다운로드 백그라운드 스케줄 시작: 첫 실행 ${nextRun.toLocal()} '
+      '(매주 일요일 04:00)',
+    );
   }
 
   Future<void> _enqueueDownload({bool force = false}) async {
