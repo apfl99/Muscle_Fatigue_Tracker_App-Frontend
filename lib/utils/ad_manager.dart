@@ -10,8 +10,10 @@ class AdManager {
 
   AppOpenAd? _splashAd;
   InterstitialAd? _interstitialAd;
+  BannerAd? _bannerAd;
   bool _isSplashAdReady = false;
   bool _isInterstitialAdReady = false;
+  bool _isBannerAdReady = false;
 
   // Ad callbacks
   Function? onSplashAdClosed;
@@ -83,12 +85,15 @@ class AdManager {
   void dispose() {
     _splashAd?.dispose();
     _interstitialAd?.dispose();
+    _bannerAd?.dispose();
     onSplashAdClosed = null;
     onInterstitialAdClosed = null;
   }
 
   bool get isInterstitialAdReady => _isInterstitialAdReady;
   bool get isSplashAdReady => _isSplashAdReady;
+  bool get isBannerAdReady => _isBannerAdReady;
+  BannerAd? get bannerAd => _bannerAd;
 
   String get splashAdUnitId {
     // 스플래시 화면에서 InterstitialAd를 사용하므로 InterstitialAd ID 반환
@@ -98,12 +103,29 @@ class AdManager {
   String get interstitialAdUnitId {
     if (kReleaseMode) {
       if (Platform.isAndroid) {
-        return AdConstants.releaseAndroidAdMob;
+        return AdConstants.releaseAndroidInterstitial;
       } else if (Platform.isIOS) {
-        return AdConstants.releaseIosAdMob;
+        return AdConstants.releaseIosInterstitial;
       }
     } else {
       return AdConstants.testInterstitial;
+    }
+    throw UnsupportedError('Unsupported platform');
+  }
+
+  String get bannerAdUnitId {
+    if (kReleaseMode) {
+      if (Platform.isAndroid) {
+        return AdConstants.releaseAndroidBanner;
+      } else if (Platform.isIOS) {
+        return AdConstants.releaseIosBanner;
+      }
+    } else {
+      if (Platform.isAndroid) {
+        return AdConstants.testAndroidBanner;
+      } else if (Platform.isIOS) {
+        return AdConstants.testIoSBanner;
+      }
     }
     throw UnsupportedError('Unsupported platform');
   }
@@ -241,5 +263,67 @@ class AdManager {
       debugPrint('스택 트레이스: $stackTrace');
       _isInterstitialAdReady = false;
     }
+  }
+
+  void loadBannerAd() {
+    if (_isBannerAdReady) {
+      debugPrint('✅ 배너 광고 이미 준비됨');
+      return;
+    }
+
+    final adUnitId = bannerAdUnitId;
+    final platform =
+        Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown');
+    const mode = kReleaseMode ? 'Release' : 'Debug';
+    debugPrint('📥 배너 광고 로드 시작');
+    debugPrint('   플랫폼: $platform');
+    debugPrint('   모드: $mode');
+    debugPrint('   광고 Unit ID: $adUnitId');
+
+    try {
+      _bannerAd = BannerAd(
+        adUnitId: adUnitId,
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (ad) {
+            debugPrint('✅ 배너 광고 로드 성공');
+            _isBannerAdReady = true;
+            _bannerAd = ad as BannerAd; // 로드된 광고 객체 저장
+          },
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('❌ 배너 광고 로드 실패');
+            debugPrint('   에러 메시지: ${error.message}');
+            debugPrint('   에러 코드: ${error.code}');
+            debugPrint('   에러 도메인: ${error.domain}');
+            debugPrint('   광고 Unit ID: $adUnitId');
+            debugPrint('   플랫폼: $platform');
+            debugPrint('   모드: $mode');
+            _isBannerAdReady = false;
+            _bannerAd = null; // 실패 시 null로 설정
+            ad.dispose();
+          },
+          onAdOpened: (ad) {
+            debugPrint('📺 배너 광고 클릭됨');
+          },
+          onAdClosed: (ad) {
+            debugPrint('✅ 배너 광고 닫힘');
+          },
+        ),
+      );
+
+      _bannerAd?.load();
+    } catch (e, stackTrace) {
+      debugPrint('❌ 배너 광고 로드 예외: $e');
+      debugPrint('스택 트레이스: $stackTrace');
+      _isBannerAdReady = false;
+    }
+  }
+
+  void disposeBannerAd() {
+    _bannerAd?.dispose();
+    _bannerAd = null;
+    _isBannerAdReady = false;
+    debugPrint('🗑️ 배너 광고 해제됨');
   }
 }

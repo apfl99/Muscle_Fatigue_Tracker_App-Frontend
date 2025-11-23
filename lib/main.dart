@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'sensor/streaming.dart';
 import 'sensor/config.dart';
 import 'model/database_helper.dart';
@@ -18,8 +19,8 @@ import 'utils/responsive.dart';
 import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 import 'worker/model_update_scheduler.dart';
 import 'model/personalization_manager.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/user_identity.dart';
+import 'utils/ad_manager.dart';
 
 void main() async {
   print('\n🚀 앱 시작...');
@@ -47,6 +48,11 @@ void main() async {
     // Baseline Manager 초기화
     await BaselineManager.instance.initialize();
     print('✅ Baseline Manager 초기화 완료');
+
+    // AdManager 초기화 및 배너 광고 로드
+    await AdManager.instance.initialize();
+    AdManager.instance.loadBannerAd();
+    print('✅ AdManager 초기화 및 배너 광고 로드 완료');
 
     // ML Manager 초기화
     await MLManager.instance.initialize();
@@ -119,7 +125,6 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 동적 측정시간 설정
   double _customMeasurementSeconds = SensorConfig.totalSeconds;
-  static const String _prefsKeyDailyHintDate = 'daily_measure_hint_date';
 
   // Baseline 설정 상태
   bool _hasBaseline = false;
@@ -298,6 +303,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     _qualityWarningTimer?.cancel();
     // 비동기 작업이 완료되기를 기다리지 않고 즉시 정리
     _sensorStreaming.dispose();
+    AdManager.instance.dispose();
     super.dispose();
   }
 
@@ -323,36 +329,6 @@ class _SensorDataPageState extends State<SensorDataPage>
     }
   }
 
-  Future<void> _maybeShowDailyHint(BuildContext context) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final todayKey = _dateKey(DateTime.now());
-      final lastKey = prefs.getString(_prefsKeyDailyHintDate);
-      if (lastKey == todayKey) return;
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Tip: 하루 1~2회, 같은 시간대에 측정하면 개인화 예측이 더 정밀해집니다.'),
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.black.withOpacity(0.85),
-          elevation: 6,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-
-      await prefs.setString(_prefsKeyDailyHintDate, todayKey);
-    } catch (e) {
-      print('⚠️ 일일 측정 힌트 표시 실패: $e');
-    }
-  }
-
-  String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
   // 데이터 수집 시작
   Future<void> _startCollection() async {
     // Baseline이 설정되지 않은 경우 먼저 설정하도록 안내
@@ -360,8 +336,6 @@ class _SensorDataPageState extends State<SensorDataPage>
       _showBaselineSetupDialog();
       return;
     }
-
-    await _maybeShowDailyHint(context);
 
     // 새로운 측정 시작 시 이전 데이터 초기화
     setState(() {
@@ -424,6 +398,10 @@ class _SensorDataPageState extends State<SensorDataPage>
       _remainingSeconds = 0.0;
       // _analysisResult는 유지 (측정 결과 표시를 위해)
     });
+
+    // 배너 광고 해제 및 새로 로드
+    AdManager.instance.disposeBannerAd();
+    AdManager.instance.loadBannerAd();
   }
 
   // 완료 배너 값 표시용 (간단한 3줄 형태)
@@ -628,6 +606,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               // 측정 안내 카드
               _buildInstructionCard(),
               const SizedBox(height: 16),
+
               if (_isBaselineSetting) ...[
                 Container(
                   width: double.infinity,
@@ -929,6 +908,19 @@ class _SensorDataPageState extends State<SensorDataPage>
                         ],
                       ),
                     ),
+                  ),
+                ),
+              ],
+
+              // 측정 중 배너 광고
+              if (_isCollecting && AdManager.instance.bannerAd != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: AdManager.instance.bannerAd!.size.width.toDouble(),
+                    height: AdManager.instance.bannerAd!.size.height.toDouble(),
+                    child: AdWidget(ad: AdManager.instance.bannerAd!),
                   ),
                 ),
               ],
