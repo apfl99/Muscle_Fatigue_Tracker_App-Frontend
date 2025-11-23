@@ -131,20 +131,6 @@ class MLManager {
     }
   }
 
-  // Hybrid 모델 로드 (TODO: 모델 준비 후 활성화)
-  // Future<void> _loadHybridModel() async {
-  //   print('⚠️ Hybrid 모델 로드는 추후 구현 예정');
-  //   // TODO: 모델 파일 준비 후 아래 코드 활성화
-  //   // try {
-  //   //   _hybridInterpreter?.close();
-  //   //   _hybridInterpreter = Interpreter.fromFile(File(_hybridModelPath!));
-  //   //   print('✅ Hybrid 모델 로드 성공: $_hybridModelPath');
-  //   // } catch (e) {
-  //   //   print('❌ Hybrid 모델 로드 실패: $e');
-  //   //   _hybridInterpreter = null;
-  //   // }
-  // }
-
   Future<void> _loadEndToEndModelFromDb({bool force = false}) async {
     try {
       final info = await DatabaseHelper.instance.getModelVersion('E2E');
@@ -254,121 +240,6 @@ class MLManager {
   }
 
   /// ========================================
-  /// 서버에 모델 학습 요청 (TODO: 서버 준비 후 활성화)
-  /// - 로컬 SQLite에 저장된 fatigue 로그 전송
-  /// - 서버는 학습 후 모델 파일 생성
-  /// ========================================
-  Future<bool> requestModelTraining({
-    required String userId,
-    required MLMode targetMode,
-  }) async {
-    print('⚠️ 서버 통신 기능은 추후 구현 예정');
-    print('   - 사용자 ID: $userId');
-    print('   - 타겟 모드: ${targetMode.displayName}');
-
-    // TODO: 서버 준비 후 아래 코드 활성화
-    return false; // 서버 없음
-
-    // TODO: 서버 구축 후 아래 코드 활성화
-    // try {
-    //   print('📡 서버에 모델 학습 요청 시작...');
-    //   print('   - 사용자 ID: $userId');
-    //   print('   - 타겟 모드: ${targetMode.displayName}');
-    //
-    //   // SQLite에서 최근 N개 측정 데이터 가져오기
-    //   final db = FatigueDatabase.instance;
-    //   final recentResults = await db.getRecentResults(1000); // 최근 1000개
-    //
-    //   if (recentResults.isEmpty) {
-    //     print('⚠️ 학습할 데이터가 없습니다.');
-    //     return false;
-    //   }
-    //
-    //   // 서버 전송용 JSON 구성
-    //   final requestData = {
-    //     'user_id': userId,
-    //     'target_mode': targetMode.name,
-    //     'data_count': recentResults.length,
-    //     'training_data': recentResults.map((result) {
-    //       return {
-    //         'timestamp': result.timestamp.toIso8601String(),
-    //         'rms': result.rms,
-    //         'variance': result.variance,
-    //         'peak_freq': result.peakFreq,
-    //         'mean_power_freq': result.meanPowerFreq,
-    //         'median_freq': result.medianFreq,
-    //         'fatigue': result.fatigue,
-    //         'sample_count': result.sampleCount,
-    //         'sampling_rate': result.samplingRate,
-    //       };
-    //     }).toList(),
-    //   };
-    //
-    //   // 서버 요청
-    //   final response = await http
-    //       .post(
-    //         Uri.parse('$serverBaseUrl$trainEndpoint'),
-    //         headers: {'Content-Type': 'application/json'},
-    //         body: jsonEncode(requestData),
-    //       )
-    //       .timeout(const Duration(seconds: 60));
-    //
-    //   if (response.statusCode == 200) {
-    //     final responseData = jsonDecode(response.body);
-    //     print('✅ 모델 학습 요청 성공');
-    //     print('   - 서버 응답: ${responseData['message']}');
-    //     print('   - 학습 ID: ${responseData['training_id']}');
-    //     return true;
-    //   } else {
-    //     print('❌ 모델 학습 요청 실패: ${response.statusCode}');
-    //     print('   - 응답: ${response.body}');
-    //     return false;
-    //   }
-    // } catch (e) {
-    //   print('❌ 모델 학습 요청 오류: $e');
-    //   return false;
-    // }
-  }
-
-  /// ========================================
-  /// 서버에서 Hybrid 모델 다운로드 (TODO: 서버 준비 후 활성화)
-  /// ========================================
-  Future<bool> downloadHybridModel({required String userId}) async {
-    print('⚠️ 서버 통신 기능은 추후 구현 예정 (Hybrid 모델 다운로드)');
-    print('   - 사용자 ID: $userId');
-
-    // TODO: 서버 준비 후 아래 코드 활성화
-    return false; // 서버 없음
-
-    // TODO: 서버 구축 후 아래 코드 활성화
-    // try {
-    //   print('📥 Hybrid 모델 다운로드 시작...');
-    //
-    //   final response = await http
-    //       .get(
-    //         Uri.parse('$serverBaseUrl$downloadHybridEndpoint?user_id=$userId'),
-    //       )
-    //       .timeout(const Duration(seconds: 30));
-    //
-    //   if (response.statusCode == 200) {
-    //     // 모델 파일 저장
-    //     await File(_hybridModelPath!).writeAsBytes(response.bodyBytes);
-    //     print('✅ Hybrid 모델 다운로드 완료: $_hybridModelPath');
-    //
-    //     // 모델 로드
-    //     await _loadHybridModel();
-    //     return true;
-    //   } else {
-    //     print('❌ Hybrid 모델 다운로드 실패: ${response.statusCode}');
-    //     return false;
-    //   }
-    // } catch (e) {
-    //   print('❌ Hybrid 모델 다운로드 오류: $e');
-    //   return false;
-    // }
-  }
-
-  /// ========================================
   /// Hybrid/AI 예측 API 호출 (서버 사이드 모델)
   /// ========================================
   Future<HybridFatigueResponse?> requestHybridFatigue({
@@ -462,89 +333,47 @@ class MLManager {
   }
 
   /// ========================================
-  /// 서버에서 End-to-End 모델 다운로드 (TODO: 서버 준비 후 활성화)
-  /// ========================================
-  Future<bool> downloadEndToEndModel({required String userId}) async {
-    print('⚠️ 서버 통신 기능은 추후 구현 예정 (End-to-End 모델 다운로드)');
-    print('   - 사용자 ID: $userId');
-
-    // TODO: 서버 준비 후 아래 코드 활성화
-    return false; // 서버 없음
-
-    // TODO: 서버 구축 후 아래 코드 활성화
-    // try {
-    //   print('📥 End-to-End 모델 다운로드 시작...');
-    //
-    //   final response = await http
-    //       .get(
-    //         Uri.parse(
-    //           '$serverBaseUrl$downloadEndToEndEndpoint?user_id=$userId',
-    //         ),
-    //       )
-    //       .timeout(const Duration(seconds: 30));
-    //
-    //   if (response.statusCode == 200) {
-    //     // 모델 파일 저장
-    //     await File(_endToEndModelPath!).writeAsBytes(response.bodyBytes);
-    //     print('✅ End-to-End 모델 다운로드 완료: $_endToEndModelPath');
-    //
-    //     // 모델 로드
-    //     await _loadEndToEndModel();
-    //     return true;
-    //   } else {
-    //     print('❌ End-to-End 모델 다운로드 실패: ${response.statusCode}');
-    //     return false;
-    //   }
-    // } catch (e) {
-    //   print('❌ End-to-End 모델 다운로드 오류: $e');
-    //   return false;
-    // }
-  }
-
   /// ========================================
   /// Hybrid 모드: ML 기반 baseline 보정값 예측
   /// 입력: [rms, freq, prevFatigue]
   /// 출력: baseline 보정값 (adjRMS_base)
-  /// TODO: 모델 준비 후 활성화
   /// ========================================
-  double? predictHybridCorrection({
+  Future<double?> predictHybridCorrection({
     required double rms,
     required double freq,
     required double prevFatigue,
-  }) {
-    return null; // TODO: 모델 준비 후 실제 추론 결과 반환
+  }) async {
+    try {
+      // 서버 API를 통한 보정값 예측
+      final payload = HybridFatiguePayload(
+        rmsAcc: rms,
+        rmsGyro: 0.0, // Hybrid 모드에서는 RMS만 사용
+        meanFreqAcc: freq,
+        meanFreqGyro: 0.0, // Hybrid 모드에서는 Freq만 사용
+        rmsBase: 0.0,
+        freqBase: 0.0,
+        userEmbedding:
+            List<double>.filled(12, prevFatigue), // 12개 embedding으로 확장
+      );
 
-    // TODO: 모델 파일 준비 후 아래 코드 활성화
-    // if (_hybridInterpreter == null) {
-    //   print('⚠️ Hybrid 모델이 로드되지 않음');
-    //   return null;
-    // }
-    //
-    // try {
-    //   // 입력 데이터 정규화 (0~1 범위)
-    //   final input = [
-    //     [
-    //       rms / 10.0, // RMS 정규화 (예: 최대 10 가정)
-    //       freq / 30.0, // Freq 정규화 (예: 최대 30Hz)
-    //       (prevFatigue - 1.0) / 1.0, // Fatigue 정규화 (1.0~2.0 → 0~1)
-    //     ]
-    //   ];
-    //
-    //   // 출력 버퍼
-    //   final output = List.filled(1, 0.0).reshape([1, 1]);
-    //
-    //   // 추론 실행
-    //   _hybridInterpreter!.run(input, output);
-    //
-    //   // 보정값 역정규화
-    //   final correction = output[0][0] * 10.0;
-    //
-    //   print('🤖 Hybrid 보정값 예측: $correction');
-    //   return correction;
-    // } catch (e) {
-    //   print('❌ Hybrid 추론 오류: $e');
-    //   return null;
-    // }
+      final response = await requestHybridFatigue(
+        payload: payload,
+        mode: MLMode.hybrid,
+      );
+
+      if (response != null) {
+        // 서버에서 반환된 피로도를 보정값으로 사용
+        final correction = response.fatigue;
+        print('🤖 Hybrid 보정값 예측 (서버): $correction');
+        return correction;
+      }
+
+      print('⚠️ Hybrid 서버 API 실패, null 반환');
+      return null;
+    } catch (e) {
+      print('❌ Hybrid 보정값 예측 오류: $e');
+      return null;
+    }
   }
 
   /// ========================================
@@ -717,7 +546,6 @@ class MLManager {
 
   /// ========================================
   /// 모델 삭제 (재학습 시)
-  /// TODO: 모델 준비 후 활성화
   /// ========================================
   Future<void> deleteModels() async {
     try {
@@ -769,7 +597,7 @@ Future<double> calculateHybridFatigue({
   required double prevFatigue,
 }) async {
   // ML 보정값 가져오기
-  final mlCorrection = MLManager.instance.predictHybridCorrection(
+  final mlCorrection = await MLManager.instance.predictHybridCorrection(
     rms: rms,
     freq: freq,
     prevFatigue: prevFatigue,
