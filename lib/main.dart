@@ -913,14 +913,27 @@ class _SensorDataPageState extends State<SensorDataPage>
               ],
 
               // 측정 중 배너 광고
-              if (_isCollecting && AdManager.instance.bannerAd != null) ...[
+              if (_isCollecting &&
+                  AdManager.instance.isBannerAdReady &&
+                  AdManager.instance.bannerAd != null) ...[
                 const SizedBox(height: 16),
                 Container(
                   alignment: Alignment.center,
-                  child: SizedBox(
-                    width: AdManager.instance.bannerAd!.size.width.toDouble(),
-                    height: AdManager.instance.bannerAd!.size.height.toDouble(),
-                    child: AdWidget(ad: AdManager.instance.bannerAd!),
+                  child: Builder(
+                    builder: (context) {
+                      try {
+                        return SizedBox(
+                          width: AdManager.instance.bannerAd!.size.width
+                              .toDouble(),
+                          height: AdManager.instance.bannerAd!.size.height
+                              .toDouble(),
+                          child: AdWidget(ad: AdManager.instance.bannerAd!),
+                        );
+                      } catch (e) {
+                        // 에러 발생 시 아무것도 표시하지 않음
+                        return const SizedBox.shrink();
+                      }
+                    },
                   ),
                 ),
               ],
