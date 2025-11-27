@@ -912,29 +912,48 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ],
 
-              // 측정 중 배너 광고
-              if (_isCollecting &&
-                  AdManager.instance.isBannerAdReady &&
-                  AdManager.instance.bannerAd != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  alignment: Alignment.center,
-                  child: Builder(
-                    builder: (context) {
-                      try {
-                        return SizedBox(
-                          width: AdManager.instance.bannerAd!.size.width
-                              .toDouble(),
-                          height: AdManager.instance.bannerAd!.size.height
-                              .toDouble(),
-                          child: AdWidget(ad: AdManager.instance.bannerAd!),
-                        );
-                      } catch (e) {
-                        // 에러 발생 시 아무것도 표시하지 않음
+              // 측정 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
+              if (_isCollecting) ...[
+                Builder(
+                  builder: (context) {
+                    // 광고 상태를 안전하게 확인
+                    final adManager = AdManager.instance;
+                    if (!adManager.isBannerAdReady) {
+                      return const SizedBox.shrink();
+                    }
+
+                    final bannerAd = adManager.bannerAd;
+                    if (bannerAd == null) {
+                      return const SizedBox.shrink();
+                    }
+
+                    try {
+                      // 광고 size 유효성 검사
+                      final adSize = bannerAd.size;
+                      if (adSize.width <= 0 || adSize.height <= 0) {
                         return const SizedBox.shrink();
                       }
-                    },
-                  ),
+
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          Container(
+                            alignment: Alignment.center,
+                            child: SizedBox(
+                              width: adSize.width.toDouble(),
+                              height: adSize.height.toDouble(),
+                              child: AdWidget(ad: bannerAd),
+                            ),
+                          ),
+                        ],
+                      );
+                    } catch (e, stackTrace) {
+                      // 에러 발생 시 로그 출력 및 빈 위젯 반환
+                      debugPrint('❌ 배너 광고 표시 오류: $e');
+                      debugPrint('스택 트레이스: $stackTrace');
+                      return const SizedBox.shrink();
+                    }
+                  },
                 ),
               ],
             ],
