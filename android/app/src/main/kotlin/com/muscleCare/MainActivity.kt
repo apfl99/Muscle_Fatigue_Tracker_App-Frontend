@@ -1,4 +1,4 @@
-package com.example.muscle_fatigue_tracker
+package com.muscleCare
 
 import io.flutter.embedding.android.FlutterActivity
 
