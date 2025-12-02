@@ -341,9 +341,12 @@ class _SensorDataPageState extends State<SensorDataPage>
     AdManager.instance.loadBannerAd(force: true);
 
     // 새로운 측정 시작 시 이전 데이터 초기화
+    // 기준값 설정 직후 첫 측정인 경우 플래그 리셋
     setState(() {
       _analysisResult = null;
       _isAiProcessing = false;
+      _justCompletedBaseline = false; // 첫 측정 시작 시 리셋
+      _completedBaseline = null; // 완료 배너도 리셋
     });
 
     final success = await _sensorStreaming.startSensor();
@@ -396,10 +399,18 @@ class _SensorDataPageState extends State<SensorDataPage>
     await _sensorStreaming.stopSensor();
     _autoStopTimer?.cancel();
 
+    // 측정 완료 후 기준값 상태 확인 (첫 측정 후 기준값이 설정되었을 수 있음)
+    await _checkBaselineStatus();
+
     setState(() {
       _isCollecting = false;
       _remainingSeconds = 0.0;
       // _analysisResult는 유지 (측정 결과 표시를 위해)
+      // 기준값 설정 직후가 아니면 결과 표시 가능
+      if (_justCompletedBaseline) {
+        _justCompletedBaseline = false;
+        _completedBaseline = null;
+      }
     });
 
     // 배너 광고 해제 및 새로 로드
@@ -488,9 +499,12 @@ class _SensorDataPageState extends State<SensorDataPage>
 
         if (result != null) {
           await UserStateStore.instance.saveBaseline(result);
+          // 기준값 저장 후 상태 확인 및 업데이트
           await _checkBaselineStatus();
           if (!mounted) return;
           setState(() {
+            // _checkBaselineStatus()에서 이미 _hasBaseline이 업데이트됨
+            // 하지만 확실히 하기 위해 다시 설정
             _hasBaseline = true;
             _isCheckingBaseline = false;
             _isBaselineSetting = false;
@@ -500,6 +514,7 @@ class _SensorDataPageState extends State<SensorDataPage>
           });
           // 자동 이동 대신 완료 배너로 선택 유도
           _completedBaseline = result;
+          print('✅ 기준값 설정 완료: _hasBaseline=$_hasBaseline');
         } else {
           if (!mounted) return;
           setState(() {
