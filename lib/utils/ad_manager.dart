@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart';
@@ -14,6 +15,10 @@ class AdManager {
   bool _isSplashAdReady = false;
   bool _isInterstitialAdReady = false;
   bool _isBannerAdReady = false;
+  bool _isLoadingBanner = false;
+  Timer? _bannerRetryTimer;
+
+  final ValueNotifier<int> bannerStateNotifier = ValueNotifier<int>(0);
 
   // Ad callbacks
   Function? onSplashAdClosed;
@@ -265,12 +270,21 @@ class AdManager {
     }
   }
 
-  void loadBannerAd() {
-    if (_isBannerAdReady) {
+  void loadBannerAd({bool force = false}) {
+    _loadBannerAdInternal(force: force);
+  }
+
+  void _loadBannerAdInternal({bool force = false}) {
+    if (!force && _isBannerAdReady) {
       debugPrint('✅ 배너 광고 이미 준비됨');
       return;
     }
+    if (_isLoadingBanner) {
+      debugPrint('ℹ️ 배너 광고 로딩 중...');
+      return;
+    }
 
+    _isLoadingBanner = true;
     final adUnitId = bannerAdUnitId;
     final platform =
         Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown');
@@ -289,7 +303,10 @@ class AdManager {
           onAdLoaded: (ad) {
             debugPrint('✅ 배너 광고 로드 성공');
             _isBannerAdReady = true;
-            _bannerAd = ad as BannerAd; // 로드된 광고 객체 저장
+            _bannerAd = ad as BannerAd;
+            _isLoadingBanner = false;
+            _bannerRetryTimer?.cancel();
+            _notifyBannerStateChanged();
           },
           onAdFailedToLoad: (ad, error) {
             debugPrint('❌ 배너 광고 로드 실패');
@@ -302,6 +319,9 @@ class AdManager {
             _isBannerAdReady = false;
             _bannerAd = null; // 실패 시 null로 설정
             ad.dispose();
+            _isLoadingBanner = false;
+            _scheduleBannerRetry();
+            _notifyBannerStateChanged();
           },
           onAdOpened: (ad) {
             debugPrint('📺 배너 광고 클릭됨');
@@ -311,12 +331,14 @@ class AdManager {
           },
         ),
       );
-
       _bannerAd?.load();
     } catch (e, stackTrace) {
       debugPrint('❌ 배너 광고 로드 예외: $e');
       debugPrint('스택 트레이스: $stackTrace');
       _isBannerAdReady = false;
+      _isLoadingBanner = false;
+      _scheduleBannerRetry();
+      _notifyBannerStateChanged();
     }
   }
 
@@ -324,6 +346,27 @@ class AdManager {
     _bannerAd?.dispose();
     _bannerAd = null;
     _isBannerAdReady = false;
+    _isLoadingBanner = false;
+    _bannerRetryTimer?.cancel();
+    _bannerRetryTimer = null;
     debugPrint('🗑️ 배너 광고 해제됨');
+    _notifyBannerStateChanged();
+  }
+
+  void _scheduleBannerRetry() {
+    if (!kReleaseMode &&
+        Platform.isAndroid == false &&
+        Platform.isIOS == false) {
+      return;
+    }
+    _bannerRetryTimer?.cancel();
+    _bannerRetryTimer = Timer(const Duration(seconds: 30), () {
+      _bannerRetryTimer = null;
+      _loadBannerAdInternal();
+    });
+  }
+
+  void _notifyBannerStateChanged() {
+    bannerStateNotifier.value++;
   }
 }

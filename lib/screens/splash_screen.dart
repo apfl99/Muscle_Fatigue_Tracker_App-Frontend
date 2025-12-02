@@ -111,11 +111,20 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '근육 피로도 측정',
+                  '근피로도 웰니스 분석',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     color: Colors.white70,
                     letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '스마트폰 센서 기반 참고 지표',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.white54,
+                    letterSpacing: 0.3,
                   ),
                 ),
                 const SizedBox(height: 60),

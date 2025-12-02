@@ -337,6 +337,9 @@ class _SensorDataPageState extends State<SensorDataPage>
       return;
     }
 
+    // 측정 시작 시 배너 광고 재시도
+    AdManager.instance.loadBannerAd(force: true);
+
     // 새로운 측정 시작 시 이전 데이터 초기화
     setState(() {
       _analysisResult = null;
@@ -914,9 +917,9 @@ class _SensorDataPageState extends State<SensorDataPage>
 
               // 측정 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
               if (_isCollecting) ...[
-                Builder(
-                  builder: (context) {
-                    // 광고 상태를 안전하게 확인
+                ValueListenableBuilder<int>(
+                  valueListenable: AdManager.instance.bannerStateNotifier,
+                  builder: (context, _, __) {
                     final adManager = AdManager.instance;
                     if (!adManager.isBannerAdReady) {
                       return const SizedBox.shrink();
@@ -928,7 +931,6 @@ class _SensorDataPageState extends State<SensorDataPage>
                     }
 
                     try {
-                      // 광고 size 유효성 검사
                       final adSize = bannerAd.size;
                       if (adSize.width <= 0 || adSize.height <= 0) {
                         return const SizedBox.shrink();
@@ -948,7 +950,6 @@ class _SensorDataPageState extends State<SensorDataPage>
                         ],
                       );
                     } catch (e, stackTrace) {
-                      // 에러 발생 시 로그 출력 및 빈 위젯 반환
                       debugPrint('❌ 배너 광고 표시 오류: $e');
                       debugPrint('스택 트레이스: $stackTrace');
                       return const SizedBox.shrink();
@@ -1119,7 +1120,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       case MLMode.hybrid:
         modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
         modeIcon = Icons.hub;
-        statusMessage = 'AI가 보조하여 정확도 향상 중';
+        statusMessage = 'AI가 보조하여 개인화 향상 중';
         break;
       case MLMode.endToEnd:
         modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
@@ -1186,9 +1187,9 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(height: 6),
                 Text(
                   showPhaseCounter
-                      ? '정확도 향상 진행도 $progressPercent% '
+                      ? '학습 진행도 $progressPercent% '
                           '(${phaseCount.toInt()}/$phaseSpan회)'
-                      : '정확도 향상 진행도 $progressPercent%',
+                      : '학습 진행도 $progressPercent%',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1476,7 +1477,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '정확한 피로도 측정을 위해\n개인 기준값 설정이 필요합니다',
+                        '개인화된 근피로도 분석을 위해\n개인 기준값 설정이 필요합니다',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1573,7 +1574,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '왜 기준값 설정이 필요한가요?\n• 기기별 센서 특성 차이 보정\n• 개인별 손떨림 특성 반영\n• 더 정확한 피로도 측정 가능',
+                        '왜 기준값 설정이 필요한가요?\n• 기기별 센서 특성 차이 보정\n• 개인별 손떨림 특성 반영\n• 더 일관된 근피로도 참고 지표 제공',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.withOpacity(0.9),
@@ -2110,7 +2111,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '측정 환경을 일정하게 유지하면 더 정확한 결과를 얻을 수 있습니다.',
+              '측정 환경을 일정하게 유지하면 더 일관된 참고 지표를 얻을 수 있습니다.',
               style: TextStyle(
                 fontSize: isSmall ? 13 : 14,
                 color: Colors.white.withOpacity(0.8),
@@ -2148,7 +2149,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '정확도 향상 팁 보기',
+                      '개인화 향상 팁 보기',
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: modeColor,
@@ -2165,6 +2166,8 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            _buildMedicalDisclaimer(),
           ],
         ),
       );
@@ -2225,6 +2228,8 @@ class _SensorDataPageState extends State<SensorDataPage>
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 12),
+            _buildMedicalDisclaimer(compact: true),
           ],
         ),
       );
@@ -2314,7 +2319,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '왜 기준값이 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 피로도 측정의 정확도가 높아집니다',
+                      '왜 기준값이 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로도 참고 지표의 일관성이 향상됩니다',
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: Colors.white.withOpacity(0.85),
@@ -2325,6 +2330,8 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            _buildMedicalDisclaimer(),
           ],
         ),
       );
@@ -2399,6 +2406,8 @@ class _SensorDataPageState extends State<SensorDataPage>
             '준비가 되면 아래 시작 버튼을 눌러주세요.',
             isSmall,
           ),
+          const SizedBox(height: 12),
+          _buildMedicalDisclaimer(),
         ],
       ),
     );
@@ -2438,6 +2447,44 @@ class _SensorDataPageState extends State<SensorDataPage>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMedicalDisclaimer({bool compact = false}) {
+    final textStyle = TextStyle(
+      fontSize: compact ? 11 : 12,
+      color: Colors.white.withOpacity(0.75),
+      height: 1.4,
+    );
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 10 : 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.08),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.health_and_safety_outlined,
+            color: Colors.orangeAccent,
+            size: compact ? 18 : 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '이 앱의 근피로도 지표는 스마트폰 가속도·자이로 데이터를 활용한 웰니스 참고 정보입니다. '
+              '의료용 진단 장비가 아니며, 건강 상태 판단이나 치료 결정 전에 반드시 전문 의료진과 상담하세요.\n'
+              '센서 환경과 기기 모델에 따라 오차가 발생할 수 있습니다.',
+              style: textStyle,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

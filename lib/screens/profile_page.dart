@@ -347,7 +347,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '하루 1~2회 측정으로\n정확도 향상',
+                        '하루 1~2회 분석으로\n개인화 향상',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white,
@@ -432,36 +432,36 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       case MLMode.ema:
         modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
         modeIcon = Icons.functions;
-        accuracyInfo = '기본 정확도';
+        accuracyInfo = '기본 분석';
         benefit = '일반인 평균 대비 개인화 시작';
         features = [
-          '✓ 수식 기반 피로도 계산',
+          '✓ 수식 기반 근피로도 계산',
           '✓ 내 기준값 학습 중',
-          '→ 더 많은 측정으로 정확도 향상',
+          '→ 더 많은 분석으로 개인화 향상',
         ];
         break;
       case MLMode.hybrid:
         modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
         modeIcon = Icons.hub;
-        accuracyInfo = '정확도 ⬆️ 향상됨';
-        benefit = 'AI가 보조하여 더 정확한 예측';
+        accuracyInfo = '개인화 ⬆️ 향상됨';
+        benefit = 'AI가 보조하여 개인화된 예측';
         features = [
           '✓ 개인 기준값 완성',
           '✓ AI 모델 보정 적용 (30%)',
-          '✓ 이전 측정값 활용',
-          '→ 더 정확한 피로도 예측',
+          '✓ 이전 분석값 활용',
+          '→ 개인화된 근피로도 예측',
         ];
         break;
       case MLMode.endToEnd:
         modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
         modeIcon = Icons.psychology;
-        accuracyInfo = '최고 정확도 ⭐️';
+        accuracyInfo = '최적화된 분석 ⭐️';
         benefit = '완전 AI 기반 개인화 예측';
         features = [
           '✓ AI가 직접 예측',
           '✓ 센서 데이터 패턴 학습',
           '✓ 개인별 최적화 완료',
-          '✓ 가장 정확한 피로도 측정',
+          '✓ 개인화된 근피로도 분석',
         ];
         break;
     }
@@ -715,7 +715,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '📚 정확도 향상 로드맵',
+            '📚 개인화 향상 로드맵',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.bold,
@@ -737,7 +737,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             2,
             '향상 분석',
             '${MLPhaseConstants.emaPhaseThreshold}~${MLPhaseConstants.hybridPhaseThreshold - 1}회',
-            'AI 보조로 정확도 향상',
+            'AI 보조로 개인화 향상',
             const Color(0xFF00ACC1), // 청록색
             _currentMLMode == MLMode.hybrid,
             _currentMLMode.phase > 2,
@@ -747,7 +747,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             3,
             '완전 AI 분석',
             '${MLPhaseConstants.hybridPhaseThreshold}+회',
-            'AI 기반 최고 정확도',
+            'AI 기반 최적화된 분석',
             const Color(0xFF9C27B0), // 진보라색
             _currentMLMode == MLMode.endToEnd,
             false,
