@@ -204,6 +204,12 @@ class _SensorDataPageState extends State<SensorDataPage>
         if (mounted) {
           setState(() {
             _analysisResult = result;
+            // 측정 완료 후 결과가 있으면 기준값 완료 배너 플래그 리셋
+            // (사용자가 "나중에" 버튼을 누르지 않아도 결과가 표시되도록)
+            if (_justCompletedBaseline && result['fatigueScore'] != null) {
+              _justCompletedBaseline = false;
+              _completedBaseline = null;
+            }
           });
           await _loadBaseline();
         }
