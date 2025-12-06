@@ -585,13 +585,18 @@ class _SensorDataPageState extends State<SensorDataPage>
         actions: [
           _buildAppBarIcon(
             icon: Icons.history_outlined,
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const MeasurementHistoryPage(),
                 ),
               );
+              if (!mounted) return;
+              // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+              setState(() {
+                _analysisResult = null;
+              });
             },
             tooltip: '측정 기록',
           ),
@@ -606,9 +611,12 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               );
               if (!mounted) return;
+              // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+              setState(() {
+                _analysisResult = null;
+              });
               await _checkBaselineStatus();
               await _loadBaseline();
-              setState(() {});
             },
             tooltip: '내 정보',
           ),
@@ -812,6 +820,8 @@ class _SensorDataPageState extends State<SensorDataPage>
                               setState(() {
                                 _justCompletedBaseline = false;
                                 _completedBaseline = null;
+                                _analysisResult =
+                                    null; // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
                               });
                             },
                             style: ElevatedButton.styleFrom(
@@ -2141,13 +2151,18 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             InkWell(
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const ProfilePage(),
                   ),
                 );
+                if (!mounted) return;
+                // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+                setState(() {
+                  _analysisResult = null;
+                });
               },
               child: Container(
                 padding:

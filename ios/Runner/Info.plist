@@ -46,11 +46,11 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
-	<string>이 앱은 근육 피로도를 측정하기 위해 모션 센서 데이터를 사용합니다.</string>
+	<string>이 앱은 웰니스 참고 정보를 제공하기 위해 모션 센서 데이터를 사용합니다. 의료용 진단 장비가 아닙니다.</string>
 	<key>NSAccelerometerUsageDescription</key>
-	<string>이 앱은 근육 피로도를 측정하기 위해 가속도계 데이터를 사용합니다.</string>
+	<string>이 앱은 웰니스 참고 정보를 제공하기 위해 가속도계 데이터를 사용합니다. 의료용 진단 장비가 아닙니다.</string>
 	<key>NSGyroscopeUsageDescription</key>
-	<string>이 앱은 근육 피로도를 측정하기 위해 자이로스코프 데이터를 사용합니다.</string>
+	<string>이 앱은 웰니스 참고 정보를 제공하기 위해 자이로스코프 데이터를 사용합니다. 의료용 진단 장비가 아닙니다.</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-8223579217523211~5784777359</string>
 </dict>
