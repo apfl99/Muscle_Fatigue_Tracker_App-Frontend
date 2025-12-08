@@ -178,7 +178,7 @@ class FatigueGaugeWidget extends StatelessWidget {
       icon = Icons.info;
       messageColor = const Color(0xFFFFA726); // 주황 (약간 피로)
     } else if (fatigue < FatigueConstants.midThreshold) {
-      message = '피로가 누적되고 있습니다';
+      message = '피로가 누적되는 경향이 보입니다';
       icon = Icons.warning;
       messageColor = const Color(0xFFFF7043); // 진한 주황 (피로 누적)
     } else {
@@ -194,22 +194,38 @@ class FatigueGaugeWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: messageColor.withOpacity(0.3)),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: messageColor, size: isSmall ? 18 : 20),
-          SizedBox(width: isSmall ? 6 : 8),
-          Flexible(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: isSmall ? 12 : 14,
-                color: messageColor,
-                fontWeight: FontWeight.w600,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: messageColor, size: isSmall ? 18 : 20),
+              SizedBox(width: isSmall ? 6 : 8),
+              Flexible(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: isSmall ? 12 : 14,
+                    color: messageColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '이 지수는 웰니스 참고용이며 의료 진단이나 치료 목적으로 사용할 수 없습니다.',
+            style: TextStyle(
+              fontSize: isSmall ? 10 : 11,
+              color: messageColor.withOpacity(0.7),
+              height: 1.3,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

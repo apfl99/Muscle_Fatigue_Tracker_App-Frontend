@@ -255,7 +255,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ],
         ),
         content: Text(
-          '모든 측정 기록(${_allSessions.length}회)을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+          '모든 분석 기록(${_allSessions.length}회)을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
         ),
         actions: [
           TextButton(
@@ -279,7 +279,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('모든 측정 기록이 삭제되었습니다.'),
+            content: Text('모든 분석 기록이 삭제되었습니다.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -295,7 +295,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
         backgroundColor: AppTheme.darkBackground,
         elevation: 0,
         title: Text(
-          '측정 기록 (${_allSessions.length}회)',
+          '분석 기록 (${_allSessions.length}회)',
           style: const TextStyle(color: Colors.white),
         ),
         bottom: TabBar(
@@ -356,7 +356,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ),
           const SizedBox(height: 16),
           Text(
-            '저장된 측정 기록이 없습니다',
+            '저장된 분석 기록이 없습니다',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey.shade400,
@@ -364,7 +364,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ),
           const SizedBox(height: 8),
           Text(
-            '측정을 시작하면 자동으로 저장됩니다',
+            '분석을 시작하면 자동으로 기록됩니다',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey.shade600,
@@ -389,7 +389,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             ),
             const SizedBox(height: 16),
             Text(
-              '측정 기록이 없습니다',
+              '분석 기록이 없습니다',
               style: TextStyle(
                 fontSize: 18,
                 color: Colors.grey.shade400,
@@ -491,7 +491,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatItem(
-                  '총 측정',
+                  '총 분석',
                   '${_filteredSessions.length}회',
                   Icons.assignment,
                   Colors.blue,
@@ -1082,7 +1082,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             ),
           ),
         ),
-        // 선택한 날짜의 측정 기록
+        // 선택한 날짜의 기록
         if (_selectedDay != null) _buildSelectedDayResults(),
       ],
     );
@@ -1103,7 +1103,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           padding: const EdgeInsets.all(32.0),
           child: Center(
             child: Text(
-              '이 날짜에는 측정 기록이 없습니다',
+              '이 날짜에는 분석 기록이 없습니다',
               style: TextStyle(
                 color: Colors.grey.shade600,
                 fontSize: 14,
@@ -1127,7 +1127,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     );
   }
 
-  // 측정 기록 리스트 (Sliver 버전)
+  // 기록 리스트 (Sliver 버전)
   Widget _buildResultsSliverList() {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1154,7 +1154,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                     ),
                     const SizedBox(width: 12),
                     const Text(
-                      '측정 기록',
+                      '분석 기록',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -1379,11 +1379,11 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                 '피로도 점수',
                 session.fatigue.toStringAsFixed(2),
               ),
-              _buildDetailRow('분석 횟수', '${session.windowCount}회'),
+              _buildDetailRow('세부 샘플 수', '${session.windowCount}개'),
               _buildDetailRow('분석 모드', _getModeDisplayName(session.mode)),
               const Divider(),
               const Text(
-                '📊 측정 데이터',
+                '분석 데이터',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1414,7 +1414,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('측정 기록이 삭제되었습니다'),
+                      content: Text('분석 기록이 삭제되었습니다'),
                     ),
                   );
                 }

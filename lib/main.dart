@@ -62,8 +62,8 @@ void main() async {
     await initializeWorkerManager();
     print('✅ Worker Manager 초기화 완료');
 
-    // User Embedding은 측정 시에만 계산됨
-    print('✅ User Embedding은 측정 시에 자동 계산됩니다');
+    // User Embedding은 분석 시에만 계산됨
+    print('✅ User Embedding은 분석 시에 자동 계산됩니다');
 
     await ModelUpdateScheduler.instance.start();
     print('✅ 모델 자동 다운로드 스케줄러 시작');
@@ -123,7 +123,7 @@ class _SensorDataPageState extends State<SensorDataPage>
   Timer? _autoStopTimer;
   double _remainingSeconds = 0.0;
 
-  // 동적 측정시간 설정
+  // 동적 분석시간 설정
   double _customMeasurementSeconds = SensorConfig.totalSeconds;
 
   // Baseline 설정 상태
@@ -141,12 +141,12 @@ class _SensorDataPageState extends State<SensorDataPage>
   String? _qualityWarningMessage;
   Timer? _qualityWarningTimer;
 
-  // (실제 측정 상태를 고정 메시지로 표시)
+  // (실제 분석 상태를 고정 메시지로 표시)
 
   // Baseline 상태 확인
   Future<void> _checkBaselineStatus() async {
     try {
-      // DB 상태 동기화: 첫 측정 여부 + 기준값 존재 여부 모두 확인
+      // DB 상태 동기화: 첫 분석 여부 + 기준값 존재 여부 모두 확인
       final isFirstMeasurement =
           await DatabaseHelper.instance.isFirstMeasurement();
       final hasBaselineInDb = await DatabaseHelper.instance.hasBaseline();
@@ -343,15 +343,15 @@ class _SensorDataPageState extends State<SensorDataPage>
       return;
     }
 
-    // 측정 시작 시 배너 광고 재시도
+    // 분석 시작 시 배너 광고 재시도
     AdManager.instance.loadBannerAd(force: true);
 
-    // 새로운 측정 시작 시 이전 데이터 초기화
-    // 기준값 설정 직후 첫 측정인 경우 플래그 리셋
+    // 새로운 분석 시작 시 이전 데이터 초기화
+    // 기준 맞추기 직후 첫 분석인 경우 플래그 리셋
     setState(() {
       _analysisResult = null;
       _isAiProcessing = false;
-      _justCompletedBaseline = false; // 첫 측정 시작 시 리셋
+      _justCompletedBaseline = false; // 첫 분석 시작 시 리셋
       _completedBaseline = null; // 완료 배너도 리셋
     });
 
@@ -514,7 +514,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             _hasBaseline = true;
             _isCheckingBaseline = false;
             _isBaselineSetting = false;
-            _baselineStatus = '기준값 설정이 완료되었습니다!';
+            _baselineStatus = '기준 맞추기가 완료되었습니다!';
             _justCompletedBaseline = true;
             _analysisResult = null; // 이번 세션은 피로도 카드 미노출
           });
@@ -529,7 +529,7 @@ class _SensorDataPageState extends State<SensorDataPage>
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('기준값 설정 실패. 다시 시도해주세요.'),
+              content: Text('기준 맞추기에 실패했습니다. 다시 시도해주세요.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 2),
             ),
@@ -598,7 +598,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 _analysisResult = null;
               });
             },
-            tooltip: '측정 기록',
+            tooltip: '지수 기록',
           ),
           SizedBox(width: Responsive.isSmallScreen(context) ? 2 : 6),
           _buildAppBarIcon(
@@ -695,12 +695,12 @@ class _SensorDataPageState extends State<SensorDataPage>
                     // 상태 텍스트
                     Text(
                       _isCollecting
-                          ? '측정 중...'
+                          ? '분석 중...'
                           : _analysisResult != null
-                              ? '측정 완료'
+                              ? '분석 완료'
                               : (!_hasBaseline && !_isCheckingBaseline
-                                  ? '기준값 설정 준비'
-                                  : '측정 준비'),
+                                  ? '기준 맞추기 준비'
+                                  : '분석 준비'),
                       style: TextStyle(
                         fontSize: Responsive.isSmallScreen(context) ? 20 : 24,
                         fontWeight: FontWeight.bold,
@@ -764,7 +764,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                           ),
                           SizedBox(width: 8),
                           Text(
-                            '기준값 설정이 완료되었습니다',
+                            '기준 맞추기가 완료되었습니다',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -886,10 +886,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                           Flexible(
                             child: Text(
                               _isCheckingBaseline
-                                  ? '기준값 확인 중...'
+                                  ? '기준 확인 중...'
                                   : !_hasBaseline
-                                      ? '기준값 설정 시작'
-                                      : '${_customMeasurementSeconds.toStringAsFixed(1)}초 측정 시작',
+                                      ? '기준 맞추기 시작'
+                                      : '${_customMeasurementSeconds.toStringAsFixed(1)}초 분석 시작',
                               style: TextStyle(
                                 fontSize:
                                     Responsive.isSmallScreen(context) ? 16 : 18,
@@ -931,7 +931,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                             width: Responsive.isSmallScreen(context) ? 8 : 12,
                           ),
                           Text(
-                            '측정 중지',
+                            '분석 중지',
                             style: TextStyle(
                               fontSize:
                                   Responsive.isSmallScreen(context) ? 16 : 18,
@@ -1146,7 +1146,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       case MLMode.ema:
         modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
         modeIcon = Icons.functions;
-        statusMessage = '센서 데이터로 내 기준값 학습 중';
+        statusMessage = '움직임 정보를 바탕으로 기준을 맞추는 중';
         break;
       case MLMode.hybrid:
         modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
@@ -1209,7 +1209,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${currentMode.displayName} • $nextMeasurementIndex번째 측정',
+                  '${currentMode.displayName} • $nextMeasurementIndex번째 분석',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.white.withOpacity(0.6),
@@ -1241,7 +1241,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '규칙적인 측정이 개인화 모델의 예측력을 높여줘요.',
+                  '규칙적으로 기록하면 개인화 예측이 더 안정됩니다.',
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.white.withOpacity(0.55),
@@ -1314,7 +1314,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               ),
               const SizedBox(width: 12),
               const Text(
-                '측정 데이터',
+                '분석 데이터',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1350,9 +1350,8 @@ class _SensorDataPageState extends State<SensorDataPage>
             value: '${(result['peakFreq'] ?? 0.0).toStringAsFixed(1)}회/초',
             subtitle: '주요 주파수',
           ),
-          const SizedBox(height: 20),
-
-          // 측정 시간
+          const SizedBox(height: 12),
+          // 분석 시간
           Divider(color: Colors.white.withOpacity(0.1)),
           const SizedBox(height: 12),
           Row(
@@ -1473,7 +1472,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               ),
               const SizedBox(width: 12),
               Text(
-                '기준값 설정 필요',
+                '기준 맞추기 안내',
                 style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1508,7 +1507,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '개인화된 근피로도 분석을 위해\n개인 기준값 설정이 필요합니다',
+                        '개인화된 근피로도 분석을 위해\n개인 기준 맞추기가 필요합니다',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1567,15 +1566,15 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(height: 12),
                     _buildStepGuide(
                       '2',
-                      '기준값 설정',
-                      '기준값 설정 버튼을 누르면 10초간 자동 측정됩니다',
+                      '기준 맞추기',
+                      '기준 맞추기 버튼을 누르면 약 10초 동안 움직임 정보를 모아 기준을 설정합니다',
                       Icons.settings_input_component,
                     ),
                     const SizedBox(height: 12),
                     _buildStepGuide(
                       '3',
                       '완료',
-                      '설정 완료 후 개인 기준값이 저장됩니다',
+                      '설정 완료 후 내 기준이 저장됩니다',
                       Icons.check_circle_outline,
                     ),
                   ],
@@ -1605,7 +1604,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '왜 기준값 설정이 필요한가요?\n• 기기별 센서 특성 차이 보정\n• 개인별 손떨림 특성 반영\n• 더 일관된 근피로도 참고 지표 제공',
+                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 근피로도 참고 지표의 일관성을 높여줍니다',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.withOpacity(0.9),
@@ -1640,7 +1639,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ),
               child: const Text(
-                '기준값 설정',
+                '기준 맞추기',
                 style: TextStyle(color: Colors.white),
               ),
             ),
@@ -1727,7 +1726,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('개인 기준값 설정이 완료되었습니다! 이제 측정을 시작할 수 있습니다.'),
+                  content: Text('근피로 지수 기준 맞추기가 완료되었습니다! 이제 분석을 시작할 수 있습니다.'),
                   backgroundColor: Colors.green,
                   duration: Duration(seconds: 3),
                 ),
@@ -1783,7 +1782,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 측정 시간 설정
+                    // 분석 시간 설정
                     const Row(
                       children: [
                         Icon(
@@ -1793,7 +1792,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                         ),
                         SizedBox(width: 8),
                         Text(
-                          '측정 시간 (초)',
+                          '분석 시간 (초)',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -1848,7 +1847,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                       const Padding(
                         padding: EdgeInsets.only(top: 8.0),
                         child: Text(
-                          '⚠️ 측정 중에는 설정을 변경할 수 없습니다.',
+                          '⚠️ 기준 맞추기/분석 중에는 설정을 변경할 수 없습니다.',
                           style: TextStyle(
                             color: Colors.orange,
                             fontSize: 12,
@@ -1879,7 +1878,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // 모든 측정 기록 삭제
+                    // 모든 기록 삭제
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
@@ -1897,7 +1896,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                                       ],
                                     ),
                                     content: const Text(
-                                      '모든 측정 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+                                      '모든 분석 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
                                     ),
                                     actions: [
                                       TextButton(
@@ -1935,7 +1934,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('모든 측정 기록이 삭제되었습니다.'),
+                                      content: Text('모든 분석 기록이 삭제되었습니다.'),
                                       backgroundColor: Colors.red,
                                     ),
                                   );
@@ -1943,7 +1942,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                               }
                             : null,
                         icon: const Icon(Icons.delete_forever),
-                        label: const Text('모든 측정 기록 삭제'),
+                        label: const Text('모든 분석 기록 삭제'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: BorderSide(
@@ -1970,13 +1969,13 @@ class _SensorDataPageState extends State<SensorDataPage>
                                           color: Colors.orange,
                                         ),
                                         SizedBox(width: 8),
-                                        Text('개인 기준값 초기화'),
+                                        Text('개인 기준 초기화'),
                                       ],
                                     ),
                                     content: const Text(
-                                      '개인 기준값을 초기화하시겠습니까?\n\n'
+                                      '개인 기준을 초기화하시겠습니까?\n\n'
                                       '일반인 평균값으로 리셋되며,\n'
-                                      '학습된 내 기준값이 모두 삭제됩니다.',
+                                      '학습된 내 기준이 모두 삭제됩니다.',
                                     ),
                                     actions: [
                                       TextButton(
@@ -2012,7 +2011,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('개인 기준값이 초기화되었습니다.'),
+                                      content: Text('개인 기준이 초기화되었습니다.'),
                                       backgroundColor: Colors.orange,
                                     ),
                                   );
@@ -2020,7 +2019,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                               }
                             : null,
                         icon: const Icon(Icons.restore),
-                        label: const Text('개인 기준값 초기화'),
+                        label: const Text('개인 기준 초기화'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.deepOrange,
                           side: BorderSide(
@@ -2029,6 +2028,39 @@ class _SensorDataPageState extends State<SensorDataPage>
                                 : Colors.grey,
                           ),
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.health_and_safety_outlined,
+                            color: Colors.orangeAccent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'MuscleCare는 의료 진단이나 치료 목적의 앱이 아니며, 제공되는 정보는 운동 및 웰니스 참고용입니다. 건강 관련 의사결정이 필요한 경우 전문가와 상담하시기 바랍니다.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withOpacity(0.75),
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -2046,10 +2078,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                       ? null
                       : () {
                           setState(() {
-                            // 동적 측정시간 설정 적용
+                            // 동적 분석시간 설정 적용
                             _customMeasurementSeconds = tempWindowSeconds;
                             print(
-                              '✅ 측정시간이 ${_customMeasurementSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
+                              '✅ 분석 시간이 ${_customMeasurementSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
                             );
                           });
                           Navigator.of(context).pop();
@@ -2130,7 +2162,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '측정이 완료되었습니다',
+                    '분석이 완료되었습니다',
                     style: GoogleFonts.inter(
                       fontSize: isSmall ? 15 : 17,
                       fontWeight: FontWeight.bold,
@@ -2142,7 +2174,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '측정 환경을 일정하게 유지하면 더 일관된 참고 지표를 얻을 수 있습니다.',
+              '분석 환경을 일정하게 유지하면 더 일관된 참고 지표를 얻을 수 있습니다.',
               style: TextStyle(
                 fontSize: isSmall ? 13 : 14,
                 color: Colors.white.withOpacity(0.8),
@@ -2245,7 +2277,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '측정 중',
+                  '분석 중',
                   style: GoogleFonts.inter(
                     fontSize: isSmall ? 16 : 18,
                     fontWeight: FontWeight.bold,
@@ -2256,7 +2288,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '움직이지 말고 ${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지하세요.',
+              '앱이 움직임 정보를 모아 근피로 지수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
               style: TextStyle(
                 fontSize: isSmall ? 14 : 15,
                 color: Colors.white.withOpacity(0.9),
@@ -2307,7 +2339,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '기준값 설정 준비',
+                    '내 근피로 지수 기준 맞추기',
                     style: GoogleFonts.inter(
                       fontSize: isSmall ? 15 : 17,
                       fontWeight: FontWeight.bold,
@@ -2332,7 +2364,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             const SizedBox(height: 10),
             _buildInstructionItem(
               '3',
-              '아래 ‘기준값 설정 시작’ 버튼을 눌러 10초간 자동 측정합니다.',
+              '아래 ‘기준 맞추기 시작’ 버튼을 누르면 약 10초 동안 움직임 정보를 모아 내 기준을 설정합니다.',
               isSmall,
             ),
             const SizedBox(height: 16),
@@ -2355,7 +2387,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '왜 기준값이 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로도 참고 지표의 일관성이 향상됩니다',
+                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로도 참고 지표의 일관성이 향상됩니다',
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: Colors.white.withOpacity(0.85),
@@ -2408,7 +2440,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '측정 전 안내',
+                  '분석 전 안내',
                   style: GoogleFonts.inter(
                     fontSize: isSmall ? 15 : 17,
                     fontWeight: FontWeight.bold,
@@ -2513,9 +2545,10 @@ class _SensorDataPageState extends State<SensorDataPage>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '이 앱의 근피로도 지표는 스마트폰 가속도·자이로 데이터를 활용한 웰니스 참고 정보입니다. '
-              '의료용 진단 장비가 아니며, 건강 상태 판단이나 치료 결정 전에 반드시 전문 의료진과 상담하세요.\n'
-              '센서 환경과 기기 모델에 따라 오차가 발생할 수 있습니다.',
+              '이 앱에서 제공하는 근피로 지수는 웰니스 참고용 정보입니다.\n'
+              '의료 진단이나 치료 목적으로 사용할 수 없으며,\n'
+              '건강 관련 중요한 결정은 반드시 의료 전문가와 상의하세요.\n'
+              '환경과 사용 방식에 따라 오차가 발생할 수 있습니다.',
               style: textStyle,
             ),
           ),
@@ -2590,7 +2623,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
   bool _isCollecting = false;
   bool _isProcessing = false;
   double _progress = 0.0;
-  String _statusMessage = '기기를 책상 위에 평평하게 올려놓고 기준값 설정 버튼을 눌러주세요';
+  String _statusMessage = '기기를 책상 위에 평평하게 올려놓고 기준 맞추기 버튼을 눌러주세요';
   Map<String, dynamic>? _baselineResult;
 
   Future<void> _startBaselineCollection() async {
@@ -2687,7 +2720,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
           ),
           const SizedBox(width: 12),
           Text(
-            '개인 기준값 설정',
+            '개인 기준 맞추기',
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -2803,7 +2836,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
               ),
             ),
             child: const Text(
-              '기준값 설정',
+              '기준 맞추기',
               style: TextStyle(color: Colors.white),
             ),
           ),

@@ -178,7 +178,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 사용자 프로필 요약
+              // 사용자 기록 요약
               _buildProfileSummary(),
               const SizedBox(height: 16),
 
@@ -190,11 +190,11 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               _buildBaselineCard(),
               const SizedBox(height: 16),
 
-              // 측정 통계
+              // 지수 통계
               _buildStatisticsCard(),
               const SizedBox(height: 16),
 
-              // 측정 권장사항
+              // 분석 권장사항
               _buildMeasurementTipsCard(),
             ],
           ),
@@ -203,7 +203,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  // 프로필 요약
+  // 기록 요약
   Widget _buildProfileSummary() {
     // 측정 세션 수를 사용 (BaselineManager와 일치)
     final totalCount = _totalMeasurementCount;
@@ -250,7 +250,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 16),
           Text(
-            '나의 근피로도 프로필',
+            '나의 근피로 지수 기록',
             style: TextStyle(
               fontSize: Responsive.isSmallScreen(context) ? 18 : 20,
               fontWeight: FontWeight.bold,
@@ -262,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildSummaryItem(
-                '총 측정',
+                '총 분석',
                 '$totalCount회',
                 Icons.fitness_center,
                 Colors.blue,
@@ -280,7 +280,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  // 측정 권장사항 카드
+  // 분석 권장사항 카드
   Widget _buildMeasurementTipsCard() {
     return Container(
       padding: Responsive.cardPadding(context),
@@ -312,7 +312,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               ),
               const SizedBox(width: 12),
               const Text(
-                '측정 권장사항',
+                '분석 권장사항',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -369,7 +369,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '같은 시간대에 측정하면\n개인화 예측이 더 정밀해집니다',
+                        '같은 시간대에 분석하면\n개인화 예측이 더 안정적으로 동작합니다',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white,
@@ -417,7 +417,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  // ML 모드 카드 (정확도 향상 단계)
+  // ML 모드 카드 (개인화 단계 안내)
   Widget _buildMLModeCard() {
     final nextPhaseMeasurements =
         BaselineManager.instance.getMeasurementsUntilNextPhase();
@@ -430,38 +430,38 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
     switch (_currentMLMode) {
       case MLMode.ema:
-        modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
+        modeColor = const Color(0xFF2196F3); // 파란색 (기본 단계)
         modeIcon = Icons.functions;
-        accuracyInfo = '기본 분석';
-        benefit = '일반인 평균 대비 개인화 시작';
+        accuracyInfo = '기본 분석 단계';
+        benefit = '일반 패턴에서 내 패턴을 알아가는 중';
         features = [
-          '✓ 수식 기반 근피로도 계산',
-          '✓ 내 기준값 학습 중',
-          '→ 더 많은 분석으로 개인화 향상',
+          '✓ 수식 기반 근피로 지수 생성',
+          '✓ 내 기준 맞추기 진행 중',
+          '→ 기록이 늘수록 나에게 맞춰집니다',
         ];
         break;
       case MLMode.hybrid:
-        modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
+        modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조 단계)
         modeIcon = Icons.hub;
         accuracyInfo = '개인화 ⬆️ 향상됨';
-        benefit = 'AI가 보조하여 개인화된 예측';
+        benefit = 'AI가 보조하여 더 나은 지표 제공';
         features = [
-          '✓ 개인 기준값 완성',
+          '✓ 개인 기준 맞추기 완료',
           '✓ AI 모델 보정 적용 (30%)',
-          '✓ 이전 분석값 활용',
-          '→ 개인화된 근피로도 예측',
+          '✓ 이전 기록 활용',
+          '→ 나에게 맞춘 근피로 지수',
         ];
         break;
       case MLMode.endToEnd:
-        modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
+        modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 집중 단계)
         modeIcon = Icons.psychology;
         accuracyInfo = '최적화된 분석 ⭐️';
-        benefit = '완전 AI 기반 개인화 예측';
+        benefit = 'AI 기반으로 개인 패턴을 더 잘 보여줍니다';
         features = [
           '✓ AI가 직접 예측',
-          '✓ 센서 데이터 패턴 학습',
+          '✓ 움직임 패턴을 학습',
           '✓ 개인별 최적화 완료',
-          '✓ 개인화된 근피로도 분석',
+          '✓ 개인화된 근피로 지수 안내',
         ];
         break;
     }
@@ -608,8 +608,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildMLProgressItem('총 측정', '$_totalMeasurementCount회'),
-              _buildMLProgressItem('분석 횟수', '$_totalWindowCount회'),
+              _buildMLProgressItem('총 기록(분석)', '$_totalMeasurementCount회'),
+              _buildMLProgressItem('세부 샘플 수', '$_totalWindowCount개'),
             ],
           ),
           if (_currentMLMode != MLMode.endToEnd) ...[
@@ -698,6 +698,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
           // Phase 로드맵
           _buildPhaseRoadmap(),
+          const SizedBox(height: 12),
+          _buildWellnessDisclaimer(),
         ],
       ),
     );
@@ -715,7 +717,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '📚 개인화 향상 로드맵',
+            '개인화 향상 로드맵',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.bold,
@@ -751,6 +753,39 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             const Color(0xFF9C27B0), // 진보라색
             _currentMLMode == MLMode.endToEnd,
             false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWellnessDisclaimer() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.health_and_safety_outlined,
+            color: Colors.orangeAccent,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '이 앱에서 제공하는 근피로 지수는 웰니스 참고용 정보이며, 의료 진단이나 치료 목적으로 사용할 수 없습니다. 건강과 관련된 중요한 결정은 반드시 의료 전문가와 상의하시기 바랍니다.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withOpacity(0.75),
+                height: 1.45,
+              ),
+            ),
           ),
         ],
       ),
@@ -1095,7 +1130,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  // 측정 통계 카드
+  // 지수 통계 카드
   Widget _buildStatisticsCard() {
     final count = _statistics['total_logs'] ?? 0;
     final avgRms = _statistics['avg_rms'] ?? 0.0;
@@ -1135,7 +1170,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(width: 12),
                 const Text(
-                  '측정 통계',
+                  '지수 통계',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1145,7 +1180,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               ],
             ),
             const SizedBox(height: 16),
-            _buildStatRow('총 측정 횟수', '$count회', Colors.blue),
+            _buildStatRow('총 분석 세션', '$count회', Colors.blue),
             const Divider(height: 24),
             const Text(
               '피로도 점수',
@@ -1163,7 +1198,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             _buildStatRow('최대', maxFatigue.toStringAsFixed(2), Colors.red),
             const Divider(height: 24),
             const Text(
-              '측정값 평균',
+              '지수값 평균',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
