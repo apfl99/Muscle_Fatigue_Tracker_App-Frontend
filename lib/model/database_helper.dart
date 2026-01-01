@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../utils/user_identity.dart';
 import 'dart:async';
 import 'user_stats.dart';
+import 'package:flutter/foundation.dart';
 
 /// 통합 데이터베이스 헬퍼 클래스
 /// DB_SCHEMA.md (v1.0.0) 기반으로 전체 DB 관리
@@ -54,13 +55,17 @@ class DatabaseHelper {
 
   Future<Database> _initDB() async {
     try {
-      print('🗄️ 데이터베이스 초기화 시작...');
-      print('📱 플랫폼: ${Platform.operatingSystem}');
+      if (kDebugMode) {
+        print('🗄️ 데이터베이스 초기화 시작...');
+        print('📱 플랫폼: ${Platform.operatingSystem}');
+      }
 
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, dbName);
 
-      print('📂 DB 경로: $path');
+      if (kDebugMode) {
+        print('📂 DB 경로: $path');
+      }
 
       // 데이터베이스 열기
       final db = await openDatabase(
@@ -69,21 +74,29 @@ class DatabaseHelper {
         onCreate: _createDB,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
-          print('✅ 데이터베이스 열림');
+          if (kDebugMode) {
+            print('✅ 데이터베이스 열림');
+          }
         },
       );
 
-      print('✅ 데이터베이스 초기화 완료');
+      if (kDebugMode) {
+        print('✅ 데이터베이스 초기화 완료');
+      }
       return db;
     } catch (e, stackTrace) {
-      print('❌ DB 초기화 오류: $e');
-      print('스택 트레이스: $stackTrace');
+      if (kDebugMode) {
+        print('❌ DB 초기화 오류: $e');
+        print('스택 트레이스: $stackTrace');
+      }
       rethrow;
     }
   }
 
   Future<void> _createDB(Database db, int version) async {
-    print('🔨 테이블 생성 중 (SQLite 스키마)...');
+    if (kDebugMode) {
+      print('🔨 테이블 생성 중 (SQLite 스키마)...');
+    }
 
     // 1. user_state 테이블 (개인화 설정 저장)
     await db.execute('''

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'sensor/streaming.dart';
@@ -23,8 +24,10 @@ import 'utils/user_identity.dart';
 import 'utils/ad_manager.dart';
 
 void main() async {
-  print('\n🚀 앱 시작...');
-  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  if (kDebugMode) {
+    print('\n🚀 앱 시작...');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
 
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -39,44 +42,66 @@ void main() async {
   }
 
   // 데이터베이스 초기화
-  print('🗄️ 데이터베이스 초기화 중...');
+  if (kDebugMode) {
+    print('🗄️ 데이터베이스 초기화 중...');
+  }
   try {
     final db = await DatabaseHelper.instance.database;
-    print('✅ 통합 DB 초기화 완료');
-    print('   - DB 경로: ${db.path}');
+    if (kDebugMode) {
+      print('✅ 통합 DB 초기화 완료');
+      print('   - DB 경로: ${db.path}');
+    }
 
     // Baseline Manager 초기화
     await BaselineManager.instance.initialize();
-    print('✅ Baseline Manager 초기화 완료');
+    if (kDebugMode) {
+      print('✅ Baseline Manager 초기화 완료');
+    }
 
     // AdManager 초기화 및 배너 광고 로드
     await AdManager.instance.initialize();
     AdManager.instance.loadBannerAd();
-    print('✅ AdManager 초기화 및 배너 광고 로드 완료');
+    if (kDebugMode) {
+      print('✅ AdManager 초기화 및 배너 광고 로드 완료');
+    }
 
     // ML Manager 초기화
     await MLManager.instance.initialize();
-    print('✅ ML Manager 초기화 완료');
+    if (kDebugMode) {
+      print('✅ ML Manager 초기화 완료');
+    }
 
     // Worker Manager 초기화
     await initializeWorkerManager();
-    print('✅ Worker Manager 초기화 완료');
+    if (kDebugMode) {
+      print('✅ Worker Manager 초기화 완료');
+    }
 
     // User Embedding은 분석 시에만 계산됨
-    print('✅ User Embedding은 분석 시에 자동 계산됩니다');
+    if (kDebugMode) {
+      print('✅ User Embedding은 분석 시에 자동 계산됩니다');
+    }
 
     await ModelUpdateScheduler.instance.start();
-    print('✅ 모델 자동 다운로드 스케줄러 시작');
+    if (kDebugMode) {
+      print('✅ 모델 자동 다운로드 스케줄러 시작');
+    }
 
     await PersonalizationManager.instance.initialize();
     await PersonalizationManager.instance.ensurePersonalization();
-    print('✅ 개인화 매니저 초기화 및 점검 완료');
+    if (kDebugMode) {
+      print('✅ 개인화 매니저 초기화 및 점검 완료');
+    }
   } catch (e, stackTrace) {
-    print('❌ 초기화 실패: $e');
-    print('스택 트레이스: $stackTrace');
+    if (kDebugMode) {
+      print('❌ 초기화 실패: $e');
+      print('스택 트레이스: $stackTrace');
+    }
   }
 
-  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  if (kDebugMode) {
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  }
 
   runApp(const MyApp());
 }
@@ -159,14 +184,20 @@ class _SensorDataPageState extends State<SensorDataPage>
       });
 
       if (needBaseline) {
-        print(
-          '⚠️ 기준값 설정 필요: (isFirst=$isFirstMeasurement, hasBaseline=$hasBaselineInDb)',
-        );
+        if (kDebugMode) {
+          print(
+            '⚠️ 기준값 설정 필요: (isFirst=$isFirstMeasurement, hasBaseline=$hasBaselineInDb)',
+          );
+        }
       } else {
-        print('✅ 기준값 사용 가능');
+        if (kDebugMode) {
+          print('✅ 기준값 사용 가능');
+        }
       }
     } catch (e) {
-      print('❌ 기준값 상태 확인 실패: $e');
+      if (kDebugMode) {
+        print('❌ 기준값 상태 확인 실패: $e');
+      }
       setState(() {
         _isCheckingBaseline = false;
       });
@@ -227,8 +258,10 @@ class _SensorDataPageState extends State<SensorDataPage>
         });
       };
     } catch (e, stackTrace) {
-      print('❌ initState 오류: $e');
-      print('스택 트레이스: $stackTrace');
+      if (kDebugMode) {
+        print('❌ initState 오류: $e');
+        print('스택 트레이스: $stackTrace');
+      }
     }
   }
 
@@ -295,8 +328,10 @@ class _SensorDataPageState extends State<SensorDataPage>
       // DB와 Baseline 카운트 동기화
       await BaselineManager.instance.syncWithDatabase();
     } catch (e, stackTrace) {
-      print('❌ Baseline 로드 실패: $e');
-      print('스택 트레이스: $stackTrace');
+      if (kDebugMode) {
+        print('❌ Baseline 로드 실패: $e');
+        print('스택 트레이스: $stackTrace');
+      }
     }
   }
 
@@ -520,7 +555,9 @@ class _SensorDataPageState extends State<SensorDataPage>
           });
           // 자동 이동 대신 완료 배너로 선택 유도
           _completedBaseline = result;
-          print('✅ 기준값 설정 완료: _hasBaseline=$_hasBaseline');
+          if (kDebugMode) {
+            print('✅ 기준값 설정 완료: _hasBaseline=$_hasBaseline');
+          }
         } else {
           if (!mounted) return;
           setState(() {
@@ -2080,9 +2117,11 @@ class _SensorDataPageState extends State<SensorDataPage>
                           setState(() {
                             // 동적 분석시간 설정 적용
                             _customMeasurementSeconds = tempWindowSeconds;
-                            print(
-                              '✅ 분석 시간이 ${_customMeasurementSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
-                            );
+                            if (kDebugMode) {
+                              print(
+                                '✅ 분석 시간이 ${_customMeasurementSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
+                              );
+                            }
                           });
                           Navigator.of(context).pop();
                         },

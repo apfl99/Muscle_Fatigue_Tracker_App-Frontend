@@ -85,10 +85,14 @@ class SensorStreaming {
 
   // 센서 시작
   Future<bool> startSensor() async {
-    print('\n🚀 센서 시작 시도');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    if (kDebugMode) {
+      print('\n🚀 센서 시작 시도');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
     _measurementCount = 0;
-    print('📊 측정 횟수 초기화: $_measurementCount회');
+    if (kDebugMode) {
+      print('📊 측정 횟수 초기화: $_measurementCount회');
+    }
     _cachedUserEmbedding = null;
 
     try {
@@ -220,7 +224,10 @@ class SensorStreaming {
     _windowTimer = Timer.periodic(
       Duration(milliseconds: (SensorConfig.hopSeconds * 1000).toInt()),
       (timer) {
-        print('⏰ 슬라이딩 윈도우 타이머 실행 (${timer.tick}번째)');
+        final shouldDebug = kDebugMode && timer.tick % 10 == 0;
+        if (shouldDebug) {
+          print('⏰ 슬라이딩 윈도우 타이머 실행 (${timer.tick}번째)');
+        }
 
         // 실제 샘플링 레이트가 0이면 기본값 사용
         final effectiveSamplingRate =
@@ -228,17 +235,21 @@ class SensorStreaming {
         final windowSamples =
             SensorConfig.getWindowSamples(effectiveSamplingRate);
 
-        print(
-          '📊 윈도우 요구사항: $windowSamples개 샘플 (${effectiveSamplingRate.toStringAsFixed(1)} Hz)',
-        );
-        print('📊 현재 버퍼: ${_filteredBuffer.length}개 샘플');
+        if (shouldDebug) {
+          print(
+            '📊 윈도우 요구사항: $windowSamples개 샘플 (${effectiveSamplingRate.toStringAsFixed(1)} Hz)',
+          );
+          print('📊 현재 버퍼: ${_filteredBuffer.length}개 샘플');
+        }
 
         // 윈도우 생성 조건 완화: 최소 50% 이상이면 생성
         final minRequiredSamples = (windowSamples * 0.5).round();
         if (_filteredBuffer.length < minRequiredSamples) {
-          print(
-            '⏳ 대기 중: ${_filteredBuffer.length}/$minRequiredSamples (최소 요구량)',
-          );
+          if (shouldDebug) {
+            print(
+              '⏳ 대기 중: ${_filteredBuffer.length}/$minRequiredSamples (최소 요구량)',
+            );
+          }
           return;
         }
 
@@ -247,7 +258,9 @@ class SensorStreaming {
             ? _filteredBuffer.length
             : windowSamples;
 
-        print('📊 실제 사용 샘플: $actualSamples개');
+        if (shouldDebug) {
+          print('📊 실제 사용 샘플: $actualSamples개');
+        }
 
         final windowData = _filteredBuffer.sublist(0, actualSamples);
         final hopSamples = SensorConfig.getHopSamples(effectiveSamplingRate);
@@ -255,12 +268,16 @@ class SensorStreaming {
             (hopSamples.clamp(0, _filteredBuffer.length) as num).toInt();
         _filteredBuffer.removeRange(0, actualHopSamples);
 
-        print('📊 Hop 제거: $actualHopSamples개 샘플');
+        if (shouldDebug) {
+          print('📊 Hop 제거: $actualHopSamples개 샘플');
+        }
 
         _windowCount++;
-        print(
-          '✅ 윈도우 추출 완료 (${windowData.length} samples) - 총 $_windowCount개 윈도우',
-        );
+        if (shouldDebug) {
+          print(
+            '✅ 윈도우 추출 완료 (${windowData.length} samples) - 총 $_windowCount개 윈도우',
+          );
+        }
         _processSegment(windowData);
         if (_accelBufferX.isNotEmpty) {
           final removeAccel = _minInt([actualHopSamples, _accelBufferX.length]);
