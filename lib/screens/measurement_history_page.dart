@@ -112,7 +112,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     var sessions = List<MeasureSession>.from(_allSessions);
     print('🔍 필터 전 세션: ${sessions.length}개');
 
-    // 피로도 레벨 필터
+    // 근피로 지수 레벨 필터
     if (_selectedLevel != null) {
       sessions = sessions.where((s) {
         return FatigueCalculator.getFatigueLevel(s.fatigue) == _selectedLevel;
@@ -165,7 +165,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '피로도 레벨',
+                '근피로 지수 레벨',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -409,7 +409,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               _buildStatisticsSummary(),
               const SizedBox(height: 16),
 
-              // 피로도 추이 그래프
+              // 근피로 지수 추이 그래프
               _buildFatigueChart(),
               const SizedBox(height: 16),
             ],
@@ -696,7 +696,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                 ),
                 const SizedBox(width: 12),
                 const Text(
-                  '피로도 추이',
+                  '근피로 지수 추이',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1208,7 +1208,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             padding: Responsive.cardPadding(context),
             child: Row(
               children: [
-                // 피로도 아이콘
+                // 근피로 지수 아이콘
                 Container(
                   width: Responsive.isSmallScreen(context) ? 50 : 60,
                   height: Responsive.isSmallScreen(context) ? 50 : 60,
@@ -1376,7 +1376,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildDetailRow(
-                '피로도 점수',
+                '근피로 지수',
                 session.fatigue.toStringAsFixed(2),
               ),
               _buildDetailRow('세부 샘플 수', '${session.windowCount}개'),

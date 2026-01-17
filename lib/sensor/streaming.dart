@@ -96,12 +96,14 @@ class SensorStreaming {
     _cachedUserEmbedding = null;
 
     try {
-      print('⚙️ 센서 설정:');
-      print('   - 총 측정 시간: ${SensorConfig.totalSeconds}초');
-      print('   - 윈도우 크기: ${SensorConfig.windowSeconds}초');
-      print('   - Hop 크기: ${SensorConfig.hopSeconds}초');
-      print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
-      print('   - 샘플링 레이트(목표): $targetRate Hz');
+      if (kDebugMode) {
+        print('⚙️ 센서 설정:');
+        print('   - 총 측정 시간: ${SensorConfig.totalSeconds}초');
+        print('   - 윈도우 크기: ${SensorConfig.windowSeconds}초');
+        print('   - Hop 크기: ${SensorConfig.hopSeconds}초');
+        print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
+        print('   - 샘플링 레이트(목표): $targetRate Hz');
+      }
 
       _windowBuffer.clear();
       _filteredBuffer.clear();
@@ -156,14 +158,14 @@ class SensorStreaming {
                 sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
             _windowBuffer.add(mag);
 
-            if (sensorEventCount <= 10) {
+            if (kDebugMode && sensorEventCount <= 10) {
               print(
                   '📥 센서 이벤트 #$sensorEventCount: Raw=(${event.x.toStringAsFixed(2)}, ${event.y.toStringAsFixed(2)}, ${event.z.toStringAsFixed(2)}), '
                   'Filtered=${filtered.toStringAsFixed(4)}');
             }
 
             // 필터링된 데이터가 모두 0에 가까운지 확인
-            if (sensorEventCount % 50 == 0) {
+            if (kDebugMode && sensorEventCount % 50 == 0) {
               print('🔍 필터링 상태 체크:');
               print(
                 '   - Raw magnitude: ${sqrt(event.x * event.x + event.y * event.y + event.z * event.z).toStringAsFixed(4)}',
@@ -180,10 +182,16 @@ class SensorStreaming {
               }
             }
           } catch (e) {
-            print('❌ 센서 데이터 처리 오류: $e');
+            if (kDebugMode) {
+              print('❌ 센서 데이터 처리 오류: $e');
+            }
           }
         },
-        onError: (error) => print('❌ 가속도계 에러: $error'),
+        onError: (error) {
+          if (kDebugMode) {
+            print('❌ 가속도계 에러: $error');
+          }
+        },
       );
 
       _gyroSubscription = gyroscopeEventStream()
@@ -197,29 +205,39 @@ class SensorStreaming {
           _gyroBufferY.add(event.y);
           _gyroBufferZ.add(event.z);
         },
-        onError: (error) => print('❌ 자이로스코프 에러: $error'),
+        onError: (error) {
+          if (kDebugMode) {
+            print('❌ 자이로스코프 에러: $error');
+          }
+        },
       );
 
       _startSlidingWindowAnalysis();
-      print('✅ 센서 측정 시작 성공');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      if (kDebugMode) {
+        print('✅ 센서 측정 시작 성공');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      }
       return true;
     } catch (e, st) {
-      print('❌ 센서 시작 실패: $e');
-      print('스택 트레이스: $st');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      if (kDebugMode) {
+        print('❌ 센서 시작 실패: $e');
+        print('스택 트레이스: $st');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      }
       return false;
     }
   }
 
   // 슬라이딩 윈도우 분석
   void _startSlidingWindowAnalysis() {
-    print('📊 슬라이딩 윈도우 분석 시작');
-    print(
-      '   - 윈도우 크기: ${SensorConfig.windowSeconds}초, Hop 크기: ${SensorConfig.hopSeconds}초',
-    );
-    print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
-    print('   - 타이머 주기: ${(SensorConfig.hopSeconds * 1000).toInt()}ms');
+    if (kDebugMode) {
+      print('📊 슬라이딩 윈도우 분석 시작');
+      print(
+        '   - 윈도우 크기: ${SensorConfig.windowSeconds}초, Hop 크기: ${SensorConfig.hopSeconds}초',
+      );
+      print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
+      print('   - 타이머 주기: ${(SensorConfig.hopSeconds * 1000).toInt()}ms');
+    }
 
     _windowTimer = Timer.periodic(
       Duration(milliseconds: (SensorConfig.hopSeconds * 1000).toInt()),
@@ -313,39 +331,51 @@ class SensorStreaming {
 
   // 윈도우 분석
   Future<void> _processSegment(List<double> segmentData) async {
-    print('\n🔬 데이터 분석 시작');
+    if (kDebugMode) {
+      print('\n🔬 데이터 분석 시작');
+    }
     if (segmentData.isEmpty) {
-      print('❌ 오류: 분석할 데이터 없음');
+      if (kDebugMode) {
+        print('❌ 오류: 분석할 데이터 없음');
+      }
       return;
     }
 
     try {
       final filteredData = segmentData;
-      print(
-        '✅ 데이터 검증 통과 (${filteredData.length} samples @ ${_currentSamplingRate.toStringAsFixed(1)} Hz)',
-      );
+      if (kDebugMode) {
+        print(
+          '✅ 데이터 검증 통과 (${filteredData.length} samples @ ${_currentSamplingRate.toStringAsFixed(1)} Hz)',
+        );
+      }
 
       // 필터링된 데이터의 통계 확인
       final mean = _calculateMean(filteredData);
       final rms = _calculateRMS(filteredData);
       final variance = _calculateVariance(filteredData, mean);
 
-      print(
-        '📊 필터링된 데이터 통계: RMS=${rms.toStringAsFixed(4)}, VAR=${variance.toStringAsFixed(4)}',
-      );
+      if (kDebugMode) {
+        print(
+          '📊 필터링된 데이터 통계: RMS=${rms.toStringAsFixed(4)}, VAR=${variance.toStringAsFixed(4)}',
+        );
+      }
 
       // 필터링된 데이터가 모두 0에 가까우면 원시 magnitude 사용
       List<double> analysisData = filteredData;
       if (rms < 0.001) {
-        print('⚠️ 필터링된 데이터가 너무 작음, 원시 magnitude 사용');
+        if (kDebugMode) {
+          print('⚠️ 필터링된 데이터가 너무 작음, 원시 magnitude 사용');
+        }
         // 윈도우 크기만큼 원시 magnitude 데이터 추출
         final windowSamples = segmentData.length;
         final startIndex = _windowBuffer.length - windowSamples;
 
-        print('🔍 원시 데이터 추출 디버그:');
-        print('   - windowSamples: $windowSamples');
-        print('   - _windowBuffer.length: ${_windowBuffer.length}');
-        print('   - startIndex: $startIndex');
+        if (kDebugMode) {
+          print('🔍 원시 데이터 추출 디버그:');
+          print('   - windowSamples: $windowSamples');
+          print('   - _windowBuffer.length: ${_windowBuffer.length}');
+          print('   - startIndex: $startIndex');
+        }
 
         if (startIndex >= 0 &&
             startIndex < _windowBuffer.length &&
@@ -355,15 +385,21 @@ class SensorStreaming {
                 _windowBuffer.sublist(startIndex, _windowBuffer.length);
             final rawMean = _calculateMean(analysisData);
             final rawRms = _calculateRMS(analysisData);
-            print(
-              '📊 원시 magnitude 통계: RMS=${rawRms.toStringAsFixed(4)}, VAR=${_calculateVariance(analysisData, rawMean).toStringAsFixed(4)}',
-            );
+            if (kDebugMode) {
+              print(
+                '📊 원시 magnitude 통계: RMS=${rawRms.toStringAsFixed(4)}, VAR=${_calculateVariance(analysisData, rawMean).toStringAsFixed(4)}',
+              );
+            }
           } catch (e) {
-            print('❌ 원시 데이터 추출 실패: $e, 필터링된 데이터 사용');
+            if (kDebugMode) {
+              print('❌ 원시 데이터 추출 실패: $e, 필터링된 데이터 사용');
+            }
             analysisData = filteredData;
           }
         } else {
-          print('❌ 원시 데이터 인덱스 오류, 필터링된 데이터 사용');
+          if (kDebugMode) {
+            print('❌ 원시 데이터 인덱스 오류, 필터링된 데이터 사용');
+          }
           analysisData = filteredData;
         }
       }
@@ -371,9 +407,11 @@ class SensorStreaming {
       // 샘플링 레이트가 유효하지 않으면 기본값 사용
       final effectiveSamplingRate =
           _currentSamplingRate > 0 ? _currentSamplingRate : 50.0;
-      print(
-        '📊 주파수 분석용 샘플링 레이트: ${effectiveSamplingRate.toStringAsFixed(1)} Hz',
-      );
+      if (kDebugMode) {
+        print(
+          '📊 주파수 분석용 샘플링 레이트: ${effectiveSamplingRate.toStringAsFixed(1)} Hz',
+        );
+      }
 
       final fatigueFeatures =
           calculateFatigueFeatures(analysisData, effectiveSamplingRate);
@@ -418,15 +456,17 @@ class SensorStreaming {
       }
 
       final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
-      print(
-        '💪 근피로도 계산 완료 → 점수: ${fatigueScore.toStringAsFixed(2)} ($fatigueLevel)',
-      );
+      if (kDebugMode) {
+        print(
+          '💪 근피로도 계산 완료 → 점수: ${fatigueScore.toStringAsFixed(2)} ($fatigueLevel)',
+        );
 
-      // 🔎 분석 결과 상세 로그 (정확도 확인용)
-      print('🔎 분석 결과 → '
-          'RMS=${fatigueFeatures.rms.toStringAsFixed(4)}, '
-          'VAR=${fatigueFeatures.variance.toStringAsFixed(4)}, '
-          'FREQ=${fatigueFeatures.peakFrequency.toStringAsFixed(2)} Hz');
+        // 🔎 분석 결과 상세 로그 (정확도 확인용)
+        print('🔎 분석 결과 → '
+            'RMS=${fatigueFeatures.rms.toStringAsFixed(4)}, '
+            'VAR=${fatigueFeatures.variance.toStringAsFixed(4)}, '
+            'FREQ=${fatigueFeatures.peakFrequency.toStringAsFixed(2)} Hz');
+      }
 
       // 윈도우 결과를 세션에 저장
       final windowSizeMs = (SensorConfig.windowSeconds * 1000).toInt();
@@ -690,8 +730,10 @@ class SensorStreaming {
         'timestamp': DateTime.now(),
       };
     } catch (e, st) {
-      print('❌ 분석 중 오류: $e');
-      print(st);
+      if (kDebugMode) {
+        print('❌ 분석 중 오류: $e');
+        print(st);
+      }
     }
   }
 
@@ -769,27 +811,47 @@ class SensorStreaming {
 
   // 센서 중지
   Future<void> stopSensor() async {
-    print('\n🛑 센서 측정 중지');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    if (kDebugMode) {
+      print('\n🛑 센서 측정 중지');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
 
-    await _accelSubscription?.cancel();
-    await _gyroSubscription?.cancel();
+    try {
+      await _accelSubscription?.cancel();
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ 가속도계 구독 해제 오류: $e');
+      }
+    }
+    try {
+      await _gyroSubscription?.cancel();
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ 자이로스코프 구독 해제 오류: $e');
+      }
+    }
     _windowTimer?.cancel();
 
-    print('📊 최종 통계:');
-    print('   - 총 수집된 샘플: ${accelX.length}개');
-    print('   - 윈도우 버퍼: ${_windowBuffer.length}개');
-    print('   - 필터링된 버퍼: ${_filteredBuffer.length}개');
-    print('   - 최종 샘플링 레이트: ${_currentSamplingRate.toStringAsFixed(1)} Hz');
+    if (kDebugMode) {
+      print('📊 최종 통계:');
+      print('   - 총 수집된 샘플: ${accelX.length}개');
+      print('   - 윈도우 버퍼: ${_windowBuffer.length}개');
+      print('   - 필터링된 버퍼: ${_filteredBuffer.length}개');
+      print('   - 최종 샘플링 레이트: ${_currentSamplingRate.toStringAsFixed(1)} Hz');
+    }
 
     // 측정 완료: 세션 데이터를 DB에 저장
     if (_currentSessionWindows.isNotEmpty) {
-      print('🎯 측정 세션 저장 시작...');
-      print('   - 총 윈도우 수: ${_currentSessionWindows.length}개');
+      if (kDebugMode) {
+        print('🎯 측정 세션 저장 시작...');
+        print('   - 총 윈도우 수: ${_currentSessionWindows.length}개');
+      }
 
       try {
         if (_excludeFromLogging) {
-          print('⛔️ 이번 세션은 로그/업로드에서 제외됩니다 (baseline 측정 등)');
+          if (kDebugMode) {
+            print('⛔️ 이번 세션은 로그/업로드에서 제외됩니다 (baseline 측정 등)');
+          }
           // 제외 플래그는 1회성으로 사용
           _excludeFromLogging = false;
           return;
@@ -827,8 +889,10 @@ class SensorStreaming {
               aiResponse = await _inFlightHybridRequest;
               _prefetchedHybridResponse = aiResponse;
             } catch (e, stackTrace) {
-              print('⚠️ Hybrid 프리페치 대기 중 오류: $e');
-              print(stackTrace);
+              if (kDebugMode) {
+                print('⚠️ Hybrid 프리페치 대기 중 오류: $e');
+                print(stackTrace);
+              }
             } finally {
               onAiProcessingEnd?.call();
               _inFlightHybridRequest = null;
@@ -841,8 +905,10 @@ class SensorStreaming {
               aiResponse = await _performHybridRequest();
               _prefetchedHybridResponse = aiResponse;
             } catch (e, stackTrace) {
-              print('⚠️ Hybrid 원격 추론 실패: $e');
-              print(stackTrace);
+              if (kDebugMode) {
+                print('⚠️ Hybrid 원격 추론 실패: $e');
+                print(stackTrace);
+              }
             } finally {
               onAiProcessingEnd?.call();
             }
@@ -870,7 +936,9 @@ class SensorStreaming {
               path: 'remote',
             );
           } catch (e) {
-            print('⚠️ 모델 버전 업데이트 실패: $e');
+            if (kDebugMode) {
+              print('⚠️ 모델 버전 업데이트 실패: $e');
+            }
           }
         } else {
           _lastHybridResponse = null;
@@ -883,9 +951,11 @@ class SensorStreaming {
 
         if (isFirstMeasurement && !hasBaseline) {
           // 기준값 미설정 상태의 첫 측정은 기록/업로드 제외 (baseline 전용)
-          print('📊 첫 측정 + 기준값 미설정 → 기록/업로드 제외 (baseline 전용)');
-          print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
-          print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+          if (kDebugMode) {
+            print('📊 첫 측정 + 기준값 미설정 → 기록/업로드 제외 (baseline 전용)');
+            print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
+            print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+          }
         } else {
           // 일반 측정은 기존대로 저장
           // 현재 ML 모드 가져오기
@@ -903,22 +973,28 @@ class SensorStreaming {
                 .toList(),
             mode: currentMLMode.name,
           );
-          print('✅ 피로도 윈도우 저장 완료 (ID: $sessionId)');
-          print('   - 평균 피로도: ${avgFatigue.toStringAsFixed(2)}');
-          print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
-          print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+          if (kDebugMode) {
+            print('✅ 피로도 윈도우 저장 완료 (ID: $sessionId)');
+            print('   - 평균 피로도: ${avgFatigue.toStringAsFixed(2)}');
+            print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
+            print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+          }
 
           // Baseline 업데이트 (EMA 방식) - 세션당 1회만 수행
           if (!_baselineUpdatedThisStop &&
               currentMLMode != model_config.MLMode.endToEnd) {
             await baselineManager.updateBaseline(avgRms, avgFreq);
             _baselineUpdatedThisStop = true;
-            print('✅ Baseline 업데이트 완료');
+            if (kDebugMode) {
+              print('✅ Baseline 업데이트 완료');
+            }
           }
 
           // User Embedding 계산 및 업데이트
           await DatabaseHelper.instance.calculateAndUpdateUserEmbedding();
-          print('✅ User Embedding 계산 및 저장 완료');
+          if (kDebugMode) {
+            print('✅ User Embedding 계산 및 저장 완료');
+          }
 
           // 현재 측정 데이터 업로드 작업 추가
           try {
@@ -948,9 +1024,13 @@ class SensorStreaming {
               },
               priority: 1,
             );
-            print('✅ 현재 측정 데이터 업로드 작업 큐에 추가 완료');
+            if (kDebugMode) {
+              print('✅ 현재 측정 데이터 업로드 작업 큐에 추가 완료');
+            }
           } catch (e) {
-            print('⚠️ upload_logs 작업 추가 실패: $e');
+            if (kDebugMode) {
+              print('⚠️ upload_logs 작업 추가 실패: $e');
+            }
           }
 
           await PersonalizationManager.instance.ensurePersonalization();
@@ -981,13 +1061,19 @@ class SensorStreaming {
 
         // 측정 횟수 증가
         _measurementCount++;
-        print('📊 측정 완료: $_measurementCount회');
+        if (kDebugMode) {
+          print('📊 측정 완료: $_measurementCount회');
+        }
       } catch (e, stackTrace) {
-        print('❌ 측정 세션 저장 실패: $e');
-        print('스택 트레이스: $stackTrace');
+        if (kDebugMode) {
+          print('❌ 측정 세션 저장 실패: $e');
+          print('스택 트레이스: $stackTrace');
+        }
       }
     } else {
-      print('⚠️ 저장할 측정 데이터가 없습니다');
+      if (kDebugMode) {
+        print('⚠️ 저장할 측정 데이터가 없습니다');
+      }
       onAnalysisResult?.call({
         'fatigueScore': null,
         'qualityWarning': true,
@@ -995,7 +1081,9 @@ class SensorStreaming {
       });
     }
 
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    if (kDebugMode) {
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
     // 다음 세션 대비 플래그 초기화
     _baselineUpdatedThisStop = false;
     _cachedUserEmbedding = null;
@@ -1016,9 +1104,11 @@ class SensorStreaming {
         _prefetchedHybridResponse = response;
       }
     }).catchError((e, stackTrace) {
-      print('⚠️ Hybrid 프리페치 실패: $e');
-      if (stackTrace != null) {
-        print(stackTrace);
+      if (kDebugMode) {
+        print('⚠️ Hybrid 프리페치 실패: $e');
+        if (stackTrace != null) {
+          print(stackTrace);
+        }
       }
     }).whenComplete(() {
       _isHybridPrefetching = false;

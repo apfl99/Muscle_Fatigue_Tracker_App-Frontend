@@ -278,11 +278,19 @@ class HttpWorker {
       print('📄 응답 내용: ${response.body}');
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-        return {
-          'success': true,
-          'data': responseData,
-        };
+        try {
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          return {
+            'success': true,
+            'data': responseData,
+          };
+        } catch (e) {
+          print('❌ JSON 파싱 에러: $e');
+          return {
+            'success': false,
+            'error': 'JSON 파싱 실패: ${e.toString()}',
+          };
+        }
       } else {
         return {
           'success': false,
@@ -376,11 +384,19 @@ class HttpWorker {
       print('📄 응답 내용: ${response.body}');
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-        return {
-          'success': true,
-          'data': responseData,
-        };
+        try {
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          return {
+            'success': true,
+            'data': responseData,
+          };
+        } catch (e) {
+          print('❌ JSON 파싱 에러: $e');
+          return {
+            'success': false,
+            'error': 'JSON 파싱 실패: ${e.toString()}',
+          };
+        }
       } else {
         return {
           'success': false,

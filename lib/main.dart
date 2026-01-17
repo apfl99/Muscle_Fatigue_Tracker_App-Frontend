@@ -235,7 +235,7 @@ class _SensorDataPageState extends State<SensorDataPage>
         if (mounted) {
           setState(() {
             _analysisResult = result;
-            // 측정 완료 후 결과가 있으면 기준값 완료 배너 플래그 리셋
+            // 분석 완료 후 결과가 있으면 기준값 완료 배너 플래그 리셋
             // (사용자가 "나중에" 버튼을 누르지 않아도 결과가 표시되도록)
             if (_justCompletedBaseline && result['fatigueScore'] != null) {
               _justCompletedBaseline = false;
@@ -427,9 +427,9 @@ class _SensorDataPageState extends State<SensorDataPage>
     _autoStopTimer = Timer(
       Duration(milliseconds: (_customMeasurementSeconds * 1000).round()),
       () async {
-        if (_isCollecting) {
+        if (_isCollecting && mounted) {
           await _stopCollection();
-          // 측정 완료 SnackBar 제거 (피로도 결과 카드만 표시)
+          // 분석 완료 SnackBar 제거 (근피로 지수 결과 카드만 표시)
         }
       },
     );
@@ -440,19 +440,21 @@ class _SensorDataPageState extends State<SensorDataPage>
     await _sensorStreaming.stopSensor();
     _autoStopTimer?.cancel();
 
-    // 측정 완료 후 기준값 상태 확인 (첫 측정 후 기준값이 설정되었을 수 있음)
+    // 분석 완료 후 기준값 상태 확인 (첫 분석 후 기준값이 설정되었을 수 있음)
     await _checkBaselineStatus();
 
-    setState(() {
-      _isCollecting = false;
-      _remainingSeconds = 0.0;
-      // _analysisResult는 유지 (측정 결과 표시를 위해)
-      // 기준값 설정 직후가 아니면 결과 표시 가능
-      if (_justCompletedBaseline) {
-        _justCompletedBaseline = false;
-        _completedBaseline = null;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _isCollecting = false;
+        _remainingSeconds = 0.0;
+        // _analysisResult는 유지 (분석 결과 표시를 위해)
+        // 기준값 설정 직후가 아니면 결과 표시 가능
+        if (_justCompletedBaseline) {
+          _justCompletedBaseline = false;
+          _completedBaseline = null;
+        }
+      });
+    }
 
     // 배너 광고 해제 및 새로 로드
     AdManager.instance.disposeBannerAd();
@@ -503,7 +505,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       _analysisResult = null; // 결과 카드 숨김 보장
     });
 
-    // 기준값 측정은 로그/업로드에서 제외되도록 플래그 설정
+    // 기준값 분석은 로그/업로드에서 제외되도록 플래그 설정
     _sensorStreaming.setExcludeFromLogging(true);
 
     final success = await _sensorStreaming.startSensor();
@@ -551,7 +553,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             _isBaselineSetting = false;
             _baselineStatus = '기준 맞추기가 완료되었습니다!';
             _justCompletedBaseline = true;
-            _analysisResult = null; // 이번 세션은 피로도 카드 미노출
+            _analysisResult = null; // 이번 세션은 근피로 지수 카드 미노출
           });
           // 자동 이동 대신 완료 배너로 선택 유도
           _completedBaseline = result;
@@ -630,7 +632,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               );
               if (!mounted) return;
-              // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+              // 다른 페이지에서 돌아왔을 때 분석 결과 초기화
               setState(() {
                 _analysisResult = null;
               });
@@ -648,7 +650,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               );
               if (!mounted) return;
-              // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+              // 다른 페이지에서 돌아왔을 때 분석 결과 초기화
               setState(() {
                 _analysisResult = null;
               });
@@ -672,7 +674,7 @@ class _SensorDataPageState extends State<SensorDataPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 측정 안내 카드
+              // 분석 안내 카드
               _buildInstructionCard(),
               const SizedBox(height: 16),
 
@@ -858,7 +860,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                                 _justCompletedBaseline = false;
                                 _completedBaseline = null;
                                 _analysisResult =
-                                    null; // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+                                    null; // 다른 페이지에서 돌아왔을 때 분석 결과 초기화
                               });
                             },
                             style: ElevatedButton.styleFrom(
@@ -879,7 +881,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(height: 16),
               ],
 
-              // 측정 결과 카드 (기준값 설정 중/직후에는 숨김)
+              // 분석 결과 카드 (기준값 설정 중/직후에는 숨김)
               if (_analysisResult != null &&
                   !_isCollecting &&
                   _hasBaseline &&
@@ -983,7 +985,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ],
 
-              // 측정 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
+              // 분석 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
               if (_isCollecting) ...[
                 ValueListenableBuilder<int>(
                   valueListenable: AdManager.instance.bannerStateNotifier,
@@ -1018,8 +1020,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                         ],
                       );
                     } catch (e, stackTrace) {
-                      debugPrint('❌ 배너 광고 표시 오류: $e');
-                      debugPrint('스택 트레이스: $stackTrace');
+                      if (kDebugMode) {
+                        debugPrint('❌ 배너 광고 표시 오류: $e');
+                        debugPrint('스택 트레이스: $stackTrace');
+                      }
                       return const SizedBox.shrink();
                     }
                   },
@@ -1032,7 +1036,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
-  // 피로도 점수 카드 (게이지 위젯 사용)
+  // 근피로 지수 점수 카드 (게이지 위젯 사용)
   Widget _buildFatigueScoreCard(Map<String, dynamic> result) {
     final fatigueScore = result['fatigueScore'] ?? 1.0;
     final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
@@ -1044,7 +1048,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       padding: Responsive.cardPadding(context),
       child: Column(
         children: [
-          // 피로도 레벨 배지
+          // 근피로 지수 레벨 배지
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: Responsive.isSmallScreen(context) ? 16 : 20,
@@ -1246,7 +1250,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${currentMode.displayName} • $nextMeasurementIndex번째 분석',
+                  '${currentMode.displayName} • 분석 $nextMeasurementIndex회',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.white.withOpacity(0.6),
@@ -1310,7 +1314,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
-  // 피로도 레벨별 아이콘
+  // 근피로 지수 레벨별 아이콘
   IconData _getFatigueLevelIcon(String level) {
     switch (level) {
       case '정상':
@@ -1544,7 +1548,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '개인화된 근피로도 분석을 위해\n개인 기준 맞추기가 필요합니다',
+                        '근피로 지수 분석을 위해\n개인 기준 맞추기가 필요합니다',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1641,7 +1645,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 근피로도 참고 지표의 일관성을 높여줍니다',
+                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 근피로 지수의 일관성을 높여줍니다',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.withOpacity(0.9),
@@ -2135,11 +2139,11 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
-  // 측정 안내 카드
+  // 분석 안내 카드
   Widget _buildInstructionCard() {
     final isSmall = Responsive.isSmallScreen(context);
 
-    // 측정 완료 후
+    // 분석 완료 후
     if (_analysisResult != null && !_isCollecting) {
       final currentMode = BaselineManager.instance.getCurrentMLMode();
 
@@ -2230,7 +2234,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   ),
                 );
                 if (!mounted) return;
-                // 다른 페이지에서 돌아왔을 때 측정 결과 초기화
+                // 다른 페이지에서 돌아왔을 때 분석 결과 초기화
                 setState(() {
                   _analysisResult = null;
                 });
@@ -2280,7 +2284,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       );
     }
 
-    // 측정 중
+    // 분석 중
     if (_isCollecting) {
       return Container(
         decoration: BoxDecoration(
@@ -2327,7 +2331,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '앱이 움직임 정보를 모아 근피로 지수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
+              '움직임 정보를 분석하여 근피로 지수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
               style: TextStyle(
                 fontSize: isSmall ? 14 : 15,
                 color: Colors.white.withOpacity(0.9),
@@ -2342,7 +2346,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       );
     }
 
-    // 측정 전 (기준값 설정 모드)
+    // 분석 전 (기준값 설정 모드)
     if (!_hasBaseline && !_isCheckingBaseline) {
       return Container(
         decoration: BoxDecoration(
@@ -2426,7 +2430,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로도 참고 지표의 일관성이 향상됩니다',
+                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로 지수의 일관성이 향상됩니다',
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: Colors.white.withOpacity(0.85),
@@ -2713,7 +2717,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
     // 센서 중지 및 데이터 처리
     await _sensorStreaming.stopSensor();
 
-    // 최근 측정 결과 가져오기
+    // 최근 분석 결과 가져오기
     final result = _sensorStreaming.getLastWindowResult();
 
     if (result != null) {

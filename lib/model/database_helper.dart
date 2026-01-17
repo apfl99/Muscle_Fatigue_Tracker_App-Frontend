@@ -422,8 +422,13 @@ class DatabaseHelper {
     if (state == null || state['user_emb'] == null) {
       return List.filled(12, 0.0);
     }
-    final embList = jsonDecode(state['user_emb'] as String) as List;
-    return embList.map((e) => (e as num).toDouble()).toList();
+    try {
+      final embList = jsonDecode(state['user_emb'] as String) as List;
+      return embList.map((e) => (e as num).toDouble()).toList();
+    } catch (e) {
+      print('⚠️ User Embedding 파싱 실패, 기본값 반환: $e');
+      return List.filled(12, 0.0);
+    }
   }
 
   /// ========================================

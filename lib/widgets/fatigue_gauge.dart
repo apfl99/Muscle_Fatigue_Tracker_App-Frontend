@@ -219,7 +219,7 @@ class FatigueGaugeWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '이 지수는 웰니스 참고용이며 의료 진단이나 치료 목적으로 사용할 수 없습니다.',
+            '근피로 지수는 웰니스 참고용이며 의료 진단이나 치료 목적으로 사용할 수 없습니다.',
             style: TextStyle(
               fontSize: isSmall ? 10 : 11,
               color: messageColor.withOpacity(0.7),

@@ -268,7 +268,13 @@ class MLManager {
       if (body.endsWith('%')) {
         body = body.substring(0, body.length - 1).trim();
       }
-      final decoded = jsonDecode(body);
+      Map<String, dynamic> decoded;
+      try {
+        decoded = jsonDecode(body) as Map<String, dynamic>;
+      } catch (e) {
+        print('❌ Hybrid API JSON 파싱 실패: $e, body: $body');
+        return null;
+      }
 
       final fatigueRaw = decoded['fatigue'];
       if (fatigueRaw is! num) {

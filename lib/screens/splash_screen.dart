@@ -111,7 +111,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '근피로도 웰니스 분석',
+                  '근피로 지수 웰니스 분석',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     color: Colors.white70,

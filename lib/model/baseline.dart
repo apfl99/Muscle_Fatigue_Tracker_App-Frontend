@@ -4,7 +4,6 @@ library;
 
 import 'database_helper.dart';
 import 'config.dart';
-import '../worker/worker_manager.dart';
 
 class BaselineManager {
   static final BaselineManager instance = BaselineManager._init();

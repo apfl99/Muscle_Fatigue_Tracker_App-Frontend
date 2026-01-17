@@ -268,7 +268,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 Colors.blue,
               ),
               _buildSummaryItem(
-                '평균 피로도',
+                '평균 근피로 지수',
                 avgFatigue.toStringAsFixed(2),
                 Icons.trending_flat,
                 Colors.orange,
@@ -432,19 +432,19 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       case MLMode.ema:
         modeColor = const Color(0xFF2196F3); // 파란색 (기본 단계)
         modeIcon = Icons.functions;
-        accuracyInfo = '기본 분석 단계';
-        benefit = '일반 패턴에서 내 패턴을 알아가는 중';
+        accuracyInfo = '기본 단계';
+        benefit = '나만의 패턴을 학습하는 중';
         features = [
           '✓ 수식 기반 근피로 지수 생성',
           '✓ 내 기준 맞추기 진행 중',
-          '→ 기록이 늘수록 나에게 맞춰집니다',
+          '→ 분석을 반복할수록 더 정확해집니다',
         ];
         break;
       case MLMode.hybrid:
         modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조 단계)
         modeIcon = Icons.hub;
         accuracyInfo = '개인화 ⬆️ 향상됨';
-        benefit = 'AI가 보조하여 더 나은 지표 제공';
+        benefit = 'AI 보정으로 더 정확한 지표 제공';
         features = [
           '✓ 개인 기준 맞추기 완료',
           '✓ AI 모델 보정 적용 (30%)',
@@ -456,7 +456,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 집중 단계)
         modeIcon = Icons.psychology;
         accuracyInfo = '최적화된 분석 ⭐️';
-        benefit = 'AI 기반으로 개인 패턴을 더 잘 보여줍니다';
+        benefit = 'AI가 개인 패턴을 더 정확하게 분석합니다';
         features = [
           '✓ AI가 직접 예측',
           '✓ 움직임 패턴을 학습',
@@ -1183,7 +1183,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             _buildStatRow('총 분석 세션', '$count회', Colors.blue),
             const Divider(height: 24),
             const Text(
-              '피로도 점수',
+              '근피로 지수',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,

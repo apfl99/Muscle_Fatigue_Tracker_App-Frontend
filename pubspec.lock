@@ -595,7 +595,7 @@ packages:
       path: "third_party/tflite_flutter"
       relative: true
     source: path
-    version: "0.10.4"
+    version: "0.12.1"
   typed_data:
     dependency: transitive
     description:
