@@ -90,3 +90,9 @@ lib/generated_plugin_registrant.dart
 .env.local
 .env.production
 
+# Temporary APK extraction files
+temp_so_extraction/
+
+# Temporary TensorFlow source files
+third_party/tensorflow_src/
+

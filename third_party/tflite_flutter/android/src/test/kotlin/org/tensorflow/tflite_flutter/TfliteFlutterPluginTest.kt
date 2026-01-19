@@ -1,4 +1,4 @@
-package org.tensorflow.tflite_flutter
+package com.google.ai.edge.litert.tflite_flutter
 
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
