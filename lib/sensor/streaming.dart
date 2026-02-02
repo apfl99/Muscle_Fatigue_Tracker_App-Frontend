@@ -660,6 +660,23 @@ class SensorStreaming {
           '⚠️ 품질 미달 윈도우 → 제외 (coverage=${coverage.toStringAsFixed(2)}, '
           'accel=$accelSampleCount, gyro=$gyroSampleCount)',
         );
+        // "측정이 안 되는 것처럼 보이는" 케이스 방지:
+        // 윈도우가 모두 품질 미달이면 세션이 비어서 결과가 null이 되므로,
+        // UI에 최소한의 참고 지표(EMA 기반) + 경고를 전달할 수 있도록 lastWindowResult는 갱신한다.
+        _lastWindowResult = {
+          'fatigueScore': fatigueScore,
+          'fatigueLevel': FatigueCalculator.getFatigueLevel(fatigueScore),
+          'rms': fatigueFeatures.rms,
+          'peakFreq': fatigueFeatures.peakFrequency,
+          'fatigueRMS': fatigueFeatures.rms,
+          'fatigueVariance': fatigueFeatures.variance,
+          'timestamp': DateTime.now(),
+          'qualityWarning': true,
+          'coverage': coverage,
+          'accel': accelSampleCount,
+          'gyro': gyroSampleCount,
+          'mlMode': mode.name,
+        };
         _windowIndex++;
         return;
       }
@@ -1074,11 +1091,20 @@ class SensorStreaming {
       if (kDebugMode) {
         print('⚠️ 저장할 측정 데이터가 없습니다');
       }
-      onAnalysisResult?.call({
-        'fatigueScore': null,
-        'qualityWarning': true,
-        'mlMode': BaselineManager.instance.getCurrentMLMode().name,
-      });
+      // 모든 윈도우가 품질 미달로 제외된 경우라도, 마지막 윈도우 기반의 참고 지표가 있으면 표시
+      final last = _lastWindowResult;
+      if (last != null) {
+        final result = Map<String, dynamic>.from(last);
+        result['qualityWarning'] = true;
+        result['mlMode'] ??= BaselineManager.instance.getCurrentMLMode().name;
+        onAnalysisResult?.call(result);
+      } else {
+        onAnalysisResult?.call({
+          'fatigueScore': null,
+          'qualityWarning': true,
+          'mlMode': BaselineManager.instance.getCurrentMLMode().name,
+        });
+      }
     }
 
     if (kDebugMode) {

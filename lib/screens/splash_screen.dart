@@ -13,6 +13,9 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _navigated = false;
+  Timer? _adWatchdogTimer;
+
   @override
   void initState() {
     super.initState();
@@ -21,11 +24,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeAndShowAd() async {
     final adManager = AdManager.instance;
+    final startedAt = DateTime.now();
 
     try {
       // AdMob 초기화 및 광고 로드
       print('📱 AdMob 초기화 시작...');
-      await adManager.initialize();
+      // 초기화가 특정 환경에서 멈추는 케이스가 있어 타임아웃을 둠
+      await adManager.initialize().timeout(const Duration(seconds: 2));
       print('✅ AdMob 초기화 완료');
 
       // Interstitial 광고가 준비될 때까지 대기 (최대 5초)
@@ -42,6 +47,14 @@ class _SplashScreenState extends State<SplashScreen> {
         print('✅ 전면 광고 준비 완료, 표시 시도');
 
         // 전면 광고 표시 시도 (show는 void를 반환하므로 콜백에서 처리)
+        _adWatchdogTimer?.cancel();
+        _adWatchdogTimer = Timer(const Duration(seconds: 7), () {
+          // 광고 SDK 콜백이 호출되지 않는 예외 케이스 대비
+          if (mounted) {
+            print('⚠️ 전면 광고 콜백 타임아웃, 메인 화면으로 이동');
+            _navigateToHome();
+          }
+        });
         adManager.showInterstitialAd(
           onClosed: () {
             print('📺 전면 광고 닫힘, 메인 화면으로 이동');
@@ -62,7 +75,11 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     // 광고 표시 여부와 관계없이 최소 2초 후 메인 화면으로 이동
-    await Future.delayed(const Duration(seconds: 2));
+    final elapsed = DateTime.now().difference(startedAt);
+    final remaining = const Duration(seconds: 2) - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
+    }
 
     if (mounted) {
       print('🏠 메인 화면으로 이동');
@@ -72,12 +89,21 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _navigateToHome() {
     if (!mounted) return;
+    if (_navigated) return;
+    _navigated = true;
+    _adWatchdogTimer?.cancel();
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => const SensorDataPage(),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _adWatchdogTimer?.cancel();
+    super.dispose();
   }
 
   @override

@@ -1,7 +1,7 @@
 name: muscle_fatigue_tracker
 description: 스마트폰 센서 기반 근피로도 웰니스 참고 지표 앱
 publish_to: 'none'
-version: 1.0.0+6
+version: 1.0.0+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

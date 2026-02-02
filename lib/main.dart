@@ -510,6 +510,9 @@ class _SensorDataPageState extends State<SensorDataPage>
 
     final success = await _sensorStreaming.startSensor();
     if (!success) {
+      // baseline 측정은 로그/업로드 제외 플래그를 사용하므로,
+      // 센서 시작 실패 시 플래그가 남아 이후 정상 측정까지 "무시"되는 문제를 방지한다.
+      _sensorStreaming.setExcludeFromLogging(false);
       setState(() {
         _isBaselineSetting = false;
         _baselineStatus = '센서를 시작할 수 없습니다. 기기 지원을 확인해주세요.';
