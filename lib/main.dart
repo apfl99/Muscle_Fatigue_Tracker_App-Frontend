@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
 import 'sensor/streaming.dart';
 import 'sensor/config.dart';
 import 'model/database_helper.dart';
@@ -12,16 +13,22 @@ import 'model/measure_session.dart';
 import 'model/config.dart';
 import 'model/ml.dart';
 import 'widgets/fatigue_gauge.dart';
+import 'widgets/banner_ad_widget.dart';
 import 'screens/measurement_history_page.dart';
-import 'screens/profile_page.dart';
+import 'screens/main_home_page.dart';
+import 'screens/heatmap_full_viewer_page.dart';
 import 'screens/splash_screen.dart';
+import 'screens/profile_page.dart';
 import 'theme/app_theme.dart';
 import 'utils/responsive.dart';
 import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 import 'worker/model_update_scheduler.dart';
 import 'model/personalization_manager.dart';
 import 'utils/user_identity.dart';
-import 'utils/ad_manager.dart';
+import 'features/heatmap/model/heatmap_models.dart';
+import 'features/heatmap/data/heatmap_api_config.dart';
+import 'features/heatmap/ui/heatmap_bridge_cta_card.dart';
+import 'providers/heatmap_provider.dart';
 
 void main() async {
   if (kDebugMode) {
@@ -30,6 +37,7 @@ void main() async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+  await _initializeSupabaseClient();
 
   await UserIdentity.instance.ensureInitialized();
   final migratedFrom = UserIdentity.instance.lastMigratedFrom;
@@ -56,13 +64,6 @@ void main() async {
     await BaselineManager.instance.initialize();
     if (kDebugMode) {
       print('✅ Baseline Manager 초기화 완료');
-    }
-
-    // AdManager 초기화 및 배너 광고 로드
-    await AdManager.instance.initialize();
-    AdManager.instance.loadBannerAd();
-    if (kDebugMode) {
-      print('✅ AdManager 초기화 및 배너 광고 로드 완료');
     }
 
     // ML Manager 초기화
@@ -106,24 +107,90 @@ void main() async {
   runApp(const MyApp());
 }
 
+Future<void> _initializeSupabaseClient() async {
+  final config = HeatmapApiConfig.fromEnvironment();
+
+  if (!config.isConfigured) {
+    if (kDebugMode) {
+      print('⚠️ Supabase 설정이 비어 있어 초기화를 건너뜁니다.');
+    }
+    return;
+  }
+
+  try {
+    await Supabase.initialize(
+      url: config.supabaseUrl,
+      anonKey: config.publishableKey,
+    );
+    await _ensureAnonymousSupabaseSession(config.supabaseUrl);
+  } catch (error) {
+    if (kDebugMode) {
+      print('⚠️ Supabase 초기화 실패: $error');
+    }
+  }
+}
+
+Future<void> _ensureAnonymousSupabaseSession(String supabaseUrl) async {
+  final client = Supabase.instance.client;
+  // 1) 기존 세션이 유효하면 그대로 사용
+  try {
+    final currentUser = client.auth.currentUser;
+    if (currentUser != null) {
+      await _verifySupabaseUrlCall(client, supabaseUrl);
+      return;
+    }
+  } catch (_) {
+    // 기존 세션이 유효하지 않으면 익명 세션 재생성으로 복구
+  }
+
+  // 2) 세션이 없거나 만료되면 익명 로그인 시도
+  try {
+    final authResponse = await client.auth.signInAnonymously();
+    if (authResponse.user == null) {
+      throw const AuthException('익명 세션 생성에 실패했습니다.');
+    }
+    await _verifySupabaseUrlCall(client, supabaseUrl);
+  } catch (error) {
+    if (kDebugMode) {
+      print('⚠️ Supabase 익명 세션 확보 실패: $error');
+    }
+  }
+}
+
+Future<void> _verifySupabaseUrlCall(
+  SupabaseClient client,
+  String supabaseUrl,
+) async {
+  final userResponse = await client.auth.getUser();
+  if (userResponse.user == null) {
+    throw const AuthException('현재 세션 사용자 정보를 불러오지 못했습니다.');
+  }
+  if (kDebugMode) {
+    print('✅ Supabase URL 호출 성공: $supabaseUrl');
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Muscle Care',
-      theme: AppTheme.darkTheme,
-      debugShowCheckedModeBanner: false,
-      home: const SplashScreen(),
-      // 오류 발생 시 빨간 화면 대신 에러 위젯 표시
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: const TextScaler.linear(1.0)),
-          child: child!,
-        );
-      },
+    return ChangeNotifierProvider<HeatmapProvider>(
+      create: (_) => HeatmapProvider(),
+      child: MaterialApp(
+        title: 'Muscle Care',
+        theme: AppTheme.darkTheme,
+        debugShowCheckedModeBanner: false,
+        home: const SplashScreen(),
+        // 오류 발생 시 빨간 화면 대신 에러 위젯 표시
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(1.0)),
+            child: child!,
+          );
+        },
+      ),
     );
   }
 }
@@ -344,7 +411,6 @@ class _SensorDataPageState extends State<SensorDataPage>
     _qualityWarningTimer?.cancel();
     // 비동기 작업이 완료되기를 기다리지 않고 즉시 정리
     _sensorStreaming.dispose();
-    AdManager.instance.dispose();
     super.dispose();
   }
 
@@ -377,9 +443,6 @@ class _SensorDataPageState extends State<SensorDataPage>
       _showBaselineSetupDialog();
       return;
     }
-
-    // 분석 시작 시 배너 광고 재시도
-    AdManager.instance.loadBannerAd(force: true);
 
     // 새로운 분석 시작 시 이전 데이터 초기화
     // 기준 맞추기 직후 첫 분석인 경우 플래그 리셋
@@ -455,10 +518,6 @@ class _SensorDataPageState extends State<SensorDataPage>
         }
       });
     }
-
-    // 배너 광고 해제 및 새로 로드
-    AdManager.instance.disposeBannerAd();
-    AdManager.instance.loadBannerAd();
   }
 
   // 완료 배너 값 표시용 (간단한 3줄 형태)
@@ -893,6 +952,8 @@ class _SensorDataPageState extends State<SensorDataPage>
                 _buildFatigueScoreCard(_analysisResult!),
                 const SizedBox(height: 16),
                 _buildMainResultCard(_analysisResult!),
+                const SizedBox(height: 12),
+                _buildHeatmapBridgeCard(_analysisResult!),
                 const SizedBox(height: 16),
               ],
 
@@ -990,46 +1051,10 @@ class _SensorDataPageState extends State<SensorDataPage>
 
               // 분석 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
               if (_isCollecting) ...[
-                ValueListenableBuilder<int>(
-                  valueListenable: AdManager.instance.bannerStateNotifier,
-                  builder: (context, _, __) {
-                    final adManager = AdManager.instance;
-                    if (!adManager.isBannerAdReady) {
-                      return const SizedBox.shrink();
-                    }
-
-                    final bannerAd = adManager.bannerAd;
-                    if (bannerAd == null) {
-                      return const SizedBox.shrink();
-                    }
-
-                    try {
-                      final adSize = bannerAd.size;
-                      if (adSize.width <= 0 || adSize.height <= 0) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return Column(
-                        children: [
-                          const SizedBox(height: 16),
-                          Container(
-                            alignment: Alignment.center,
-                            child: SizedBox(
-                              width: adSize.width.toDouble(),
-                              height: adSize.height.toDouble(),
-                              child: AdWidget(ad: bannerAd),
-                            ),
-                          ),
-                        ],
-                      );
-                    } catch (e, stackTrace) {
-                      if (kDebugMode) {
-                        debugPrint('❌ 배너 광고 표시 오류: $e');
-                        debugPrint('스택 트레이스: $stackTrace');
-                      }
-                      return const SizedBox.shrink();
-                    }
-                  },
+                const SizedBox(height: 16),
+                const BannerAdWidget(
+                  key: ValueKey('sensor_analysis_banner'),
+                  showPlaceholder: false,
                 ),
               ],
             ],
@@ -1421,6 +1446,39 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
+  Widget _buildHeatmapBridgeCard(Map<String, dynamic> analysisResult) {
+    final payload = MeasurementBridgePayload.fromAnalysisResult(analysisResult);
+
+    return HeatmapBridgeCtaCard(
+      payload: payload,
+      onViewHeatmap: () => _openHeatmapPage(
+        payload: payload,
+        openQuickRecordOnStart: false,
+      ),
+      onQuickRecord: () => _openHeatmapPage(
+        payload: payload,
+        openQuickRecordOnStart: true,
+      ),
+    );
+  }
+
+  Future<void> _openHeatmapPage({
+    required MeasurementBridgePayload payload,
+    required bool openQuickRecordOnStart,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => openQuickRecordOnStart
+            ? MainHomePage(
+                openLogSheetOnStart: true,
+                bridgePayload: payload,
+              )
+            : const HeatmapFullViewerPage(),
+      ),
+    );
+  }
+
   // 메트릭 행 위젯
   Widget _buildMetricRow({
     required IconData icon,
@@ -1551,7 +1609,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '근피로 지수 분석을 위해\n개인 기준 맞추기가 필요합니다',
+                        '운동 수행 패턴 분석을 위해\n개인 기준 맞추기가 필요합니다',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1648,7 +1706,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 근피로 지수의 일관성을 높여줍니다',
+                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 컨디션 점수의 일관성을 높여줍니다',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.withOpacity(0.9),
@@ -1770,7 +1828,8 @@ class _SensorDataPageState extends State<SensorDataPage>
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('근피로 지수 기준 맞추기가 완료되었습니다! 이제 분석을 시작할 수 있습니다.'),
+                  content:
+                      Text('컨디션 점수 기준 맞추기가 완료되었습니다! 이제 정밀 분석을 시작할 수 있습니다.'),
                   backgroundColor: Colors.green,
                   duration: Duration(seconds: 3),
                 ),
@@ -2096,7 +2155,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'MuscleCare는 의료 진단이나 치료 목적의 앱이 아니며, 제공되는 정보는 운동 및 웰니스 참고용입니다. 건강 관련 의사결정이 필요한 경우 전문가와 상담하시기 바랍니다.',
+                              'MuscleCare는 운동 수행 패턴 참고 앱이며 의료적 판단이나 치료 목적 용도가 아닙니다. 건강 관련 의사결정이 필요한 경우 전문가와 상담하시기 바랍니다.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white.withOpacity(0.75),
@@ -2334,7 +2393,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '움직임 정보를 분석하여 근피로 지수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
+              '움직임 정보를 분석하여 컨디션 점수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
               style: TextStyle(
                 fontSize: isSmall ? 14 : 15,
                 color: Colors.white.withOpacity(0.9),
@@ -2385,7 +2444,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '내 근피로 지수 기준 맞추기',
+                    '내 컨디션 점수 기준 맞추기',
                     style: GoogleFonts.inter(
                       fontSize: isSmall ? 15 : 17,
                       fontWeight: FontWeight.bold,
@@ -2433,7 +2492,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 근피로 지수의 일관성이 향상됩니다',
+                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 컨디션 점수의 일관성이 향상됩니다',
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: Colors.white.withOpacity(0.85),
@@ -2591,9 +2650,9 @@ class _SensorDataPageState extends State<SensorDataPage>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '이 앱에서 제공하는 근피로 지수는 웰니스 참고용 정보입니다.\n'
-              '의료 진단이나 치료 목적으로 사용할 수 없으며,\n'
-              '건강 관련 중요한 결정은 반드시 의료 전문가와 상의하세요.\n'
+              '이 앱에서 제공하는 컨디션 점수는 운동 수행 패턴 참고용 정보입니다.\n'
+              '의료적 판단이나 치료 목적으로 사용할 수 없으며,\n'
+              '건강 관련 중요한 결정은 반드시 전문가와 상의하세요.\n'
               '환경과 사용 방식에 따라 오차가 발생할 수 있습니다.',
               style: textStyle,
             ),

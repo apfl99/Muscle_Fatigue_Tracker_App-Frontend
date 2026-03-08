@@ -44,23 +44,23 @@ class BaselineConstants {
   static const double defaultFreqBase = 1.5; // 일반인 평균 주파수 (Hz)
 }
 
-/// ========== 근피로도 계산 설정 ==========
+/// ========== 근육 컨디션 계산 설정 ==========
 
-/// 피로도 계산 가중치
+/// 컨디션 계산 가중치
 class FatigueConstants {
   // 공식: Fatigue = α·(RMS/RMS_base) + β·(Freq_base/Freq)
   static const double alpha = 0.6; // RMS 가중치 (실제 공식에서는 1.0)
   static const double beta = 0.4; // 주파수 가중치 (실제 공식에서는 1.0)
 
-  // 피로도 점수 범위 (1.0 기준)
+  // 컨디션 점수 범위 (1.0 기준)
   static const double minFatigue = 1.0; // 최소 1.0으로 클램프
   static const double maxFatigue = 3.0; // 최대값
 
-  // 피로도 레벨 경계값 (새 기준)
+  // 컨디션 레벨 경계값 (새 기준)
   static const double normalThreshold = 1.1; // 정상
-  static const double lightThreshold = 1.4; // 약간 피로
-  static const double midThreshold = 1.8; // 피로 누적
-  // 1.8 이상은 고피로
+  static const double lightThreshold = 1.4; // 회복 중
+  static const double midThreshold = 1.8; // 회복 지연
+  // 1.8 이상은 회복 필요
 
   // 변화량 임계값
   static const double noChangeDelta = 0.1; // 변화 없음
@@ -68,13 +68,13 @@ class FatigueConstants {
   static const double heavyIncreaseDelta = 0.3; // 급상승
 }
 
-/// 피로도 색상 정의 (모든 화면에서 통일)
+/// 컨디션 색상 정의 (모든 화면에서 통일)
 class FatigueColors {
-  // 피로도 레벨별 색상
+  // 컨디션 레벨별 색상
   static const int normalColor = 0xFF4CAF50; // 초록 (정상)
-  static const int lightColor = 0xFFFFA726; // 주황 (약간 피로)
-  static const int midColor = 0xFFFF7043; // 진한 주황 (피로 누적)
-  static const int highColor = 0xFFE53935; // 빨강 (고피로)
+  static const int lightColor = 0xFFFFA726; // 주황 (회복 중)
+  static const int midColor = 0xFFFF7043; // 진한 주황 (회복 지연)
+  static const int highColor = 0xFFE53935; // 빨강 (회복 필요)
 }
 
 /// ========== ML 단계 전환 설정 ==========

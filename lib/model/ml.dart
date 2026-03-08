@@ -368,7 +368,7 @@ class MLManager {
       );
 
       if (response != null) {
-        // 서버에서 반환된 피로도를 보정값으로 사용
+        // 서버에서 반환된 컨디션 값을 보정값으로 사용
         final correction = response.fatigue;
         print('🤖 Hybrid 보정값 예측 (서버): $correction');
         return correction;
@@ -383,7 +383,7 @@ class MLManager {
   }
 
   /// ========================================
-  /// End-to-End 모드: ML이 직접 피로도 예측
+  /// End-to-End 모드: ML이 직접 컨디션 예측
   /// ========================================
   static const List<String> _defaultFeatureColumns = [
     'rms_acc',
@@ -454,7 +454,7 @@ class MLManager {
 
       final fatigue = prediction.clamp(1.0, 3.0).toDouble();
       print(
-        '🤖 End-to-End 피로도 예측: ${fatigue.toStringAsFixed(3)} '
+        '🤖 End-to-End 컨디션 예측: ${fatigue.toStringAsFixed(3)} '
         '(version: ${_loadedE2EVersion ?? 'unknown'})',
       );
       return fatigue;
@@ -593,7 +593,7 @@ class MLManager {
 }
 
 /// ========================================
-/// Hybrid 피로도 계산 (EMA + ML 결합)
+/// Hybrid 컨디션 계산 (EMA + ML 결합)
 /// ========================================
 Future<double> calculateHybridFatigue({
   required double rms,
@@ -624,7 +624,7 @@ Future<double> calculateHybridFatigue({
   final adjRmsBase = MLPhaseConstants.emaWeight * rmsBase +
       MLPhaseConstants.mlWeight * mlCorrection;
 
-  // 피로도 계산
+  // 컨디션 계산
   final fatigue = FatigueCalculator.calculateFatigue(
     rms: rms,
     peakFreq: freq,
@@ -632,7 +632,7 @@ Future<double> calculateHybridFatigue({
     freqBase: freqBase,
   );
 
-  print('🔀 Hybrid 피로도 계산:');
+  print('🔀 Hybrid 컨디션 계산:');
   print('   - EMA RMS_base: $rmsBase');
   print('   - ML 보정값: $mlCorrection');
   print('   - 조정 RMS_base: $adjRmsBase');
@@ -642,7 +642,7 @@ Future<double> calculateHybridFatigue({
 }
 
 /// ========================================
-/// End-to-End 피로도 계산 (ML 직접 예측)
+/// End-to-End 컨디션 계산 (ML 직접 예측)
 /// ========================================
 Future<double?> calculateEndToEndFatigue({
   required Map<String, dynamic> window,
@@ -670,7 +670,7 @@ Future<double?> calculateEndToEndFatigue({
   final blended = (mlPrediction * 0.8) + (fallback * 0.2);
   final result = blended.clamp(1.0, 3.0);
   print(
-    '🎯 End-to-End 피로도 최종값: ${result.toStringAsFixed(3)} '
+    '🎯 End-to-End 컨디션 최종값: ${result.toStringAsFixed(3)} '
     '(ML=${mlPrediction.toStringAsFixed(3)}, EMA=${fallback.toStringAsFixed(3)})',
   );
   return result;

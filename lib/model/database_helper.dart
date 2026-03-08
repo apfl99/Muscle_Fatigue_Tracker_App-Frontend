@@ -526,7 +526,7 @@ class DatabaseHelper {
     }
 
     await batch.commit(noResult: true);
-    print('✅ 피로도 윈도우 ${windows.length}개 저장 완료 (sessionId: $sessionId)');
+    print('✅ 컨디션 윈도우 ${windows.length}개 저장 완료 (sessionId: $sessionId)');
   }
 
   Future<List<Map<String, dynamic>>> getAllFatigueLogs({
@@ -959,7 +959,7 @@ class DatabaseHelper {
     final logs = await getRecentFatigueLogs(userId: userId, limit: n);
 
     if (logs.isEmpty) {
-      print('⚠️ 피로도 로그가 없어서 baseline을 재계산할 수 없습니다');
+      print('⚠️ 컨디션 로그가 없어서 baseline을 재계산할 수 없습니다');
       return;
     }
 
@@ -986,11 +986,11 @@ class DatabaseHelper {
       userId = await resolveUserId(userId);
       print('🧮 User Embedding 계산 시작...');
 
-      // 모든 피로도 로그 조회
+      // 모든 컨디션 로그 조회
       final allLogs = await getAllFatigueLogs(userId: userId);
 
       if (allLogs.isEmpty) {
-        print('⚠️ 피로도 로그가 없어서 user_emb를 계산할 수 없습니다');
+        print('⚠️ 컨디션 로그가 없어서 user_emb를 계산할 수 없습니다');
         return;
       }
 
@@ -1048,7 +1048,7 @@ class DatabaseHelper {
       print('   - 측정 횟수: ${allLogs.length}회');
       print('   - RMS 평균: ${rmsMean.toStringAsFixed(4)}');
       print('   - 주파수 평균: ${freqMean.toStringAsFixed(2)} Hz');
-      print('   - 피로도 평균: ${fatigueMean.toStringAsFixed(2)}');
+      print('   - 컨디션 평균: ${fatigueMean.toStringAsFixed(2)}');
       print('   - User Embedding: $userEmb');
 
       // SQLite에 저장

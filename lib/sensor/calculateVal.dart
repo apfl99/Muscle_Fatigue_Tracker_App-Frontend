@@ -1,7 +1,7 @@
 import 'dart:math';
 
 /// ---------------------------------------------------------------------------
-/// 근피로도 특징 계산 함수
+/// 근육 컨디션 특징 계산 함수
 /// 입력: 필터링된 윈도우 간 진동 신호(List<double> data), 샘플링 주파수 fs
 /// 출력: RMS, Variance, Peak Frequency (Hz), Mean Power Frequency
 /// ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ class FatigueFeatures {
   }
 }
 
-/// 근피로도 특징 계산
+/// 근육 컨디션 특징 계산
 FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
   if (data.isEmpty) {
     print('⚠️ 데이터가 비어있음');
@@ -184,7 +184,7 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
       zeroCrossing: zeroCrossingRate * fs / 2, // Hz로 변환
     );
   } catch (e) {
-    print('❌ 근피로도 계산 오류: $e');
+    print('❌ 근육 컨디션 계산 오류: $e');
     return FatigueFeatures(
       rms: 0.0,
       variance: 0.0,

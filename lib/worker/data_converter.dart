@@ -84,7 +84,7 @@ class DataConverter {
     int priority = 1,
   }) async {
     try {
-      // 동기화되지 않은 피로도 데이터셋 조회
+      // 동기화되지 않은 컨디션 데이터셋 조회
       final fatigueLogs =
           await getUnsyncedFatigueLogs(limit: limit, userId: userId);
 

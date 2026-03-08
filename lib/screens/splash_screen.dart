@@ -1,12 +1,49 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../main.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/heatmap_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/ad_manager.dart';
+import 'main_home_page.dart';
+
+abstract class SplashAdController {
+  Future<void> initialize();
+  bool get isInterstitialReady;
+  void showInterstitial({required VoidCallback onClosed});
+}
+
+class AdManagerSplashController implements SplashAdController {
+  AdManagerSplashController({AdManager? adManager})
+      : _adManager = adManager ?? AdManager.instance;
+
+  final AdManager _adManager;
+
+  @override
+  Future<void> initialize() => _adManager.initialize();
+
+  @override
+  bool get isInterstitialReady => _adManager.isInterstitialAdReady;
+
+  @override
+  void showInterstitial({required VoidCallback onClosed}) {
+    _adManager.showInterstitialAd(onClosed: onClosed);
+  }
+}
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({
+    super.key,
+    this.adLoadTimeout = const Duration(seconds: 3),
+    this.homeBuilder,
+    this.adController,
+  });
+
+  final Duration adLoadTimeout;
+  final WidgetBuilder? homeBuilder;
+  final SplashAdController? adController;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -14,96 +51,89 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _navigated = false;
-  Timer? _adWatchdogTimer;
 
   @override
   void initState() {
     super.initState();
-    _initializeAndShowAd();
+    _runSplashFlow();
   }
 
-  Future<void> _initializeAndShowAd() async {
-    final adManager = AdManager.instance;
-    final startedAt = DateTime.now();
+  Future<void> _runSplashFlow() async {
+    final adController = widget.adController ??
+        AdManagerSplashController(adManager: AdManager.instance);
 
+    unawaited(_warmupHomeData());
+    unawaited(adController.initialize());
+    final adReady = await _waitForInterstitialReady(
+      adController: adController,
+      timeout: widget.adLoadTimeout,
+    );
+
+    if (!mounted || _navigated) {
+      return;
+    }
+
+    if (adReady) {
+      await _showInterstitialAndWaitClose(adController);
+    }
+
+    if (!mounted || _navigated) {
+      return;
+    }
+    _navigateToHome();
+  }
+
+  Future<void> _warmupHomeData() async {
     try {
-      // AdMob 초기화 및 광고 로드
-      print('📱 AdMob 초기화 시작...');
-      // 초기화가 특정 환경에서 멈추는 케이스가 있어 타임아웃을 둠
-      await adManager.initialize().timeout(const Duration(seconds: 2));
-      print('✅ AdMob 초기화 완료');
-
-      // Interstitial 광고가 준비될 때까지 대기 (최대 5초)
-      int waitCount = 0;
-      while (!adManager.isInterstitialAdReady && waitCount < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        waitCount++;
-        if (waitCount % 10 == 0) {
-          print('⏳ 광고 로드 대기 중... (${waitCount * 100}ms)');
-        }
-      }
-
-      if (adManager.isInterstitialAdReady) {
-        print('✅ 전면 광고 준비 완료, 표시 시도');
-
-        // 전면 광고 표시 시도 (show는 void를 반환하므로 콜백에서 처리)
-        _adWatchdogTimer?.cancel();
-        _adWatchdogTimer = Timer(const Duration(seconds: 7), () {
-          // 광고 SDK 콜백이 호출되지 않는 예외 케이스 대비
-          if (mounted) {
-            print('⚠️ 전면 광고 콜백 타임아웃, 메인 화면으로 이동');
-            _navigateToHome();
-          }
-        });
-        adManager.showInterstitialAd(
-          onClosed: () {
-            print('📺 전면 광고 닫힘, 메인 화면으로 이동');
-            if (mounted) {
-              _navigateToHome();
-            }
-          },
-        );
-
-        // 광고가 표시되면 콜백에서 처리되므로 여기서는 대기
-        // 광고가 표시되지 않으면 아래 코드로 진행
-        await Future.delayed(const Duration(seconds: 1));
-      } else {
-        print('⚠️ 전면 광고가 준비되지 않음, 스킵');
-      }
-    } catch (e) {
-      print('❌ 광고 초기화 오류: $e');
-    }
-
-    // 광고 표시 여부와 관계없이 최소 2초 후 메인 화면으로 이동
-    final elapsed = DateTime.now().difference(startedAt);
-    final remaining = const Duration(seconds: 2) - elapsed;
-    if (remaining > Duration.zero) {
-      await Future.delayed(remaining);
-    }
-
-    if (mounted) {
-      print('🏠 메인 화면으로 이동');
-      _navigateToHome();
+      await context.read<HeatmapProvider>().initialize();
+    } catch (_) {
+      // 워밍업 실패 시에도 스플래시 흐름은 계속 진행한다.
     }
   }
 
-  void _navigateToHome() {
-    if (!mounted) return;
-    if (_navigated) return;
-    _navigated = true;
-    _adWatchdogTimer?.cancel();
+  Future<bool> _waitForInterstitialReady({
+    required SplashAdController adController,
+    required Duration timeout,
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (adController.isInterstitialReady) {
+        return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return adController.isInterstitialReady;
+  }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const SensorDataPage(),
-      ),
+  Future<void> _showInterstitialAndWaitClose(
+    SplashAdController adController,
+  ) async {
+    final closedCompleter = Completer<void>();
+
+    adController.showInterstitial(
+      onClosed: () {
+        if (!closedCompleter.isCompleted) {
+          closedCompleter.complete();
+        }
+      },
+    );
+
+    await closedCompleter.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {},
     );
   }
 
-  @override
-  void dispose() {
-    _adWatchdogTimer?.cancel();
-    super.dispose();
+  void _navigateToHome() {
+    if (!mounted || _navigated) {
+      return;
+    }
+    _navigated = true;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: widget.homeBuilder ?? (_) => const MainHomePage(),
+      ),
+    );
   }
 
   @override
@@ -111,62 +141,47 @@ class _SplashScreenState extends State<SplashScreen> {
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
-        child: Container(
-          color: AppTheme.darkBackground,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 앱 아이콘
-                Image.asset(
-                  'assets/images/icon.png',
-                  width: 120,
-                  height: 120,
-                  fit: BoxFit.cover,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/icon.png',
+                width: 110,
+                height: 110,
+                fit: BoxFit.cover,
+              ),
+              const SizedBox(height: 32),
+              Text(
+                'Muscle Care',
+                style: GoogleFonts.poppins(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1.2,
                 ),
-                const SizedBox(height: 40),
-                // 앱 이름
-                Text(
-                  'Muscle Care',
-                  style: GoogleFonts.poppins(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.2,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '운동 수행 패턴 분석',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  color: Colors.white70,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 48),
+              const SizedBox(
+                width: 38,
+                height: 38,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppTheme.primaryGreen,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  '근피로 지수 웰니스 분석',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    color: Colors.white70,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '스마트폰 센서 기반 참고 지표',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.white54,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 60),
-                // 로딩 인디케이터
-                const SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryGreen,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

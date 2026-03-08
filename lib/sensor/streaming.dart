@@ -458,7 +458,7 @@ class SensorStreaming {
       final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
       if (kDebugMode) {
         print(
-          '💪 근피로도 계산 완료 → 점수: ${fatigueScore.toStringAsFixed(2)} ($fatigueLevel)',
+          '💪 근육 컨디션 계산 완료 → 점수: ${fatigueScore.toStringAsFixed(2)} ($fatigueLevel)',
         );
 
         // 🔎 분석 결과 상세 로그 (정확도 확인용)
@@ -991,8 +991,8 @@ class SensorStreaming {
             mode: currentMLMode.name,
           );
           if (kDebugMode) {
-            print('✅ 피로도 윈도우 저장 완료 (ID: $sessionId)');
-            print('   - 평균 피로도: ${avgFatigue.toStringAsFixed(2)}');
+            print('✅ 컨디션 윈도우 저장 완료 (ID: $sessionId)');
+            print('   - 평균 컨디션: ${avgFatigue.toStringAsFixed(2)}');
             print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
             print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
           }

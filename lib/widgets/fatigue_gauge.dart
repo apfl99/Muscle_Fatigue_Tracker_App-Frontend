@@ -4,7 +4,7 @@ import '../model/measure_session.dart';
 import '../model/config.dart';
 import '../utils/responsive.dart';
 
-/// 피로도 게이지 위젯
+/// 컨디션 게이지 위젯
 class FatigueGaugeWidget extends StatelessWidget {
   final double fatigueScore;
   final double? previousScore; // 이전 측정값 (트렌드 표시)
@@ -46,7 +46,7 @@ class FatigueGaugeWidget extends StatelessWidget {
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                      // 피로도 바
+                      // 컨디션 바
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 500),
                         height: 30,
@@ -54,7 +54,7 @@ class FatigueGaugeWidget extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              color.withOpacity(0.7),
+                              color.withValues(alpha: 0.7),
                               color,
                             ],
                           ),
@@ -80,7 +80,7 @@ class FatigueGaugeWidget extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 피로도 점수
+                // 컨디션 점수
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Row(
@@ -174,25 +174,25 @@ class FatigueGaugeWidget extends StatelessWidget {
       icon = Icons.check_circle;
       messageColor = const Color(0xFF4CAF50); // 초록 (정상)
     } else if (fatigue < FatigueConstants.lightThreshold) {
-      message = '약간 피로한 상태입니다';
+      message = '회복 중인 컨디션입니다';
       icon = Icons.info;
-      messageColor = const Color(0xFFFFA726); // 주황 (약간 피로)
+      messageColor = const Color(0xFFFFA726); // 주황 (회복 진행)
     } else if (fatigue < FatigueConstants.midThreshold) {
-      message = '피로가 누적되는 경향이 보입니다';
+      message = '운동 볼륨이 높아 회복이 진행 중입니다';
       icon = Icons.warning;
-      messageColor = const Color(0xFFFF7043); // 진한 주황 (피로 누적)
+      messageColor = const Color(0xFFFF7043); // 진한 주황 (회복 지연)
     } else {
-      message = '휴식이 필요합니다';
+      message = '회복이 필요합니다';
       icon = Icons.error;
-      messageColor = const Color(0xFFE53935); // 빨강 (고피로)
+      messageColor = const Color(0xFFE53935); // 빨강 (회복 필요)
     }
 
     return Container(
       padding: EdgeInsets.all(isSmall ? 10 : 12),
       decoration: BoxDecoration(
-        color: messageColor.withOpacity(0.1),
+        color: messageColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: messageColor.withOpacity(0.3)),
+        border: Border.all(color: messageColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -219,10 +219,10 @@ class FatigueGaugeWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '근피로 지수는 웰니스 참고용이며 의료 진단이나 치료 목적으로 사용할 수 없습니다.',
+            '컨디션 점수는 운동 수행 패턴 참고용이며 의료적 판단이나 치료 목적 용도가 아닙니다.',
             style: TextStyle(
               fontSize: isSmall ? 10 : 11,
-              color: messageColor.withOpacity(0.7),
+              color: messageColor.withValues(alpha: 0.7),
               height: 1.3,
             ),
             textAlign: TextAlign.center,
@@ -233,7 +233,7 @@ class FatigueGaugeWidget extends StatelessWidget {
   }
 }
 
-/// 피로도 레벨 인디케이터 (간단한 버전)
+/// 컨디션 레벨 인디케이터 (간단한 버전)
 class FatigueLevelIndicator extends StatelessWidget {
   final double fatigueScore;
 
@@ -257,19 +257,19 @@ class FatigueLevelIndicator extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          const Color(0xFFFFA726), // 주황 (약간 피로)
+          const Color(0xFFFFA726), // 주황 (회복 진행)
           fatigueScore >= FatigueConstants.normalThreshold &&
               fatigueScore < FatigueConstants.lightThreshold,
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          const Color(0xFFFF7043), // 진한 주황 (피로 누적)
+          const Color(0xFFFF7043), // 진한 주황 (회복 지연)
           fatigueScore >= FatigueConstants.lightThreshold &&
               fatigueScore < FatigueConstants.midThreshold,
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          const Color(0xFFE53935), // 빨강 (고피로)
+          const Color(0xFFE53935), // 빨강 (회복 필요)
           fatigueScore >= FatigueConstants.midThreshold,
         ),
         const SizedBox(width: 8),

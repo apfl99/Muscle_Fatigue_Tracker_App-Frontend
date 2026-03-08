@@ -8,16 +8,16 @@ class AppTheme {
   static const Color darkGreen = Color(0xFF00C853);
   static const Color accentGreen = Color(0xFF69F0AE);
 
-  // 다크 그레이 배경 (검은색 계열, 너무 검은색은 아님)
-  static const Color darkBackground = Color(0xFF121212); // Material Dark 표준
-  static const Color cardBackground = Color(0xFF1E1E1E); // 약간 밝은 검은색
-  static const Color cardDark = Color(0xFF181818); // 어두운 검은색
+  // UI_DESIGN_GUIDE 고정 컬러
+  static const Color darkBackground = Color(0xFF0A0E27);
+  static const Color cardBackground = Color(0xFF1C1F3A);
+  static const Color cardDark = Color(0xFF161932);
 
-  // 피로도 레벨 컬러 (통일된 색상)
-  static const Color normalColor = Color(0xFF4CAF50); // 정상 - 초록
-  static const Color lightFatigueColor = Color(0xFFFFA726); // 약간 피로 - 주황
-  static const Color midFatigueColor = Color(0xFFFF7043); // 피로 누적 - 진한 주황
-  static const Color highFatigueColor = Color(0xFFE53935); // 고피로 - 빨강
+  // 컨디션 레벨 컬러 (통일된 색상)
+  static const Color normalColor = Color(0xFF00E676); // 정상 - 초록
+  static const Color lightFatigueColor = Color(0xFFFFEB3B); // 회복 중 - 노랑
+  static const Color midFatigueColor = Color(0xFFFF9800); // 회복 지연 - 오렌지
+  static const Color highFatigueColor = Color(0xFFE53935); // 회복 필요 - 빨강
 
   // 그라데이션
   static const LinearGradient primaryGradient = LinearGradient(
@@ -32,7 +32,7 @@ class AppTheme {
     end: Alignment.bottomRight,
   );
 
-  /// 피로도 점수에 따른 배경 그라디언트 (통일된 색상 기준)
+  /// 컨디션 점수에 따른 배경 그라디언트 (통일된 색상 기준)
   static LinearGradient fatigueGradient(double fatigue) {
     if (fatigue < 1.1) {
       // 정상 - 초록
@@ -42,21 +42,21 @@ class AppTheme {
         end: Alignment.bottomRight,
       );
     } else if (fatigue < 1.4) {
-      // 약간 피로 - 주황
+      // 회복 중 - 주황
       return const LinearGradient(
         colors: [Color(0xFFFFA726), Color(0xFFFB8C00)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     } else if (fatigue < 1.8) {
-      // 피로 누적 - 진한 주황
+      // 회복 지연 - 진한 주황
       return const LinearGradient(
         colors: [Color(0xFFFF7043), Color(0xFFE64A19)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     } else {
-      // 고피로 - 빨강
+      // 회복 필요 - 빨강
       return const LinearGradient(
         colors: [Color(0xFFE53935), Color(0xFFC62828)],
         begin: Alignment.topLeft,
@@ -100,7 +100,7 @@ class AppTheme {
       borderRadius: BorderRadius.circular(borderRadius),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           blurRadius: 10,
           offset: const Offset(0, 5),
         ),
@@ -135,7 +135,7 @@ class AppTheme {
       borderRadius: BorderRadius.circular(12),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.2),
+          color: Colors.black.withValues(alpha: 0.2),
           blurRadius: 5,
           offset: const Offset(0, 3),
         ),

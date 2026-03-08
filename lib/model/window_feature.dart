@@ -6,8 +6,8 @@ class WindowFeature {
   final int windowIndex;
   final double rms;
   final double freq;
-  final double? fatiguePrev; // 이전 윈도우의 피로도
-  final double? fatiguePred; // 예측된 피로도
+  final double? fatiguePrev; // 이전 윈도우의 컨디션
+  final double? fatiguePred; // 예측된 컨디션
   final double? label; // Ground truth 레이블 (학습용)
 
   WindowFeature({

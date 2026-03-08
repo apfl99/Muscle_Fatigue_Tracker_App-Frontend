@@ -1,0 +1,17 @@
+<svg width="360" height="760" viewBox="0 0 360 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="skinBack" x1="102" y1="58" x2="262" y2="742" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BFC7D2"/>
+      <stop offset="0.35" stop-color="#818A97"/>
+      <stop offset="0.75" stop-color="#555E6A"/>
+      <stop offset="1" stop-color="#444C58"/>
+    </linearGradient>
+    <radialGradient id="spotBack" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(178 300) rotate(90) scale(240 124)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="360" height="760" rx="20" fill="#121723"/>
+  <path d="M161 62C168 46 192 46 199 62L204 112C248 126 274 154 282 198L288 276L292 334L286 420L274 564L268 712H240L232 586L222 488L206 422L202 742H158L154 422L138 488L128 586L120 712H92L86 564L74 420L68 334L72 276L78 198C86 154 112 126 156 112L161 62Z" fill="url(#skinBack)"/>
+  <ellipse cx="180" cy="292" rx="130" ry="230" fill="url(#spotBack)"/>
+</svg>

@@ -250,7 +250,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 16),
           Text(
-            '나의 근피로 지수 기록',
+            '나의 컨디션 점수 기록',
             style: TextStyle(
               fontSize: Responsive.isSmallScreen(context) ? 18 : 20,
               fontWeight: FontWeight.bold,
@@ -268,7 +268,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 Colors.blue,
               ),
               _buildSummaryItem(
-                '평균 근피로 지수',
+                '평균 컨디션 점수',
                 avgFatigue.toStringAsFixed(2),
                 Icons.trending_flat,
                 Colors.orange,
@@ -435,7 +435,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         accuracyInfo = '기본 단계';
         benefit = '나만의 패턴을 학습하는 중';
         features = [
-          '✓ 수식 기반 근피로 지수 생성',
+          '✓ 수식 기반 컨디션 점수 생성',
           '✓ 내 기준 맞추기 진행 중',
           '→ 분석을 반복할수록 더 정확해집니다',
         ];
@@ -449,7 +449,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           '✓ 개인 기준 맞추기 완료',
           '✓ AI 모델 보정 적용 (30%)',
           '✓ 이전 기록 활용',
-          '→ 나에게 맞춘 근피로 지수',
+          '→ 나에게 맞춘 컨디션 점수',
         ];
         break;
       case MLMode.endToEnd:
@@ -461,7 +461,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           '✓ AI가 직접 예측',
           '✓ 움직임 패턴을 학습',
           '✓ 개인별 최적화 완료',
-          '✓ 개인화된 근피로 지수 안내',
+          '✓ 개인화된 컨디션 점수 안내',
         ];
         break;
     }
@@ -779,7 +779,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '이 앱에서 제공하는 근피로 지수는 웰니스 참고용 정보이며, 의료 진단이나 치료 목적으로 사용할 수 없습니다. 건강과 관련된 중요한 결정은 반드시 의료 전문가와 상의하시기 바랍니다.',
+              '이 앱에서 제공하는 컨디션 점수는 운동 수행 패턴 참고용 정보이며, 의료적 판단이나 치료 목적 용도가 아닙니다. 건강과 관련된 중요한 결정은 반드시 전문가와 상의하시기 바랍니다.',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.white.withOpacity(0.75),
@@ -1183,7 +1183,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             _buildStatRow('총 분석 세션', '$count회', Colors.blue),
             const Divider(height: 24),
             const Text(
-              '근피로 지수',
+              '컨디션 점수',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,

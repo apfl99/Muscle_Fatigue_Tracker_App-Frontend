@@ -45,7 +45,8 @@ class MeasureSession {
     String timestampStr;
     if (map.containsKey('created_at') && map['created_at'] != null) {
       timestampStr = map['created_at'] as String;
-    } else if (map.containsKey('timestamp_utc') && map['timestamp_utc'] != null) {
+    } else if (map.containsKey('timestamp_utc') &&
+        map['timestamp_utc'] != null) {
       timestampStr = map['timestamp_utc'] as String;
     } else {
       final windowEndMs = map['last_window_end_ms'] as int?;
@@ -54,8 +55,8 @@ class MeasureSession {
         timestampStr =
             DateTime.fromMillisecondsSinceEpoch(windowEndMs).toIso8601String();
       } else if (windowStartMs != null) {
-        timestampStr =
-            DateTime.fromMillisecondsSinceEpoch(windowStartMs).toIso8601String();
+        timestampStr = DateTime.fromMillisecondsSinceEpoch(windowStartMs)
+            .toIso8601String();
       } else {
         timestampStr = DateTime.now().toIso8601String();
       }
@@ -80,9 +81,9 @@ class MeasureSession {
   }
 }
 
-/// 피로도 계산 헬퍼 클래스
+/// 컨디션 계산 헬퍼 클래스
 class FatigueCalculator {
-  /// 근피로도 점수 계산
+  /// 근육 컨디션 점수 계산
   /// Fatigue = α·(RMS/RMS_base) + β·(Freq_base/Freq)
   static double calculateFatigue({
     required double rms,
@@ -94,7 +95,7 @@ class FatigueCalculator {
   }) {
     // 0으로 나누기 방지
     if (rmsBase <= 0 || peakFreq <= 0 || rms.isNaN || peakFreq.isNaN) {
-      print('⚠️ 피로도 계산 불가: rmsBase=$rmsBase, peakFreq=$peakFreq');
+      print('⚠️ 컨디션 계산 불가: rmsBase=$rmsBase, peakFreq=$peakFreq');
       return 1.0;
     }
 
@@ -102,7 +103,7 @@ class FatigueCalculator {
 
     // NaN 체크
     if (fatigue.isNaN || fatigue.isInfinite) {
-      print('⚠️ 피로도 계산 결과 무효: $fatigue');
+      print('⚠️ 컨디션 계산 결과 무효: $fatigue');
       return 1.0;
     }
 
@@ -115,20 +116,20 @@ class FatigueCalculator {
     return roundedFatigue;
   }
 
-  /// 피로도 레벨 텍스트 반환
+  /// 컨디션 레벨 텍스트 반환
   static String getFatigueLevel(double fatigue) {
-    if (fatigue < 1.1) return '정상';
-    if (fatigue < 1.4) return '약간 피로';
-    if (fatigue < 1.8) return '피로 누적';
-    return '고피로';
+    if (fatigue < 1.1) return '회복 완료';
+    if (fatigue < 1.4) return '회복 중';
+    if (fatigue < 1.8) return '회복 지연';
+    return '회복 필요';
   }
 
-  /// 피로도 레벨 색상 반환 (통일된 색상 사용)
+  /// 컨디션 레벨 색상 반환 (통일된 색상 사용)
   static Color getFatigueColor(double fatigue) {
     if (fatigue < 1.1) return const Color(0xFF4CAF50); // 초록 (정상)
-    if (fatigue < 1.4) return const Color(0xFFFFA726); // 주황 (약간 피로)
-    if (fatigue < 1.8) return const Color(0xFFFF7043); // 진한 주황 (피로 누적)
-    return const Color(0xFFE53935); // 빨강 (고피로)
+    if (fatigue < 1.4) return const Color(0xFFFFA726); // 주황 (회복 중)
+    if (fatigue < 1.8) return const Color(0xFFFF7043); // 진한 주황 (회복 지연)
+    return const Color(0xFFE53935); // 빨강 (회복 필요)
   }
 
   /// 게이지 값 변환 (0-100%)
@@ -144,8 +145,8 @@ class FatigueCalculator {
     final delta = current - prev;
 
     if (delta.abs() < 0.1) return '변화 없음';
-    if (delta > 0.3) return '피로도 급상승';
-    if (delta > 0.1) return '피로 상승';
+    if (delta > 0.3) return '컨디션 급변';
+    if (delta > 0.1) return '컨디션 하락';
     if (delta < -0.1) return '회복 중';
     return '유지';
   }
