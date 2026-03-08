@@ -36,11 +36,13 @@ class AdManagerSplashController implements SplashAdController {
 class SplashScreen extends StatefulWidget {
   const SplashScreen({
     super.key,
+    this.minimumSplashDuration = const Duration(milliseconds: 2500),
     this.adLoadTimeout = const Duration(seconds: 3),
     this.homeBuilder,
     this.adController,
   });
 
+  final Duration minimumSplashDuration;
   final Duration adLoadTimeout;
   final WidgetBuilder? homeBuilder;
   final SplashAdController? adController;
@@ -64,17 +66,19 @@ class _SplashScreenState extends State<SplashScreen> {
 
     unawaited(_warmupHomeData());
     unawaited(adController.initialize());
-    final adReady = await _waitForInterstitialReady(
-      adController: adController,
-      timeout: widget.adLoadTimeout,
-    );
+    await Future<void>.delayed(widget.minimumSplashDuration);
 
     if (!mounted || _navigated) {
       return;
     }
 
-    if (adReady) {
+    if (adController.isInterstitialReady) {
       await _showInterstitialAndWaitClose(adController);
+    } else {
+      // 최소 스플래시 시간 이후에도 광고가 준비되지 않았다면 지연 없이 홈으로 이동한다.
+      // (네트워크 실패/광고 로드 실패 포함)
+      _navigateToHome();
+      return;
     }
 
     if (!mounted || _navigated) {
@@ -91,20 +95,6 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  Future<bool> _waitForInterstitialReady({
-    required SplashAdController adController,
-    required Duration timeout,
-  }) async {
-    final deadline = DateTime.now().add(timeout);
-    while (DateTime.now().isBefore(deadline)) {
-      if (adController.isInterstitialReady) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    return adController.isInterstitialReady;
-  }
-
   Future<void> _showInterstitialAndWaitClose(
     SplashAdController adController,
   ) async {
@@ -119,7 +109,7 @@ class _SplashScreenState extends State<SplashScreen> {
     );
 
     await closedCompleter.future.timeout(
-      const Duration(seconds: 8),
+      widget.adLoadTimeout,
       onTimeout: () {},
     );
   }

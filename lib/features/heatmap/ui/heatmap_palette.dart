@@ -26,13 +26,13 @@ class HeatmapPalette {
   static String labelForStatus(HeatmapStatus status) {
     switch (status) {
       case HeatmapStatus.red:
-        return '고피로 (24시간 이내)';
+        return '회복 필요 (24시간 이내)';
       case HeatmapStatus.yellow:
-        return '중간피로 (24~48시간)';
+        return '회복 중 (24~48시간)';
       case HeatmapStatus.green:
-        return '회복 단계 (48시간+ 또는 기록 없음)';
+        return '회복 완료 (48시간+ 또는 기록 없음)';
       case HeatmapStatus.unknown:
-        return '미분류';
+        return '데이터 수집 중';
     }
   }
 }

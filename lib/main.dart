@@ -492,7 +492,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       () async {
         if (_isCollecting && mounted) {
           await _stopCollection();
-          // 분석 완료 SnackBar 제거 (근피로 지수 결과 카드만 표시)
+          // 분석 완료 SnackBar 제거 (컨디션 점수 결과 카드만 표시)
         }
       },
     );
@@ -615,7 +615,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             _isBaselineSetting = false;
             _baselineStatus = '기준 맞추기가 완료되었습니다!';
             _justCompletedBaseline = true;
-            _analysisResult = null; // 이번 세션은 근피로 지수 카드 미노출
+            _analysisResult = null; // 이번 세션은 컨디션 점수 카드 미노출
           });
           // 자동 이동 대신 완료 배너로 선택 유도
           _completedBaseline = result;
@@ -1064,7 +1064,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
-  // 근피로 지수 점수 카드 (게이지 위젯 사용)
+  // 컨디션 점수 카드 (게이지 위젯 사용)
   Widget _buildFatigueScoreCard(Map<String, dynamic> result) {
     final fatigueScore = result['fatigueScore'] ?? 1.0;
     final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
@@ -1076,7 +1076,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       padding: Responsive.cardPadding(context),
       child: Column(
         children: [
-          // 근피로 지수 레벨 배지
+          // 컨디션 레벨 배지
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: Responsive.isSmallScreen(context) ? 16 : 20,
@@ -1342,16 +1342,16 @@ class _SensorDataPageState extends State<SensorDataPage>
     );
   }
 
-  // 근피로 지수 레벨별 아이콘
+  // 컨디션 레벨별 아이콘
   IconData _getFatigueLevelIcon(String level) {
     switch (level) {
-      case '정상':
+      case '회복 완료':
         return Icons.sentiment_very_satisfied;
-      case '약간 피로':
+      case '회복 중':
         return Icons.sentiment_satisfied;
-      case '피로 누적':
+      case '회복 지연':
         return Icons.sentiment_dissatisfied;
-      case '고피로':
+      case '회복 필요':
         return Icons.sentiment_very_dissatisfied;
       default:
         return Icons.help_outline;

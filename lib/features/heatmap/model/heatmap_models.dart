@@ -113,6 +113,10 @@ class MuscleHeatmapEntry {
   final int displayScore;
   final DateTime? lastTrainedAt;
 
+  double get conditionScore => fatigueScore;
+
+  int get conditionDisplayScore => displayScore;
+
   factory MuscleHeatmapEntry.fromJson(Map<String, dynamic> json) {
     final payload = HeatmapStatusModel.fromJson(json);
     final normalizedCode = _normalizeMuscleCode(payload.muscleId);

@@ -54,3 +54,4 @@ flutter:
     - assets/images/muscle_anatomy.svg
     - assets/heatmap/
     - assets/models/human_muscular_system.glb
+    - assets/models/human_muscular_system_segmented.glb

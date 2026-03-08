@@ -35,7 +35,7 @@ class InteractiveMuscle3DViewer extends StatefulWidget {
 
 class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   static const String _modelAssetPath =
-      'assets/models/human_muscular_system.glb';
+      'assets/models/human_muscular_system_segmented.glb';
   static const Duration _fallbackTimeout = Duration(seconds: 8);
   static const bool _e2eStub3D = bool.fromEnvironment(
     'MUSCLECARE_E2E_STUB_3D',
@@ -144,68 +144,82 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           ),
           if (_e2eStub3D) _buildE2EStubLayer(statusByMuscle),
           if (_assetReady && !_e2eStub3D)
-            mv.ModelViewer(
-              key: ValueKey('muscle-3d-$statusSignature-$_retryVersion'),
-              src: _modelAssetPath,
-              alt: '신체 컨디션 3D 근육 모델',
-              loading: mv.Loading.eager,
-              reveal: mv.Reveal.auto,
-              backgroundColor: Colors.transparent,
-              cameraControls: widget.interactive,
-              disablePan: !widget.interactive,
-              disableZoom: !widget.interactive,
-              autoRotate: widget.autoRotate,
-              autoRotateDelay: 1000,
-              rotationPerSecond: '10deg',
-              interactionPrompt: widget.interactive
-                  ? mv.InteractionPrompt.auto
-                  : mv.InteractionPrompt.none,
-              interactionPromptStyle: mv.InteractionPromptStyle.basic,
-              cameraOrbit: '0deg 82deg 2.05m',
-              minCameraOrbit: 'auto 20deg 1.15m',
-              maxCameraOrbit: 'auto 165deg 3.0m',
-              exposure: 1.08,
-              shadowIntensity: 0.58,
-              shadowSoftness: 0.62,
-              innerModelViewerHtml: widget.showHotspots
-                  ? _buildHotspotsHtml(statusByMuscle)
-                  : null,
-              relatedCss: widget.showHotspots ? _hotspotCss : null,
-              relatedJs: _buildMeshTintScript(statusByMuscle),
-              javascriptChannels: <mv.JavascriptChannel>{
-                mv.JavascriptChannel(
-                  'MuscleTap',
-                  onMessageReceived: (message) {
-                    final tappedMuscleCode =
-                        _normalizeMuscleCode(message.message);
-                    widget.onMuscleTap?.call(tappedMuscleCode);
-                  },
-                ),
-                mv.JavascriptChannel(
-                  'ModelReady',
-                  onMessageReceived: (message) {
-                    if (!mounted) {
-                      return;
-                    }
-                    final type = message.message.trim().toLowerCase();
-                    if (type == 'ready') {
-                      _fallbackTimer?.cancel();
-                      setState(() {
-                        _modelReady = true;
-                        _showFallback = false;
-                      });
-                    } else if (type == 'error') {
+            SizedBox.expand(
+              child: mv.ModelViewer(
+                key: ValueKey('muscle-3d-$statusSignature-$_retryVersion'),
+                src: _modelAssetPath,
+                alt: '3D Human Muscular System',
+                ar: false,
+                loading: mv.Loading.eager,
+                reveal: mv.Reveal.auto,
+                backgroundColor: Colors.transparent,
+                cameraControls: true,
+                disableZoom: false,
+                disablePan: false,
+                touchAction: widget.interactive
+                    ? mv.TouchAction.none
+                    : mv.TouchAction.panY,
+                autoRotate: false,
+                interactionPrompt: widget.interactive
+                    ? mv.InteractionPrompt.auto
+                    : mv.InteractionPrompt.none,
+                interactionPromptStyle: mv.InteractionPromptStyle.basic,
+                cameraOrbit: '0deg 90deg 2.8m',
+                cameraTarget: '0m 1.05m 0m',
+                minCameraOrbit: 'auto 20deg 2.0m',
+                maxCameraOrbit: 'auto 165deg 4.5m',
+                exposure: 1.08,
+                shadowIntensity: 0.58,
+                shadowSoftness: 0.62,
+                innerModelViewerHtml: widget.showHotspots
+                    ? _buildHotspotsHtml(statusByMuscle)
+                    : null,
+                relatedCss:
+                    _viewerCss + (widget.showHotspots ? _hotspotCss : ''),
+                relatedJs: _buildMeshTintScript(statusByMuscle),
+                javascriptChannels: <mv.JavascriptChannel>{
+                  mv.JavascriptChannel(
+                    'MuscleTap',
+                    onMessageReceived: (message) {
+                      final tappedMuscleCode =
+                          _normalizeMuscleCode(message.message);
+                      widget.onMuscleTap?.call(tappedMuscleCode);
+                    },
+                  ),
+                  mv.JavascriptChannel(
+                    'ModelLog',
+                    onMessageReceived: (message) {
                       debugPrint(
-                        '[InteractiveMuscle3DViewer] JS 런타임에서 모델 오류 수신',
+                        '[InteractiveMuscle3DViewer][js] ${message.message}',
                       );
-                      setState(() {
-                        _modelReady = false;
-                        _showFallback = true;
-                      });
-                    }
-                  },
-                ),
-              },
+                    },
+                  ),
+                  mv.JavascriptChannel(
+                    'ModelReady',
+                    onMessageReceived: (message) {
+                      if (!mounted) {
+                        return;
+                      }
+                      final type = message.message.trim().toLowerCase();
+                      if (type == 'ready') {
+                        _fallbackTimer?.cancel();
+                        setState(() {
+                          _modelReady = true;
+                          _showFallback = false;
+                        });
+                      } else if (type == 'error') {
+                        debugPrint(
+                          '[InteractiveMuscle3DViewer] JS 런타임에서 모델 오류 수신',
+                        );
+                        setState(() {
+                          _modelReady = false;
+                          _showFallback = true;
+                        });
+                      }
+                    },
+                  ),
+                },
+              ),
             ),
           if (!_assetReady && !_assetFailed && !_e2eStub3D)
             const Center(
@@ -214,7 +228,28 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
               ),
             ),
           if (_showFallback && !_e2eStub3D) _buildFallbackLayer(),
+          if (_assetReady && !_modelReady && !_showFallback && !_e2eStub3D)
+            _buildLoadingOverlay(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingOverlay() {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.18),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppTheme.primaryGreen),
+            SizedBox(height: 12),
+            Text(
+              '3D 해부학 모델을 불러오는 중입니다...',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -384,66 +419,90 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   }
 
   String _buildMeshTintScript(Map<String, HeatmapStatus> statusByMuscle) {
-    final tintByMuscle = <String, String>{};
-    for (final entry in statusByMuscle.entries) {
-      tintByMuscle[entry.key] = _toHex(_colorForStatus(entry.value));
-    }
-
-    final tintJson = jsonEncode(tintByMuscle);
-    final meshJson = jsonEncode(_meshNameCandidatesByMuscle);
-
+    final statusJson =
+        jsonEncode(statusByMuscle.map((k, v) => MapEntry(k, v.rawValue)));
     return '''
 (() => {
-  const tintByMuscle = $tintJson;
-  const meshNameCandidates = $meshJson;
+  const statusByMuscle = $statusJson;
 
-  function hexToRgbaArray(hex, alpha) {
-    const value = (hex || '').replace('#', '');
-    if (value.length !== 6) return [1, 1, 1, alpha];
-    const r = parseInt(value.substring(0, 2), 16) / 255;
-    const g = parseInt(value.substring(2, 4), 16) / 255;
-    const b = parseInt(value.substring(4, 6), 16) / 255;
-    return [r, g, b, alpha];
+  const COLOR_GREEN = [0.0, 0.90, 0.46, 1.0];
+  const COLOR_YELLOW = [1.0, 0.65, 0.15, 1.0];
+  const COLOR_RED = [0.89, 0.22, 0.20, 1.0];
+  const COLOR_UNKNOWN = [0.38, 0.44, 0.56, 0.85];
+
+  function colorForStatus(raw) {
+    const v = String(raw || '').toLowerCase();
+    if (v === 'green') return COLOR_GREEN;
+    if (v === 'yellow') return COLOR_YELLOW;
+    if (v === 'red') return COLOR_RED;
+    return COLOR_UNKNOWN;
   }
 
-  function materialMatches(name, candidates) {
-    const materialName = (name || '').toLowerCase();
-    return (candidates || []).some((token) => materialName.includes(String(token).toLowerCase()));
-  }
+  const materialNameByMuscle = {
+    chest: 'Material_Chest',
+    quadriceps: 'Material_Quads',
+    glutes: 'Material_Glutes',
+    calves: 'Material_Calves',
+    latissimus: 'Material_Lats',
+    erector_spinae: 'Material_LowerBack',
+    rectus_abdominis: 'Material_Abs',
+    obliques: 'Material_Obliques',
+    lateral_deltoid: 'Material_Shoulders',
+    biceps: 'Material_UpperArms',
+    trapezius: 'Material_Neck',
+  };
 
-  function applyMuscleTints(modelViewer) {
+  function applyTint(modelViewer) {
     try {
+      function log(msg) {
+        if (typeof ModelLog !== 'undefined') {
+          ModelLog.postMessage(String(msg));
+        }
+      }
+
+      function postReady(type) {
+        if (typeof ModelReady !== 'undefined') {
+          ModelReady.postMessage(type);
+        }
+      }
+
       if (!modelViewer || !modelViewer.model || !modelViewer.model.materials) {
+        log('model/materials not ready');
         return;
       }
 
-      const materials = modelViewer.model.materials;
-      for (const material of materials) {
-        const materialName = (material && material.name) || '';
-        let resolvedTint = null;
+      const materials = [];
+      for (let i = 0; i < modelViewer.model.materials.length; i++) {
+        materials.push(modelViewer.model.materials[i]);
+      }
+      log('materials=' + materials.length);
 
-        for (const muscleId of Object.keys(meshNameCandidates)) {
-          const candidates = meshNameCandidates[muscleId];
-          if (!materialMatches(materialName, candidates)) {
-            continue;
-          }
-          resolvedTint = tintByMuscle[muscleId];
-          if (resolvedTint) {
+      let applied = 0;
+      for (const muscleId of Object.keys(materialNameByMuscle)) {
+        const matName = materialNameByMuscle[muscleId];
+        let material = null;
+        for (const m of materials) {
+          if (m && String(m.name || '') === matName) {
+            material = m;
             break;
           }
         }
+        if (!material) continue;
 
-        if (!resolvedTint) {
-          continue;
+        const rawStatus = statusByMuscle[muscleId];
+        const color = colorForStatus(rawStatus);
+        if (material.pbrMetallicRoughness && material.pbrMetallicRoughness.setBaseColorFactor) {
+          material.pbrMetallicRoughness.setBaseColorFactor(color);
+          applied += 1;
         }
-
-        const roughness = material.pbrMetallicRoughness;
-        if (!roughness || !roughness.setBaseColorFactor) {
-          continue;
-        }
-        roughness.setBaseColorFactor(hexToRgbaArray(resolvedTint, 0.72));
       }
-    } catch (_) {
+
+      log('tint_applied=' + applied);
+      postReady('ready');
+    } catch (e) {
+      if (typeof ModelLog !== 'undefined') {
+        ModelLog.postMessage('applyTint error: ' + e);
+      }
       if (typeof ModelReady !== 'undefined') {
         ModelReady.postMessage('error');
       }
@@ -452,23 +511,20 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
 
   const modelViewer = document.querySelector('model-viewer');
   if (!modelViewer) {
+    if (typeof ModelLog !== 'undefined') {
+      ModelLog.postMessage('model-viewer not found');
+    }
     return;
   }
 
-  modelViewer.addEventListener('load', () => {
-    applyMuscleTints(modelViewer);
-    if (typeof ModelReady !== 'undefined') {
-      ModelReady.postMessage('ready');
-    }
-  });
-
+  modelViewer.addEventListener('load', () => applyTint(modelViewer));
   modelViewer.addEventListener('error', () => {
-    if (typeof ModelReady !== 'undefined') {
-      ModelReady.postMessage('error');
+    if (typeof ModelLog !== 'undefined') {
+      ModelLog.postMessage('model-viewer error event');
     }
+    if (typeof ModelReady !== 'undefined') ModelReady.postMessage('error');
   });
-
-  setTimeout(() => applyMuscleTints(modelViewer), 1200);
+  setTimeout(() => applyTint(modelViewer), 900);
 })();
 ''';
   }
@@ -478,8 +534,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       return 1.0;
     }
     final values = entries.map((entry) {
-      if (entry.fatigueScore > 0) {
-        return entry.fatigueScore.clamp(1.0, 3.0);
+      if (entry.conditionScore > 0) {
+        return entry.conditionScore.clamp(1.0, 3.0);
       }
       switch (entry.status) {
         case HeatmapStatus.red:
@@ -542,13 +598,6 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
 
   String _toCssRgba(Color color, double alpha) {
     return 'rgba(${(color.r * 255).round()}, ${(color.g * 255).round()}, ${(color.b * 255).round()}, ${alpha.toStringAsFixed(2)})';
-  }
-
-  String _toHex(Color color) {
-    final rgb = ((color.r * 255).round() << 16) |
-        ((color.g * 255).round() << 8) |
-        (color.b * 255).round();
-    return '#${rgb.toRadixString(16).padLeft(6, '0')}';
   }
 
   String _normalizeMuscleCode(String rawCode) {
@@ -632,24 +681,6 @@ const List<_ModelHotspot> _hotspots = [
   ),
 ];
 
-const Map<String, List<String>> _meshNameCandidatesByMuscle = {
-  'chest': ['chest', 'pector', 'torso_front'],
-  'front_deltoid': ['front_deltoid', 'deltoid', 'shoulder_l'],
-  'lateral_deltoid': ['lateral_deltoid', 'deltoid', 'shoulder_r'],
-  'rear_deltoid': ['rear_deltoid', 'deltoid_back'],
-  'biceps': ['biceps', 'upperarm_front'],
-  'triceps': ['triceps', 'upperarm_back'],
-  'rectus_abdominis': ['abs', 'abdom', 'rectus'],
-  'obliques': ['oblique', 'waist'],
-  'quadriceps': ['quad', 'thigh_front'],
-  'hamstrings': ['hamstring', 'thigh_back'],
-  'glutes': ['glute', 'hip'],
-  'calves': ['calf', 'gastro', 'leg_lower'],
-  'latissimus': ['lat', 'latissimus', 'back_side'],
-  'trapezius': ['trap', 'trapez'],
-  'erector_spinae': ['spine', 'erector', 'lower_back'],
-};
-
 const Map<String, String> _muscleAliases = {
   'front_delts': 'front_deltoid',
   'lateral_delts': 'lateral_deltoid',
@@ -680,5 +711,18 @@ const String _hotspotCss = '''
 
 .muscle-hotspot:active {
   transform: scale(0.96);
+}
+''';
+
+const String _viewerCss = '''
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+model-viewer {
+  width: 100%;
+  height: 100%;
+  background: transparent;
 }
 ''';

@@ -21,7 +21,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   Widget build(BuildContext context) {
     return Consumer<HeatmapProvider>(
       builder: (context, provider, _) {
-        final score = _calculateFatigueScore(provider.heatmapEntries);
+        final score = _calculateConditionScore(provider.heatmapEntries);
 
         return Scaffold(
           backgroundColor: AppTheme.darkBackground,
@@ -130,14 +130,14 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     );
   }
 
-  _FatigueScore _calculateFatigueScore(List<MuscleHeatmapEntry> entries) {
+  _ConditionScore _calculateConditionScore(List<MuscleHeatmapEntry> entries) {
     if (entries.isEmpty) {
-      return const _FatigueScore(average: 1.0, peak: 1.0);
+      return const _ConditionScore(average: 1.0, peak: 1.0);
     }
 
     final values = entries.map((entry) {
-      if (entry.fatigueScore > 0) {
-        return entry.fatigueScore.clamp(0.0, 3.0);
+      if (entry.conditionScore > 0) {
+        return entry.conditionScore.clamp(0.0, 3.0);
       }
       switch (entry.status) {
         case HeatmapStatus.red:
@@ -155,7 +155,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     final average = total / values.length;
     final peak = values.reduce((a, b) => a > b ? a : b);
 
-    return _FatigueScore(average: average, peak: peak);
+    return _ConditionScore(average: average, peak: peak);
   }
 
   void _onMuscleTapped(HeatmapProvider provider, String muscleCode) {
@@ -276,7 +276,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
         const Color(0xFFFFA726);
   }
 
-  Widget _buildStatusBadge(_FatigueScore score) {
+  Widget _buildStatusBadge(_ConditionScore score) {
     final label = _statusLabel(score.peak);
     final color = _colorForScore(score.peak);
     return Container(
@@ -475,8 +475,8 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   }
 }
 
-class _FatigueScore {
-  const _FatigueScore({
+class _ConditionScore {
+  const _ConditionScore({
     required this.average,
     required this.peak,
   });

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../theme/app_theme.dart';
@@ -29,7 +28,6 @@ class MuscleHeatmapPage extends StatefulWidget {
 class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
   late final HeatmapSyncHook _hook;
   late final HeatmapRepositoryContract _repository;
-  HeatmapBodyView _currentBodyView = HeatmapBodyView.front;
   bool _isRecordSheetOpen = false;
 
   @override
@@ -40,7 +38,6 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     _hook.initialize();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _precacheBodyAssets();
       if (widget.openQuickRecordOnStart && mounted) {
         Future<void>.delayed(const Duration(milliseconds: 80), () async {
           if (!mounted) {
@@ -56,21 +53,6 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
   void dispose() {
     _hook.dispose();
     super.dispose();
-  }
-
-  Future<void> _precacheBodyAssets() async {
-    try {
-      await const SvgAssetLoader(
-        'assets/heatmap/body_front_3d.svg',
-      ).loadBytes(null);
-      await const SvgAssetLoader(
-        'assets/heatmap/body_back_3d.svg',
-      ).loadBytes(
-        null,
-      );
-    } catch (_) {
-      // 프리캐시 실패 시에도 런타임에서 자연스럽게 로드되도록 무시한다.
-    }
   }
 
   Future<void> _openQuickRecordSheet() async {
@@ -156,11 +138,8 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
                   _buildNonBlockingErrorBanner(_hook.errorMessage!),
                   const SizedBox(height: 10),
                 ],
-                _buildBodyViewSwitcher(),
-                const SizedBox(height: 12),
                 MuscleHeatmapContainer(
-                  bodyView: _currentBodyView,
-                  statusByMuscleCode: _hook.statusByMuscleCode,
+                  entries: _hook.entries,
                 ),
                 const SizedBox(height: 12),
                 _buildStatusSummary(),
@@ -213,9 +192,9 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
         border: Border.all(
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
@@ -258,10 +237,10 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.14),
+        color: Colors.orange.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.orange.withOpacity(0.3),
+          color: Colors.orange.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -286,40 +265,6 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     );
   }
 
-  Widget _buildBodyViewSwitcher() {
-    return Row(
-      children: HeatmapBodyView.values.map((view) {
-        final selected = _currentBodyView == view;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              right: view == HeatmapBodyView.front ? 8 : 0,
-            ),
-            child: ChoiceChip(
-              selected: selected,
-              label: Center(
-                child: Text(
-                  view.label,
-                  style: GoogleFonts.poppins(
-                    color: selected ? Colors.black : Colors.white70,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              selectedColor: AppTheme.primaryGreen,
-              backgroundColor: Colors.white.withOpacity(0.08),
-              onSelected: (_) {
-                setState(() {
-                  _currentBodyView = view;
-                });
-              },
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildStatusSummary() {
     final entries = _hook.entries;
     final redCount =
@@ -333,7 +278,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       children: [
         Expanded(
           child: _statusTile(
-            label: '고피로',
+            label: '회복 필요',
             count: redCount,
             color: HeatmapPalette.red,
           ),
@@ -341,7 +286,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _statusTile(
-            label: '주의',
+            label: '회복 중',
             count: yellowCount,
             color: HeatmapPalette.yellow,
           ),
@@ -349,7 +294,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _statusTile(
-            label: '회복',
+            label: '회복 완료',
             count: greenCount,
             color: HeatmapPalette.green,
           ),
@@ -366,9 +311,9 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.36)),
+        border: Border.all(color: color.withValues(alpha: 0.36)),
       ),
       child: Column(
         children: [
@@ -446,7 +391,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -492,7 +437,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
+            color: Colors.white.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white12),
           ),
