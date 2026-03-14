@@ -1,4 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -14,6 +15,11 @@ enum _DashboardMode {
 }
 
 enum _TimelineEntryType {
+  manual,
+  analysis,
+}
+
+enum _TimelineFilter {
   manual,
   analysis,
 }
@@ -40,6 +46,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   int _visibleCount = 20;
 
   _DashboardMode _dashboardMode = _DashboardMode.trend;
+  _TimelineFilter _timelineFilter = _TimelineFilter.manual;
   int? _trendRangeDays = 7;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -161,12 +168,19 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           entry.occurredAt.month == _focusedDay.month;
     }).toList();
 
+    final separated = filtered.where((entry) {
+      if (_timelineFilter == _TimelineFilter.manual) {
+        return entry.type == _TimelineEntryType.manual;
+      }
+      return entry.type == _TimelineEntryType.analysis;
+    }).toList();
+
     setState(() {
-      _filteredTimeline = filtered;
+      _filteredTimeline = separated;
       if (resetVisible) {
-        _visibleCount = filtered.length < 20 ? filtered.length : 20;
+        _visibleCount = separated.length < 20 ? separated.length : 20;
       } else {
-        _visibleCount = _visibleCount.clamp(0, filtered.length).toInt();
+        _visibleCount = _visibleCount.clamp(0, separated.length).toInt();
       }
     });
   }
@@ -273,9 +287,9 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                     padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
                     child: Row(
                       children: [
-                        const Text(
-                          '통합 타임라인',
-                          style: TextStyle(
+                        Text(
+                          _timelineTitle(),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
@@ -383,6 +397,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             _buildTrendPanel()
           else
             _buildCalendarPanel(),
+          const SizedBox(height: 12),
+          _buildTimelineTypeToggle(),
           const SizedBox(height: 6),
           Text(
             _filterSummary(),
@@ -434,6 +450,40 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTimelineTypeToggle() {
+    return CupertinoSlidingSegmentedControl<_TimelineFilter>(
+      key: const Key('history_timeline_toggle'),
+      backgroundColor: Colors.white.withValues(alpha: 0.08),
+      thumbColor: AppTheme.primaryGreen.withValues(alpha: 0.24),
+      groupValue: _timelineFilter,
+      children: const <_TimelineFilter, Widget>{
+        _TimelineFilter.manual: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Text(
+            '운동 일지',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+        _TimelineFilter.analysis: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Text(
+            '정밀 분석',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+      },
+      onValueChanged: (value) {
+        if (value == null) {
+          return;
+        }
+        setState(() {
+          _timelineFilter = value;
+        });
+        _recomputeTimeline(resetVisible: true);
+      },
     );
   }
 
@@ -812,17 +862,25 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   }
 
   String _filterSummary() {
+    final typeLabel =
+        _timelineFilter == _TimelineFilter.manual ? '운동 일지' : '정밀 분석';
     if (_dashboardMode == _DashboardMode.trend) {
       if (_trendRangeDays == null) {
-        return '필터: 전체 기간 추이';
+        return '필터: $typeLabel · 전체 기간 추이';
       }
-      return '필터: 최근 $_trendRangeDays일 추이';
+      return '필터: $typeLabel · 최근 $_trendRangeDays일 추이';
     }
 
     if (_selectedDay != null) {
-      return '필터: ${_dateLabel(_selectedDay!)} 선택';
+      return '필터: $typeLabel · ${_dateLabel(_selectedDay!)} 선택';
     }
-    return '필터: ${_focusedDay.year}년 ${_focusedDay.month}월';
+    return '필터: $typeLabel · ${_focusedDay.year}년 ${_focusedDay.month}월';
+  }
+
+  String _timelineTitle() {
+    return _timelineFilter == _TimelineFilter.manual
+        ? '운동 일지 타임라인'
+        : '정밀 분석 타임라인';
   }
 
   bool _isSameDate(DateTime a, DateTime b) {

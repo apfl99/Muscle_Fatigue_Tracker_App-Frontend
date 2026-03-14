@@ -177,10 +177,10 @@ class _MainHomePageState extends State<MainHomePage>
           appBar: AppBar(
             backgroundColor: AppTheme.darkBackground,
             foregroundColor: Colors.white,
-            title: const Text('컨디션 로그 대시보드'),
+            title: const Text('오늘의 컨디션'),
             actions: [
               IconButton(
-                tooltip: '정밀 분석',
+                tooltip: '상세 분석 보기',
                 icon: const Icon(Icons.analytics_outlined),
                 onPressed: () {
                   Navigator.of(context).push(
@@ -337,7 +337,7 @@ class _MainHomePageState extends State<MainHomePage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '인터랙티브 3D 컨디션 맵',
+                '나의 3D 바디 맵',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -433,7 +433,7 @@ class _MainHomePageState extends State<MainHomePage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '운동 일지 타임라인',
+            '운동 기록 타임라인',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,

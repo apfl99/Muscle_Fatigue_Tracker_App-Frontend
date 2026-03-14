@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 class PersonalWeights {
   PersonalWeights({

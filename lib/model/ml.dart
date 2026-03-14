@@ -7,10 +7,13 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
 import 'config.dart';
 import 'database_helper.dart';
 import 'measure_session.dart';
+
+void print(Object? message) => appLog(message);
 
 class HybridFatiguePayload {
   HybridFatiguePayload({

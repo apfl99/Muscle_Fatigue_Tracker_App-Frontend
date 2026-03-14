@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
 import '../model/model_downloader.dart';
 import 'worker_manager.dart';
+
+void print(Object? message) => appLog(message);
 
 class ModelUpdateScheduler {
   ModelUpdateScheduler._internal();

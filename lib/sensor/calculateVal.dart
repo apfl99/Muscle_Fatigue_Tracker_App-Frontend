@@ -1,4 +1,7 @@
 import 'dart:math';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 /// ---------------------------------------------------------------------------
 /// 근육 컨디션 특징 계산 함수

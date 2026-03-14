@@ -47,12 +47,38 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   bool _modelReady = false;
   bool _showFallback = false;
   int _retryVersion = 0;
+  int _entriesVersion = 0;
+  late String _entriesFingerprint;
   Timer? _fallbackTimer;
 
   @override
   void initState() {
     super.initState();
+    _entriesFingerprint = _buildEntriesFingerprint(widget.entries);
     _ensureModelAssetReady();
+  }
+
+  @override
+  void didUpdateWidget(covariant InteractiveMuscle3DViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextFingerprint = _buildEntriesFingerprint(widget.entries);
+    if (nextFingerprint == _entriesFingerprint) {
+      return;
+    }
+    _entriesFingerprint = nextFingerprint;
+    _entriesVersion += 1;
+    _modelReady = false;
+    _showFallback = false;
+    if (_assetReady) {
+      _startFallbackWatchdog();
+    }
+  }
+
+  @override
+  void deactivate() {
+    // 화면 전환 시 watchdog 타이머가 백그라운드에서 남지 않도록 정리한다.
+    _fallbackTimer?.cancel();
+    super.deactivate();
   }
 
   @override
@@ -146,31 +172,36 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           if (_assetReady && !_e2eStub3D)
             SizedBox.expand(
               child: mv.ModelViewer(
-                key: ValueKey('muscle-3d-$statusSignature-$_retryVersion'),
+                key: ValueKey(
+                  'muscle-3d-$statusSignature-${_entriesFingerprint.hashCode}-$_entriesVersion-$_retryVersion',
+                ),
                 src: _modelAssetPath,
                 alt: '3D Human Muscular System',
                 ar: false,
                 loading: mv.Loading.eager,
                 reveal: mv.Reveal.auto,
                 backgroundColor: Colors.transparent,
-                cameraControls: true,
-                disableZoom: false,
-                disablePan: false,
+                cameraControls: widget.interactive,
+                disableZoom: !widget.interactive,
+                disablePan: !widget.interactive,
                 touchAction: widget.interactive
                     ? mv.TouchAction.none
                     : mv.TouchAction.panY,
-                autoRotate: false,
+                autoRotate: widget.autoRotate,
                 interactionPrompt: widget.interactive
                     ? mv.InteractionPrompt.auto
                     : mv.InteractionPrompt.none,
                 interactionPromptStyle: mv.InteractionPromptStyle.basic,
-                cameraOrbit: '0deg 90deg 2.8m',
-                cameraTarget: '0m 1.05m 0m',
-                minCameraOrbit: 'auto 20deg 2.0m',
-                maxCameraOrbit: 'auto 165deg 4.5m',
-                exposure: 1.08,
-                shadowIntensity: 0.58,
-                shadowSoftness: 0.62,
+                fieldOfView: '45deg',
+                cameraOrbit: '0deg 75deg 1.2m',
+                cameraTarget: '0m 0.9m 0m',
+                minCameraOrbit: 'auto auto 1.0m',
+                maxCameraOrbit: 'auto auto 2.8m',
+                minFieldOfView: '35deg',
+                maxFieldOfView: '60deg',
+                exposure: 1.2,
+                shadowIntensity: 2.0,
+                shadowSoftness: 0.5,
                 innerModelViewerHtml: widget.showHotspots
                     ? _buildHotspotsHtml(statusByMuscle)
                     : null,
@@ -365,6 +396,18 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         .join('|');
   }
 
+  String _buildEntriesFingerprint(List<MuscleHeatmapEntry> entries) {
+    final normalized = entries.map((entry) {
+      final code = _normalizeMuscleCode(entry.muscleCode);
+      final score = entry.conditionScore.toStringAsFixed(3);
+      final display = entry.displayScore;
+      final trainedAt = entry.lastTrainedAt?.millisecondsSinceEpoch ?? 0;
+      return '$code:${entry.status.rawValue}:$score:$display:$trainedAt';
+    }).toList()
+      ..sort();
+    return normalized.join('|');
+  }
+
   String _pickPrimaryTapTarget(Map<String, HeatmapStatus> statusByMuscle) {
     const preferredOrder = <String>[
       'chest',
@@ -440,16 +483,55 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
 
   const materialNameByMuscle = {
     chest: 'Material_Chest',
-    quadriceps: 'Material_Quads',
-    glutes: 'Material_Glutes',
-    calves: 'Material_Calves',
-    latissimus: 'Material_Lats',
-    erector_spinae: 'Material_LowerBack',
+    pectoralis_major: 'Material_Chest',
+    pectoralis_minor: 'Material_Chest',
+    serratus_anterior: 'Material_Chest',
+    front_deltoid: 'Material_Shoulders',
+    anterior_deltoid: 'Material_Shoulders',
+    lateral_deltoid: 'Material_Shoulders',
+    rear_deltoid: 'Material_Shoulders',
+    triceps: 'Material_UpperArms',
+    biceps: 'Material_UpperArms',
+    brachialis: 'Material_UpperArms',
+    brachioradialis: 'Material_UpperArms',
+    forearm_flexor: 'Material_UpperArms',
+    forearm_extensor: 'Material_UpperArms',
     rectus_abdominis: 'Material_Abs',
     obliques: 'Material_Obliques',
-    lateral_deltoid: 'Material_Shoulders',
-    biceps: 'Material_UpperArms',
+    quadriceps: 'Material_Quads',
+    vastus_lateralis: 'Material_Quads',
+    vastus_medialis: 'Material_Quads',
+    vastus_intermedius: 'Material_Quads',
+    rectus_femoris: 'Material_Quads',
+    adductors: 'Material_Quads',
+    abductors: 'Material_Quads',
+    hip_flexor: 'Material_Quads',
+    hamstrings: 'Material_Glutes',
+    biceps_femoris: 'Material_Glutes',
+    semitendinosus: 'Material_Glutes',
+    semimembranosus: 'Material_Glutes',
+    glutes: 'Material_Glutes',
+    gluteus_maximus: 'Material_Glutes',
+    gluteus_medius: 'Material_Glutes',
+    gluteus_minimus: 'Material_Glutes',
+    calves: 'Material_Calves',
+    gastrocnemius: 'Material_Calves',
+    soleus: 'Material_Calves',
+    tibialis_anterior: 'Material_Calves',
+    latissimus: 'Material_Lats',
+    latissimus_dorsi: 'Material_Lats',
+    latissimus_lower: 'Material_Lats',
+    latissimus_upper: 'Material_Lats',
+    teres_major: 'Material_Lats',
+    infraspinatus: 'Material_Lats',
+    supraspinatus: 'Material_Lats',
+    teres_minor: 'Material_Lats',
+    subscapularis: 'Material_Lats',
+    erector_spinae: 'Material_LowerBack',
+    lower_back: 'Material_LowerBack',
+    lumbar: 'Material_LowerBack',
     trapezius: 'Material_Neck',
+    neck: 'Material_Neck',
   };
 
   function applyTint(modelViewer) {
@@ -682,15 +764,62 @@ const List<_ModelHotspot> _hotspots = [
 ];
 
 const Map<String, String> _muscleAliases = {
-  'front_delts': 'front_deltoid',
-  'lateral_delts': 'lateral_deltoid',
-  'rear_delts': 'rear_deltoid',
-  'quads': 'quadriceps',
-  'lats': 'latissimus',
   'abs': 'rectus_abdominis',
-  'gastrocnemius': 'calves',
-  'soleus': 'calves',
+  'abdominals': 'rectus_abdominis',
+  'upper_abs': 'rectus_abdominis',
+  'lower_abs': 'rectus_abdominis',
+  'core': 'rectus_abdominis',
+  'pectoralis_major': 'chest',
+  'pectoralis_minor': 'chest',
+  'pecs': 'chest',
+  'chest_major': 'chest',
+  'anterior_deltoid': 'front_deltoid',
+  'front_delts': 'front_deltoid',
+  'side_deltoid': 'lateral_deltoid',
+  'lateral_delts': 'lateral_deltoid',
+  'posterior_deltoid': 'rear_deltoid',
+  'rear_delts': 'rear_deltoid',
+  'biceps_brachii': 'biceps',
+  'brachioradialis': 'forearm_extensor',
+  'wrist_flexor': 'forearm_flexor',
+  'wrist_extensor': 'forearm_extensor',
+  'quads': 'quadriceps',
+  'rectus_femoris': 'quadriceps',
+  'vastus_lateralis': 'quadriceps',
+  'vastus_medialis': 'quadriceps',
+  'vastus_intermedius': 'quadriceps',
+  'hamstring': 'hamstrings',
+  'biceps_femoris': 'hamstrings',
+  'semitendinosus': 'hamstrings',
+  'semimembranosus': 'hamstrings',
+  'adductor_longus': 'adductors',
+  'adductor_brevis': 'adductors',
+  'adductor_magnus': 'adductors',
+  'hip_adductors': 'adductors',
+  'hip_abductors': 'abductors',
+  'abductor': 'abductors',
+  'gluteus_maximus': 'glutes',
+  'gluteus_medius': 'glutes',
+  'gluteus_minimus': 'glutes',
+  'glute_medius': 'abductors',
+  'lats': 'latissimus',
   'latissimus_dorsi': 'latissimus',
+  'latissimus_lower': 'latissimus',
+  'latissimus_upper': 'latissimus',
+  'teres_major': 'latissimus',
+  'spinal_erectors': 'erector_spinae',
+  'erectors': 'erector_spinae',
+  'lumbar': 'lower_back',
+  'upper_trap': 'trapezius',
+  'middle_trap': 'trapezius',
+  'lower_trap': 'trapezius',
+  'cervical': 'neck',
+  'gastrocnemius': 'calves',
+  'gastrocnemius_medial': 'calves',
+  'gastrocnemius_lateral': 'calves',
+  'calf': 'calves',
+  'shin': 'tibialis_anterior',
+  'tibialis': 'tibialis_anterior',
 };
 
 const String _hotspotCss = '''

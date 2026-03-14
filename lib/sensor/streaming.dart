@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:rxdart/rxdart.dart';
 import 'config.dart';
@@ -14,6 +15,8 @@ import '../model/ml.dart';
 import '../worker/worker_manager.dart';
 import '../model/personalization_manager.dart';
 import '../utils/user_identity.dart';
+
+void print(Object? message) => appLog(message);
 
 class SensorStreaming {
   // Raw 데이터 버퍼

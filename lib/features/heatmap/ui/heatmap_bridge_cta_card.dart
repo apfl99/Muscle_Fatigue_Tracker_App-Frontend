@@ -52,7 +52,9 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '정밀 분석 완료 • 3D 히트맵으로 바로 이동',
+                  '분석이 끝났어요 · 3D 바디 맵으로 바로 확인해보세요',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 15,
@@ -83,44 +85,64 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  key: const ValueKey('bridge_view_heatmap_button'),
-                  onPressed: onViewHeatmap,
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: const Text('3D 상태 보기'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00B96B),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 390;
+              final firstButton = ElevatedButton.icon(
+                key: const ValueKey('bridge_view_heatmap_button'),
+                onPressed: onViewHeatmap,
+                icon: const Icon(Icons.visibility_outlined),
+                label: const Text(
+                  '3D 바디 맵 보기',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00B96B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const ValueKey('bridge_quick_record_button'),
-                  onPressed: onQuickRecord,
-                  icon: const Icon(Icons.fitness_center_outlined),
-                  label: const Text('오늘의 컨디션 로그 반영'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF9EF7C6),
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.3),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+              );
+              final secondButton = OutlinedButton.icon(
+                key: const ValueKey('bridge_quick_record_button'),
+                onPressed: onQuickRecord,
+                icon: const Icon(Icons.fitness_center_outlined),
+                label: const Text(
+                  '오늘 기록에 반영',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF9EF7C6),
+                  side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.3),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              ),
-            ],
+              );
+
+              if (narrow) {
+                return Column(
+                  children: [
+                    SizedBox(width: double.infinity, child: firstButton),
+                    const SizedBox(height: 10),
+                    SizedBox(width: double.infinity, child: secondButton),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: firstButton),
+                  const SizedBox(width: 10),
+                  Expanded(child: secondButton),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -131,30 +153,37 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
     required IconData icon,
     required String label,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: Colors.white70,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
               color: Colors.white70,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

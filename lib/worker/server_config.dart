@@ -3,7 +3,10 @@
 library;
 
 import 'dart:convert';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+void print(Object? message) => appLog(message);
 
 class ServerConfig {
   static const String _configKey = 'server_config';

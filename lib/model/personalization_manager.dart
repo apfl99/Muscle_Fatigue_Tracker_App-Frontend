@@ -1,9 +1,12 @@
 import 'dart:math';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
 import 'database_helper.dart';
 import 'model_downloader.dart';
 import 'personal_trainer.dart';
 import 'personal_weights.dart';
+
+void print(Object? message) => appLog(message);
 
 class PersonalizationManager {
   PersonalizationManager._();

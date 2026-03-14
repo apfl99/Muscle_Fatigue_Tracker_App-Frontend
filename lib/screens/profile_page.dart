@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/baseline.dart';
 import '../model/config.dart';
 import '../model/database_helper.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+
+void print(Object? message) => appLog(message);
 
 /// 내 정보 페이지 (Baseline, Phase, 개인 통계)
 class ProfilePage extends StatefulWidget {

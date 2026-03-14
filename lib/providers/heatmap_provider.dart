@@ -300,14 +300,24 @@ class HeatmapProvider extends ChangeNotifier {
 
   String _normalizeMuscleCode(String code) {
     final normalized = code.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return normalized;
+    }
     return switch (normalized) {
-      'front_delts' => 'front_deltoid',
-      'lateral_delts' => 'lateral_deltoid',
-      'rear_delts' => 'rear_deltoid',
+      'front_delts' || 'anterior_deltoid' => 'front_deltoid',
+      'lateral_delts' || 'side_deltoid' => 'lateral_deltoid',
+      'rear_delts' || 'posterior_deltoid' => 'rear_deltoid',
       'quads' => 'quadriceps',
       'lats' || 'latissimus_dorsi' => 'latissimus',
       'abs' || 'abdominals' => 'rectus_abdominis',
-      'gastrocnemius' || 'soleus' => 'calves',
+      'pecs' || 'pectoralis_major' => 'chest',
+      'gastrocnemius_medial' || 'gastrocnemius_lateral' => 'gastrocnemius',
+      'spinal_erectors' || 'erectors' => 'erector_spinae',
+      'lumbar' => 'lower_back',
+      'wrist_flexor' => 'forearm_flexor',
+      'wrist_extensor' => 'forearm_extensor',
+      'forearm' || 'forearms' => 'forearm_flexor',
+      'biceps_brachii' => 'biceps',
       _ => normalized,
     };
   }

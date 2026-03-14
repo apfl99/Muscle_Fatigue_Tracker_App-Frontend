@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 /// 측정 세션 모델 (fatigue_dataset 집계 결과에서 변환)
 class MeasureSession {

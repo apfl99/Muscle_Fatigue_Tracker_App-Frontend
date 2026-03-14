@@ -3,8 +3,11 @@
 library;
 
 import 'dart:convert';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'measurement_task.dart';
+
+void print(Object? message) => appLog(message);
 
 class QueueManager {
   static const String _queueKey = 'measurement_queue';

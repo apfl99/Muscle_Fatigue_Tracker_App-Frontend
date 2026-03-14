@@ -4,10 +4,13 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
 import '../worker/server_config.dart';
 import 'database_helper.dart';
 import 'ml.dart';
+
+void print(Object? message) => appLog(message);
 
 class ModelDownloader {
   ModelDownloader._internal();

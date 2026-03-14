@@ -4,11 +4,14 @@ library;
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'measurement_task.dart';
 import 'queue_manager.dart';
 import 'server_config.dart';
 import '../model/database_helper.dart';
 import '../model/model_downloader.dart';
+
+void print(Object? message) => appLog(message);
 
 class HttpWorker {
   final QueueManager _queueManager;
@@ -279,7 +282,8 @@ class HttpWorker {
 
       if (response.statusCode == 200) {
         try {
-          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          final responseData =
+              jsonDecode(response.body) as Map<String, dynamic>;
           return {
             'success': true,
             'data': responseData,
@@ -385,7 +389,8 @@ class HttpWorker {
 
       if (response.statusCode == 200) {
         try {
-          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          final responseData =
+              jsonDecode(response.body) as Map<String, dynamic>;
           return {
             'success': true,
             'data': responseData,

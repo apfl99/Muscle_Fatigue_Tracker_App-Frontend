@@ -4,6 +4,9 @@ library;
 
 import 'database_helper.dart';
 import 'config.dart';
+import '../utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 class BaselineManager {
   static final BaselineManager instance = BaselineManager._init();

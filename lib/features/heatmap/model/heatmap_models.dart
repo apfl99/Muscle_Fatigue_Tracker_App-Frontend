@@ -152,12 +152,29 @@ class MuscleHeatmapEntry {
   }
 
   static const Map<String, String> _muscleCodeAliases = {
+    'anterior_deltoid': 'front_deltoid',
     'front_delts': 'front_deltoid',
+    'side_deltoid': 'lateral_deltoid',
     'lateral_delts': 'lateral_deltoid',
+    'posterior_deltoid': 'rear_deltoid',
     'rear_delts': 'rear_deltoid',
     'quads': 'quadriceps',
     'lats': 'latissimus',
+    'latissimus_dorsi': 'latissimus',
     'abs': 'rectus_abdominis',
+    'abdominals': 'rectus_abdominis',
+    'pectoralis_major': 'chest',
+    'pecs': 'chest',
+    'gastrocnemius_medial': 'gastrocnemius',
+    'gastrocnemius_lateral': 'gastrocnemius',
+    'spinal_erectors': 'erector_spinae',
+    'erectors': 'erector_spinae',
+    'lumbar': 'lower_back',
+    'wrist_flexor': 'forearm_flexor',
+    'wrist_extensor': 'forearm_extensor',
+    'forearm': 'forearm_flexor',
+    'forearms': 'forearm_flexor',
+    'biceps_brachii': 'biceps',
   };
 }
 

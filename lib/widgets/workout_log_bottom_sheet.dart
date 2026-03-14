@@ -70,13 +70,16 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<HeatmapProvider>();
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+    final maxSheetHeight = mediaQuery.size.height * 0.92;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 200),
       padding: EdgeInsets.only(bottom: bottomInset),
       child: SafeArea(
         child: Container(
+          constraints: BoxConstraints(maxHeight: maxSheetHeight),
           decoration: const BoxDecoration(
             color: AppTheme.cardDark,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -90,6 +93,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
           ),
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -577,50 +581,82 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
   }
 
   String _formatMuscleCodeToLabel(String code) {
-    switch (code.trim().toLowerCase()) {
-      case 'chest':
-      case 'pectoralis_major':
-        return '대흉근';
-      case 'front_deltoid':
-      case 'front_delts':
-      case 'anterior_deltoid':
-        return '전면 삼각근';
-      case 'lateral_deltoid':
-      case 'lateral_delts':
-        return '측면 삼각근';
-      case 'rear_deltoid':
-      case 'rear_delts':
-      case 'posterior_deltoid':
-        return '후면 삼각근';
-      case 'quadriceps':
-      case 'quads':
-        return '대퇴사두근';
-      case 'hamstrings':
-        return '햄스트링';
-      case 'glutes':
-      case 'gluteus_maximus':
-        return '둔근';
-      case 'calves':
-      case 'gastrocnemius':
-        return '비복근';
-      case 'latissimus':
-      case 'latissimus_dorsi':
-      case 'lats':
-        return '광배근';
-      case 'lower_back':
-      case 'lumbar':
-        return '척추기립근';
-      case 'rectus_abdominis':
-      case 'abs':
-        return '복직근';
-      case 'obliques':
-        return '복사근';
-      case 'biceps':
-        return '상완이두근';
-      case 'triceps':
-        return '상완삼두근';
-      default:
-        return code.trim();
+    final normalized = code.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return '근육 부위';
     }
+    final canonical = _workoutMuscleAliases[normalized] ?? normalized;
+    return _workoutMuscleDisplayNameMap[canonical] ?? '근육 부위';
   }
 }
+
+const Map<String, String> _workoutMuscleAliases = {
+  'abs': 'rectus_abdominis',
+  'abdominals': 'rectus_abdominis',
+  'pectoralis_major': 'chest',
+  'pectoralis_minor': 'pectoralis_minor',
+  'front_delts': 'front_deltoid',
+  'anterior_deltoid': 'front_deltoid',
+  'lateral_delts': 'lateral_deltoid',
+  'rear_delts': 'rear_deltoid',
+  'posterior_deltoid': 'rear_deltoid',
+  'quads': 'quadriceps',
+  'latissimus_dorsi': 'latissimus',
+  'lats': 'latissimus',
+  'gastrocnemius_medial': 'gastrocnemius',
+  'gastrocnemius_lateral': 'gastrocnemius',
+  'spinal_erectors': 'erector_spinae',
+  'lumbar': 'lower_back',
+  'biceps_brachii': 'biceps',
+  'wrist_flexor': 'forearm_flexor',
+  'wrist_extensor': 'forearm_extensor',
+  'forearm': 'forearm_flexor',
+  'forearms': 'forearm_flexor',
+  'glute_medius': 'gluteus_medius',
+  'upper_trap': 'trapezius',
+  'middle_trap': 'trapezius',
+  'lower_trap': 'trapezius',
+};
+
+const Map<String, String> _workoutMuscleDisplayNameMap = {
+  'neck': '경부 근육',
+  'chest': '대흉근',
+  'pectoralis_minor': '소흉근',
+  'serratus_anterior': '전거근',
+  'front_deltoid': '전면 삼각근',
+  'lateral_deltoid': '측면 삼각근',
+  'rear_deltoid': '후면 삼각근',
+  'trapezius': '승모근',
+  'biceps': '상완이두근',
+  'brachialis': '상완근',
+  'triceps': '상완삼두근',
+  'brachioradialis': '상완요골근',
+  'forearm': '전완근',
+  'forearm_flexor': '전완 굴근',
+  'forearm_extensor': '전완 신근',
+  'rectus_abdominis': '복직근',
+  'obliques': '복사근',
+  'hip_flexor': '장요근',
+  'adductors': '내전근군',
+  'abductors': '외전근군',
+  'quadriceps': '대퇴사두근',
+  'hamstrings': '햄스트링',
+  'tibialis_anterior': '전경골근',
+  'calves': '하퇴 삼두근',
+  'gastrocnemius': '비복근',
+  'soleus': '가자미근',
+  'glutes': '둔근군',
+  'gluteus_maximus': '대둔근',
+  'gluteus_medius': '중둔근',
+  'gluteus_minimus': '소둔근',
+  'latissimus': '광배근',
+  'latissimus_lower': '광배근 하부',
+  'latissimus_upper': '광배근 상부',
+  'teres_major': '대원근',
+  'teres_minor': '소원근',
+  'infraspinatus': '극하근',
+  'supraspinatus': '극상근',
+  'subscapularis': '견갑하근',
+  'erector_spinae': '척추기립근',
+  'lower_back': '요부 척추기립근',
+};

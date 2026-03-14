@@ -43,7 +43,7 @@ class WorkoutLogRecord {
     return WorkoutLogRecord(
       id: (json['id'] as String? ?? '').trim(),
       exerciseId: (json['exercise_id'] as String? ?? '').trim(),
-      exerciseName: (exercise['name'] as String? ?? 'Unknown Exercise'),
+      exerciseName: (exercise['name'] as String? ?? '알 수 없는 운동'),
       category: (exercise['category'] as String? ?? 'unknown'),
       exerciseType:
           (exercise['exercise_type'] as ExerciseType? ?? ExerciseType.unknown),
@@ -75,7 +75,7 @@ class WorkoutLogRecord {
     }
 
     return {
-      'name': 'Unknown Exercise',
+      'name': '알 수 없는 운동',
       'category': 'unknown',
       'exercise_type': ExerciseType.unknown,
       'muscle_size': MuscleSize.unknown,

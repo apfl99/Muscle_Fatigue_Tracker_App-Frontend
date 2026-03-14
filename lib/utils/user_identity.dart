@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 class UserIdentity {
   UserIdentity._();

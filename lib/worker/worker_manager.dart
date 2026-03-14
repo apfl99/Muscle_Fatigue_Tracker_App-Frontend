@@ -3,11 +3,14 @@
 library;
 
 import 'dart:async';
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'measurement_task.dart';
 import 'queue_manager.dart';
 import 'server_config.dart';
 import 'http_worker.dart';
 import '../model/database_helper.dart';
+
+void print(Object? message) => appLog(message);
 
 class WorkerManager {
   final QueueManager _queueManager;

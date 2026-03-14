@@ -2,8 +2,11 @@
 /// SQLite에서 데이터를 읽어서 JSON 형태로 변환합니다.
 library;
 
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/database_helper.dart';
 import 'measurement_task.dart';
+
+void print(Object? message) => appLog(message);
 
 class DataConverter {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;

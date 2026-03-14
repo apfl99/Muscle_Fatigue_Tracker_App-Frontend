@@ -3,9 +3,12 @@ import 'package:path/path.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../utils/user_identity.dart';
+import '../utils/app_log.dart';
 import 'dart:async';
 import 'user_stats.dart';
 import 'package:flutter/foundation.dart';
+
+void print(Object? message) => appLog(message);
 
 /// 통합 데이터베이스 헬퍼 클래스
 /// DB_SCHEMA.md (v1.0.0) 기반으로 전체 DB 관리

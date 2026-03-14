@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'sensor/streaming.dart';
 import 'sensor/config.dart';
 import 'model/database_helper.dart';
@@ -29,6 +30,8 @@ import 'features/heatmap/model/heatmap_models.dart';
 import 'features/heatmap/data/heatmap_api_config.dart';
 import 'features/heatmap/ui/heatmap_bridge_cta_card.dart';
 import 'providers/heatmap_provider.dart';
+
+void print(Object? message) => appLog(message);
 
 void main() async {
   if (kDebugMode) {
@@ -1363,6 +1366,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     return Container(
       decoration: AppTheme.cardDecoration(),
       padding: Responsive.cardPadding(context),
+      constraints: const BoxConstraints(minHeight: 320),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1382,12 +1386,16 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                '분석 데이터',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              const Expanded(
+                child: Text(
+                  '상세 분석 데이터',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
@@ -1432,11 +1440,15 @@ class _SensorDataPageState extends State<SensorDataPage>
                 color: Colors.white.withOpacity(0.6),
               ),
               const SizedBox(width: 8),
-              Text(
-                _formatTime(result['timestamp']),
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.7),
+              Flexible(
+                child: Text(
+                  _formatTime(result['timestamp']),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
                 ),
               ),
             ],
@@ -1489,6 +1501,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     final isSmall = Responsive.isSmallScreen(context);
 
     return Container(
+      constraints: const BoxConstraints(minHeight: 80),
       padding: EdgeInsets.all(isSmall ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
@@ -1515,6 +1528,8 @@ class _SensorDataPageState extends State<SensorDataPage>
               children: [
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: isSmall ? 12 : 14,
                     color: Colors.white.withOpacity(0.6),
@@ -1523,6 +1538,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(height: 4),
                 Text(
                   value,
+                  maxLines: 1,
                   style: GoogleFonts.poppins(
                     fontSize: isSmall ? 18 : 22,
                     fontWeight: FontWeight.bold,
@@ -1534,6 +1550,8 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: isSmall ? 10 : 11,
                     color: Colors.white.withOpacity(0.5),

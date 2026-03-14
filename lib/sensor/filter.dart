@@ -1,5 +1,8 @@
 import 'dart:math';
 import 'dart:io' show Platform;
+import 'package:muscle_fatigue_tracker/utils/app_log.dart';
+
+void print(Object? message) => appLog(message);
 
 /// ---------------------------------------------------------------------------
 /// Adaptive Motion Filter
