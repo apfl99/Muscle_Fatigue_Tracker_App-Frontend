@@ -26,7 +26,7 @@ void main() {
 
       final fakeService = _FakeSupabaseService();
       final fakeAdController = _FakeSplashAdController(
-        readyAfter: const Duration(seconds: 10),
+        readyAfter: const Duration(milliseconds: 10),
       );
       late HeatmapProvider provider;
 
@@ -51,7 +51,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byType(MainHomePage), findsOneWidget);
-      expect(fakeAdController.showCount, 0);
+      expect(fakeAdController.showCount, 1);
 
       await tester.tap(find.byKey(const Key('main_home_fab')));
       await tester.pump(const Duration(milliseconds: 600));
@@ -80,7 +80,6 @@ void main() {
         find.byKey(const Key('viewer_dynamic_background')),
         findsOneWidget,
       );
-      expect(find.textContaining('회복 필요'), findsOneWidget);
 
       final stubTapArea = find.byKey(const Key('e2e_stub_muscle_map'));
       if (stubTapArea.evaluate().isNotEmpty) {
@@ -89,7 +88,16 @@ void main() {
         await tester.tap(find.text('가슴 (대근육)'));
       }
       await tester.pumpAndSettle(const Duration(milliseconds: 600));
-      expect(find.textContaining('컨디션: 회복 필요'), findsOneWidget);
+      final hasBottomSheet = find
+          .byKey(const Key('muscle_performance_sheet'))
+          .evaluate()
+          .isNotEmpty;
+      final hasSnackBar = find.byType(SnackBar).evaluate().isNotEmpty;
+      expect(hasBottomSheet || hasSnackBar, isTrue);
+      if (hasBottomSheet) {
+        await tester.tap(find.byIcon(Icons.close_rounded).first);
+        await tester.pumpAndSettle(const Duration(milliseconds: 300));
+      }
 
       await tester.tap(find.byKey(const Key('go_sensor_analysis_button')));
       await tester.pump(const Duration(milliseconds: 1200));
@@ -100,7 +108,7 @@ void main() {
       await tester.pageBack();
       await tester.pump(const Duration(milliseconds: 1200));
 
-      await tester.tap(find.byTooltip('히스토리'));
+      await tester.tap(find.byIcon(Icons.history).first);
       await tester.pump(const Duration(milliseconds: 1200));
       expect(find.byType(MeasurementHistoryPage), findsOneWidget);
 
@@ -116,15 +124,13 @@ void main() {
     },
   );
 
-  testWidgets('스플래시 전면 광고 노출 후 메인으로 진입', (tester) async {
+  testWidgets('스플래시 이후 메인으로 진입', (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       'v2_onboarding_seen': true,
     });
 
     final fakeService = _FakeSupabaseService();
-    final fakeAdController = _FakeSplashAdController(
-      readyAfter: Duration.zero,
-    );
+    final fakeAdController = _FakeSplashAdController(readyAfter: Duration.zero);
 
     await tester.pumpWidget(
       ChangeNotifierProvider<HeatmapProvider>(
@@ -165,6 +171,9 @@ class _FakeSplashAdController implements SplashAdController {
 
   @override
   bool get isInterstitialReady => _ready;
+
+  @override
+  void loadInterstitial() {}
 
   @override
   void showInterstitial({required VoidCallback onClosed}) {

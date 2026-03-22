@@ -21,6 +21,10 @@ MuscleCare는 **Logging-First** 경험을 중심으로 동작하는 Flutter 앱�
 - 3D 뷰어: `model_viewer_plus`
 - 광고: `google_mobile_ads`
 
+## 3D 에셋 가이드
+
+- 고해상도 근육 분리형 GLB 제작/구매 기준: `docs/3d_muscle_asset_spec.md`
+
 ## Supabase 인증 규칙
 
 - 프론트는 **publishable key + 사용자 세션 JWT**만 사용합니다.
