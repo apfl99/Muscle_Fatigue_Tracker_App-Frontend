@@ -832,7 +832,7 @@ class SensorStreaming {
   // 센서 중지
   Future<void> stopSensor() async {
     if (kDebugMode) {
-      print('\n🛑 센서 측정 중지');
+      print('\n🛑 센서 모션 기록 중지');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
 

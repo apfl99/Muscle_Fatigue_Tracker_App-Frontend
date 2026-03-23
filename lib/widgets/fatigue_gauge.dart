@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../model/measure_session.dart';
 import '../model/config.dart';
+import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 
 /// 컨디션 게이지 위젯
@@ -18,6 +20,7 @@ class FatigueGaugeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final level = FatigueCalculator.getFatigueLevel(fatigueScore);
+    final localizedLevel = _localizedFatigueLevel(level);
     final color = FatigueCalculator.getFatigueColor(fatigueScore);
     final gaugeValue = FatigueCalculator.fatigueToGauge(fatigueScore);
     final isSmall = Responsive.isSmallScreen(context);
@@ -27,8 +30,8 @@ class FatigueGaugeWidget extends StatelessWidget {
         final maxWidth = constraints.maxWidth;
         final gaugeWidth = (maxWidth - 40).clamp(200.0, 300.0);
 
-        return Card(
-          elevation: 4,
+        return Container(
+          decoration: AppTheme.cardDecoration(),
           child: Padding(
             padding: EdgeInsets.all(isSmall ? 16 : 20),
             child: Column(
@@ -42,7 +45,7 @@ class FatigueGaugeWidget extends StatelessWidget {
                       Container(
                         height: 30,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
+                          color: AppTheme.surface2,
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
@@ -69,8 +72,9 @@ class FatigueGaugeWidget extends StatelessWidget {
                           '${gaugeValue.toStringAsFixed(0)}%',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color:
-                                gaugeValue > 50 ? Colors.white : Colors.black87,
+                            color: gaugeValue > 50
+                                ? AppTheme.textHigh
+                                : AppTheme.textMedium,
                             fontSize: isSmall ? 12 : 14,
                           ),
                         ),
@@ -122,14 +126,14 @@ class FatigueGaugeWidget extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: color,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: AppTheme.buttonRadius,
                     ),
                     child: Text(
-                      level,
+                      localizedLevel,
                       style: TextStyle(
                         fontSize: isSmall ? 18 : 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppTheme.textHigh,
                       ),
                     ),
                   ),
@@ -139,13 +143,15 @@ class FatigueGaugeWidget extends StatelessWidget {
                 if (previousScore != null) ...[
                   const SizedBox(height: 12),
                   Text(
-                    FatigueCalculator.getFatigueTrend(
-                      previousScore!,
-                      fatigueScore,
+                    _localizedFatigueTrend(
+                      FatigueCalculator.getFatigueTrend(
+                        previousScore!,
+                        fatigueScore,
+                      ),
                     ),
                     style: TextStyle(
                       fontSize: isSmall ? 12 : 14,
-                      color: Colors.grey.shade700,
+                      color: AppTheme.textMedium,
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -170,28 +176,28 @@ class FatigueGaugeWidget extends StatelessWidget {
     Color messageColor;
 
     if (fatigue < FatigueConstants.normalThreshold) {
-      message = '정상 상태입니다';
+      message = 'gauge.status.stable'.tr();
       icon = Icons.check_circle;
       messageColor = const Color(0xFF4CAF50); // 초록 (정상)
     } else if (fatigue < FatigueConstants.lightThreshold) {
-      message = '회복 중인 컨디션입니다';
+      message = 'gauge.status.restRecommended'.tr();
       icon = Icons.info;
       messageColor = const Color(0xFFFFA726); // 주황 (회복 진행)
     } else if (fatigue < FatigueConstants.midThreshold) {
-      message = '운동 볼륨이 높아 회복이 진행 중입니다';
+      message = 'gauge.status.adjustNeeded'.tr();
       icon = Icons.warning;
       messageColor = const Color(0xFFFF7043); // 진한 주황 (회복 지연)
     } else {
-      message = '회복이 필요합니다';
+      message = 'gauge.status.adjustNeededStrong'.tr();
       icon = Icons.error;
-      messageColor = const Color(0xFFE53935); // 빨강 (회복 필요)
+      messageColor = const Color(0xFFE53935); // 빨강 (강도 조절 필요)
     }
 
     return Container(
       padding: EdgeInsets.all(isSmall ? 10 : 12),
       decoration: BoxDecoration(
         color: messageColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppTheme.buttonRadius,
         border: Border.all(color: messageColor.withValues(alpha: 0.3)),
       ),
       child: Column(
@@ -219,7 +225,7 @@ class FatigueGaugeWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '컨디션 점수는 운동 수행 패턴 참고용이며 의료적 판단이나 치료 목적 용도가 아닙니다.',
+            'sensor.disclaimer.compact'.tr(),
             style: TextStyle(
               fontSize: isSmall ? 10 : 11,
               color: messageColor.withValues(alpha: 0.7),
@@ -230,6 +236,43 @@ class FatigueGaugeWidget extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _localizedFatigueLevel(String level) {
+    final raw = level.trim().toLowerCase();
+    if (raw == '회복 완료' || raw == 'recovered' || raw == '부하 안정') {
+      return 'heatmap.status.recovered'.tr();
+    }
+    if (raw == '회복 중' || raw == 'recovering' || raw == '휴식 권장') {
+      return 'heatmap.status.recovering'.tr();
+    }
+    if (raw == '회복 지연' ||
+        raw == 'delayed recovery' ||
+        raw == '강도 조절 필요' ||
+        raw == 'adjust intensity needed') {
+      return 'sensor.fatigue.delayed'.tr();
+    }
+    return 'sensor.fatigue.unknown'.tr();
+  }
+
+  String _localizedFatigueTrend(String trend) {
+    final raw = trend.trim().toLowerCase();
+    if (raw == '변화 없음' || raw == 'no change') {
+      return 'gauge.trend.noChange'.tr();
+    }
+    if (raw == '컨디션 급변' || raw == 'sudden change') {
+      return 'gauge.trend.suddenChange'.tr();
+    }
+    if (raw == '컨디션 하락' || raw == 'decline') {
+      return 'gauge.trend.decline'.tr();
+    }
+    if (raw == '부하 완화' || raw == 'relieved') {
+      return 'gauge.trend.relieved'.tr();
+    }
+    if (raw == '유지' || raw == 'maintained') {
+      return 'gauge.trend.maintained'.tr();
+    }
+    return trend;
   }
 }
 
@@ -244,7 +287,9 @@ class FatigueLevelIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = FatigueCalculator.getFatigueLevel(fatigueScore);
+    final level = _localizedFatigueLevel(
+      FatigueCalculator.getFatigueLevel(fatigueScore),
+    );
     final color = FatigueCalculator.getFatigueColor(fatigueScore);
 
     return Row(
@@ -269,7 +314,7 @@ class FatigueLevelIndicator extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         _buildLevelDot(
-          const Color(0xFFE53935), // 빨강 (회복 필요)
+          const Color(0xFFE53935), // 빨강 (강도 조절 필요)
           fatigueScore >= FatigueConstants.midThreshold,
         ),
         const SizedBox(width: 8),
@@ -285,15 +330,32 @@ class FatigueLevelIndicator extends StatelessWidget {
     );
   }
 
+  String _localizedFatigueLevel(String level) {
+    final raw = level.trim().toLowerCase();
+    if (raw == '회복 완료' || raw == 'recovered' || raw == '부하 안정') {
+      return 'heatmap.status.recovered'.tr();
+    }
+    if (raw == '회복 중' || raw == 'recovering' || raw == '휴식 권장') {
+      return 'heatmap.status.recovering'.tr();
+    }
+    if (raw == '회복 지연' ||
+        raw == 'delayed recovery' ||
+        raw == '강도 조절 필요' ||
+        raw == 'adjust intensity needed') {
+      return 'sensor.fatigue.delayed'.tr();
+    }
+    return 'sensor.fatigue.unknown'.tr();
+  }
+
   Widget _buildLevelDot(Color color, bool isActive) {
     return Container(
       width: 12,
       height: 12,
       decoration: BoxDecoration(
-        color: isActive ? color : Colors.grey.shade300,
+        color: isActive ? color : AppTheme.surface2,
         shape: BoxShape.circle,
         border: Border.all(
-          color: isActive ? color : Colors.grey.shade400,
+          color: isActive ? color : AppTheme.borderSubtle,
           width: 2,
         ),
       ),

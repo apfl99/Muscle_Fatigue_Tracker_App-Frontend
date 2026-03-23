@@ -104,6 +104,11 @@ class MuscleHeatmapEntry {
     this.fatigueScore = 0,
     this.displayScore = 0,
     this.lastTrainedAt,
+    this.displayNameKo,
+    this.displayNameLatin,
+    this.anatomyId,
+    this.parentMuscleCode,
+    this.side = 'bilateral',
   });
 
   final String muscleCode;
@@ -112,6 +117,11 @@ class MuscleHeatmapEntry {
   final double fatigueScore;
   final int displayScore;
   final DateTime? lastTrainedAt;
+  final String? displayNameKo;
+  final String? displayNameLatin;
+  final String? anatomyId;
+  final String? parentMuscleCode;
+  final String side;
 
   double get conditionScore => fatigueScore;
 
@@ -119,7 +129,7 @@ class MuscleHeatmapEntry {
 
   factory MuscleHeatmapEntry.fromJson(Map<String, dynamic> json) {
     final payload = HeatmapStatusModel.fromJson(json);
-    final normalizedCode = _normalizeMuscleCode(payload.muscleId);
+    final normalizedCode = _normalizeMuscleCode(payload.muscleCode);
     final resolvedStatusRaw = payload.statusRaw.isNotEmpty
         ? payload.statusRaw
         : _statusFromScore(payload.normalizedFatigueScore);
@@ -130,6 +140,11 @@ class MuscleHeatmapEntry {
       fatigueScore: payload.normalizedFatigueScore,
       displayScore: payload.displayScore,
       lastTrainedAt: payload.lastTrainedAt,
+      displayNameKo: payload.displayNameKo,
+      displayNameLatin: payload.displayNameLatin,
+      anatomyId: payload.anatomyId,
+      parentMuscleCode: payload.parentMuscleCode,
+      side: payload.side,
     );
   }
 
@@ -144,29 +159,70 @@ class MuscleHeatmapEntry {
   }
 
   static String _normalizeMuscleCode(String muscleCode) {
-    final normalized = muscleCode.trim().toLowerCase();
+    var normalized = muscleCode.trim().toLowerCase();
     if (normalized.isEmpty) {
-      return normalized;
+      return '';
     }
-    return _muscleCodeAliases[normalized] ?? normalized;
+    normalized = normalized.replaceAll(RegExp(r'[\s\-./]+'), '_');
+    normalized = normalized.replaceAll(RegExp(r'_+'), '_');
+    normalized = normalized.replaceAll(RegExp(r'^_+|_+$'), '');
+    if (normalized.endsWith('_muscle')) {
+      normalized =
+          normalized.substring(0, normalized.length - '_muscle'.length);
+    }
+    final tokens = normalized
+        .split('_')
+        .where((token) => token.trim().isNotEmpty)
+        .toList();
+    if (tokens.length > 1 && _muscleSideTokens.contains(tokens.first)) {
+      tokens.removeAt(0);
+    }
+    if (tokens.length > 1 && _muscleSideTokens.contains(tokens.last)) {
+      tokens.removeLast();
+    }
+    final compact = tokens.join('_');
+    if (compact.isEmpty) {
+      return '';
+    }
+    return _muscleCodeAliases[compact] ?? compact;
   }
+
+  static const Set<String> _muscleSideTokens = {
+    'left',
+    'right',
+    'l',
+    'r',
+    'lt',
+    'rt',
+    'lhs',
+    'rhs',
+  };
 
   static const Map<String, String> _muscleCodeAliases = {
     'anterior_deltoid': 'front_deltoid',
     'front_delts': 'front_deltoid',
+    'deltoid_anterior': 'front_deltoid',
     'side_deltoid': 'lateral_deltoid',
     'lateral_delts': 'lateral_deltoid',
+    'deltoid_lateral': 'lateral_deltoid',
     'posterior_deltoid': 'rear_deltoid',
     'rear_delts': 'rear_deltoid',
+    'deltoid_posterior': 'rear_deltoid',
     'quads': 'quadriceps',
     'lats': 'latissimus',
     'latissimus_dorsi': 'latissimus',
+    'latissimus_dorsi_lower': 'latissimus_lower',
+    'latissimus_dorsi_upper': 'latissimus_upper',
     'abs': 'rectus_abdominis',
     'abdominals': 'rectus_abdominis',
+    'core': 'rectus_abdominis',
     'pectoralis_major': 'chest',
     'pecs': 'chest',
+    'chest_major': 'chest',
     'gastrocnemius_medial': 'gastrocnemius',
     'gastrocnemius_lateral': 'gastrocnemius',
+    'calf': 'calves',
+    'shin': 'tibialis_anterior',
     'spinal_erectors': 'erector_spinae',
     'erectors': 'erector_spinae',
     'lumbar': 'lower_back',
@@ -175,6 +231,18 @@ class MuscleHeatmapEntry {
     'forearm': 'forearm_flexor',
     'forearms': 'forearm_flexor',
     'biceps_brachii': 'biceps',
+    'triceps_brachii': 'triceps',
+    'triceps_surae': 'calves',
+    'hamstring': 'hamstrings',
+    'adductor': 'adductors',
+    'abductor': 'abductors',
+    'glute_maximus': 'gluteus_maximus',
+    'glute_medius': 'gluteus_medius',
+    'glute_minimus': 'gluteus_minimus',
+    'upper_trap': 'trapezius',
+    'middle_trap': 'trapezius',
+    'lower_trap': 'trapezius',
+    'cervical': 'neck',
   };
 }
 

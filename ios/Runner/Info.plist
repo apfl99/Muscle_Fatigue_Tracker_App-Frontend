@@ -34,6 +34,12 @@
 	<string>이 앱은 운동 수행 패턴 참고 정보를 제공하기 위해 자이로스코프 데이터를 사용합니다. 의료적 판단 장비가 아닙니다.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>이 앱은 운동 수행 패턴 참고 정보를 제공하기 위해 모션 센서 데이터를 사용합니다. 의료적 판단 장비가 아닙니다.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>광고 개인화를 위해 추적 권한이 사용될 수 있습니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>공유 이미지 선택 및 첨부를 위해 사진 보관함 접근 권한이 필요합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>공유용 이미지를 저장할 때 사진 보관함 접근 권한이 필요합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

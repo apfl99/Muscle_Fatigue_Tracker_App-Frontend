@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../theme/app_theme.dart';
@@ -57,6 +58,7 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
     if (_isSubmitting || widget.hook.isMutating) {
       return;
     }
+    HapticFeedback.lightImpact();
 
     final selectedExercise = _selectedExercise;
     if (selectedExercise == null) {
@@ -69,6 +71,17 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
     final weight = _parseNonNegativeDouble(_weightController.text);
     final duration = _parsePositiveInt(_durationController.text);
     final note = _noteController.text.trim();
+    final exerciseType = selectedExercise.exerciseType;
+
+    if (exerciseType == ExerciseType.cardio && duration == null) {
+      _showMessage('유산소 운동은 운동 시간(분)을 반드시 입력해주세요.');
+      return;
+    }
+
+    if (exerciseType == ExerciseType.weight && (sets == null || reps == null)) {
+      _showMessage('무산소 운동은 세트 수와 반복 횟수를 반드시 입력해주세요.');
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -77,10 +90,10 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
     final success = await widget.hook.recordWorkout(
       draft: WorkoutLogDraft(
         exerciseId: selectedExercise.id,
-        sets: sets,
-        reps: reps,
-        weightKg: weight,
-        durationMinutes: duration,
+        sets: exerciseType == ExerciseType.weight ? sets : null,
+        reps: exerciseType == ExerciseType.weight ? reps : null,
+        weightKg: exerciseType == ExerciseType.weight ? weight : null,
+        durationMinutes: exerciseType == ExerciseType.cardio ? duration : null,
         note: note.isEmpty ? null : note,
       ),
     );
@@ -94,6 +107,10 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
     });
 
     if (success) {
+      await HapticFeedback.lightImpact();
+      if (!mounted) {
+        return;
+      }
       widget.onSaved?.call();
       Navigator.of(context).pop(true);
       return;
@@ -146,12 +163,13 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
         return SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
+              left: AppTheme.pageHorizontalPaddingValue,
+              right: AppTheme.pageHorizontalPaddingValue,
               top: 14,
               bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
             ),
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,8 +179,9 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(12),
+                      color: AppTheme.surface2,
+                      borderRadius: AppTheme.buttonRadius,
+                      border: Border.all(color: AppTheme.borderSubtle),
                     ),
                   ),
                   Row(
@@ -174,10 +193,11 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                       const SizedBox(width: 8),
                       Text(
                         '빠른 운동 기록',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                        style: GoogleFonts.inter(
+                          color: AppTheme.textHigh,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.5,
                         ),
                       ),
                     ],
@@ -185,8 +205,8 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                   const SizedBox(height: 4),
                   Text(
                     '검색 후 종목을 선택하고 바로 저장하세요.',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white70,
+                    style: GoogleFonts.inter(
+                      color: AppTheme.textMedium,
                       fontSize: 12,
                     ),
                   ),
@@ -201,13 +221,13 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                       widget.hook.onSearchKeywordChanged(value);
                     },
                     textInputAction: TextInputAction.search,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppTheme.textHigh),
                     decoration: InputDecoration(
                       hintText: '예: 스쿼트, 벤치프레스, 데드리프트',
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      prefixIcon: const Icon(
+                      hintStyle: TextStyle(color: AppTheme.textLow),
+                      prefixIcon: Icon(
                         Icons.search,
-                        color: Colors.white70,
+                        color: AppTheme.textMedium,
                       ),
                       suffixIcon: hasSearchValue
                           ? IconButton(
@@ -218,17 +238,27 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                                 });
                                 widget.hook.clearSearchState();
                               },
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close,
-                                color: Colors.white70,
+                                color: AppTheme.textMedium,
                               ),
                             )
                           : null,
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.08),
+                      fillColor: AppTheme.surface2.withValues(alpha: 0.72),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(color: AppTheme.borderSubtle),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(color: AppTheme.borderSubtle),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(
+                          color: AppTheme.primaryGreen.withValues(alpha: 0.62),
+                        ),
                       ),
                     ),
                   ),
@@ -239,8 +269,8 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                     const SizedBox(height: 8),
                     Text(
                       searchError,
-                      style: GoogleFonts.poppins(
-                        color: Colors.redAccent,
+                      style: GoogleFonts.inter(
+                        color: AppTheme.accentDanger,
                         fontSize: 12,
                       ),
                     ),
@@ -250,12 +280,11 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F2B22),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppTheme.primaryGreen.withOpacity(0.4),
-                        ),
+                      decoration: AppTheme.cardDecoration(
+                        color: AppTheme.primaryGreen.withValues(alpha: 0.10),
+                        borderRadius: 14,
+                        borderColor:
+                            AppTheme.primaryGreen.withValues(alpha: 0.35),
                       ),
                       child: Row(
                         children: [
@@ -268,8 +297,8 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                           Expanded(
                             child: Text(
                               '${_selectedExercise!.name} (${_selectedExercise!.category})',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
+                              style: GoogleFonts.inter(
+                                color: AppTheme.textHigh,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -283,17 +312,17 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                     const SizedBox(height: 10),
                     Container(
                       constraints: const BoxConstraints(maxHeight: 180),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF181B21),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
+                      decoration: AppTheme.cardDecoration(
+                        color: AppTheme.surface2.withValues(alpha: 0.50),
+                        borderRadius: 16,
                       ),
                       child: ListView.separated(
+                        physics: const ClampingScrollPhysics(),
                         shrinkWrap: true,
                         itemCount: suggestions.length,
                         separatorBuilder: (_, __) => Divider(
                           height: 1,
-                          color: Colors.white.withOpacity(0.08),
+                          color: AppTheme.borderSubtle,
                         ),
                         itemBuilder: (context, index) {
                           final suggestion = suggestions[index];
@@ -304,13 +333,14 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                             dense: true,
                             title: Text(
                               suggestion.name,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(color: AppTheme.textHigh),
                             ),
                             subtitle: Text(
                               suggestion.category,
-                              style: const TextStyle(color: Colors.white60),
+                              style: TextStyle(color: AppTheme.textMedium),
                             ),
                             onTap: () {
+                              HapticFeedback.lightImpact();
                               setState(() {
                                 _selectedExercise = suggestion;
                                 _searchController.text = suggestion.name;
@@ -352,17 +382,27 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                     controller: _noteController,
                     minLines: 2,
                     maxLines: 3,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppTheme.textHigh),
                     decoration: InputDecoration(
                       labelText: '메모 (선택)',
-                      labelStyle: const TextStyle(color: Colors.white70),
+                      labelStyle: TextStyle(color: AppTheme.textMedium),
                       hintText: '오늘 운동 컨디션이나 특이사항',
-                      hintStyle: const TextStyle(color: Colors.white38),
+                      hintStyle: TextStyle(color: AppTheme.textLow),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.06),
+                      fillColor: AppTheme.surface2.withValues(alpha: 0.64),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(color: AppTheme.borderSubtle),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(color: AppTheme.borderSubtle),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: AppTheme.buttonRadius,
+                        borderSide: BorderSide(
+                          color: AppTheme.primaryGreen.withValues(alpha: 0.62),
+                        ),
                       ),
                     ),
                   ),
@@ -380,7 +420,7 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                color: AppTheme.ctaOnBrand,
                               ),
                             )
                           : const Icon(Icons.check_circle_outline),
@@ -390,12 +430,7 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
                             : '기록 저장',
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryGreen,
-                        foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                       ),
                     ),
                   ),
@@ -419,17 +454,27 @@ class _QuickWorkoutRecordSheetState extends State<QuickWorkoutRecordSheet> {
       keyboardType: allowDecimal
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.number,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: AppTheme.textHigh),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
+        labelStyle: TextStyle(color: AppTheme.textMedium),
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white38),
+        hintStyle: TextStyle(color: AppTheme.textLow),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.06),
+        fillColor: AppTheme.surface2.withValues(alpha: 0.64),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
+          borderRadius: AppTheme.buttonRadius,
+          borderSide: BorderSide(color: AppTheme.borderSubtle),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: AppTheme.buttonRadius,
+          borderSide: BorderSide(color: AppTheme.borderSubtle),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: AppTheme.buttonRadius,
+          borderSide: BorderSide(
+            color: AppTheme.primaryGreen.withValues(alpha: 0.62),
+          ),
         ),
       ),
     );

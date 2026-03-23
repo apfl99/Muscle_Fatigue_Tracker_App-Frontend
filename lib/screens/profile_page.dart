@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/baseline.dart';
@@ -6,6 +8,7 @@ import '../model/config.dart';
 import '../model/database_helper.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../widgets/banner_ad_widget.dart';
 
 void print(Object? message) => appLog(message);
 
@@ -155,9 +158,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       appBar: AppBar(
         backgroundColor: AppTheme.darkBackground,
         elevation: 0,
-        title: const Text(
-          '내 정보',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          'profile.title'.tr(),
+          style: TextStyle(color: AppTheme.textHigh),
         ),
         actions: [
           IconButton(
@@ -170,40 +173,216 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 size: 20,
               ),
             ),
-            onPressed: _loadData,
-            tooltip: '새로고침',
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _loadData();
+            },
+            tooltip: 'common.refresh'.tr(),
           ),
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: Responsive.responsivePadding(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 사용자 기록 요약
-              _buildProfileSummary(),
-              const SizedBox(height: 16),
+        child: context.locale.languageCode == 'ko'
+            ? SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: Responsive.responsivePadding(context),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 사용자 기록 요약
+                    _buildProfileSummary(),
+                    const SizedBox(height: 16),
+                    _buildBannerSlot(key: const ValueKey('profile_banner_top')),
+                    const SizedBox(height: 16),
 
-              // ML Phase 정보
-              _buildMLModeCard(),
-              const SizedBox(height: 16),
+                    // ML Phase 정보
+                    _buildMLModeCard(),
+                    const SizedBox(height: 16),
 
-              // Baseline 정보
-              _buildBaselineCard(),
-              const SizedBox(height: 16),
+                    // Baseline 정보
+                    _buildBaselineCard(),
+                    const SizedBox(height: 16),
 
-              // 지수 통계
-              _buildStatisticsCard(),
-              const SizedBox(height: 16),
+                    // 지수 통계
+                    _buildStatisticsCard(),
+                    const SizedBox(height: 16),
+                    _buildBannerSlot(key: const ValueKey('profile_banner_mid')),
+                    const SizedBox(height: 16),
 
-              // 분석 권장사항
-              _buildMeasurementTipsCard(),
-            ],
-          ),
-        ),
+                    // 기록 권장사항
+                    _buildMeasurementTipsCard(),
+                  ],
+                ),
+              )
+            : _buildGlobalProfileFallback(),
       ),
     );
+  }
+
+  Widget _buildGlobalProfileFallback() {
+    final avgFatigue = (_statistics['avg_fatigue'] ?? 1.0) as num;
+    final avgRms = (_statistics['avg_rms'] ?? 0.0) as num;
+    final avgFreq = (_statistics['avg_freq'] ?? 0.0) as num;
+    final nextPhaseMeasurements =
+        BaselineManager.instance.getMeasurementsUntilNextPhase();
+
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: Responsive.responsivePadding(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildBannerSlot(key: const ValueKey('profile_banner_global_top')),
+          const SizedBox(height: 16),
+          Container(
+            padding: Responsive.cardPadding(context),
+            decoration: AppTheme.cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'profile.global.summary.title'.tr(),
+                  style: TextStyle(
+                    color: AppTheme.textHigh,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.summary.totalLogs'.tr(),
+                  value: '$_totalMeasurementCount',
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.summary.avgScore'.tr(),
+                  value: avgFatigue.toStringAsFixed(2),
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.summary.mlMode'.tr(),
+                  value: _localizedMlModeName(_currentMLMode),
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.summary.nextPhase'.tr(),
+                  value: 'profile.global.summary.remaining'.tr(
+                    namedArgs: {
+                      'count': nextPhaseMeasurements.toString(),
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: Responsive.cardPadding(context),
+            decoration: AppTheme.cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'profile.global.baseline.title'.tr(),
+                  style: TextStyle(
+                    color: AppTheme.textHigh,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.baseline.motion'.tr(),
+                  value: _hasBaseline
+                      ? _currentRmsBase?.toStringAsFixed(4) ?? '--'
+                      : '--',
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.baseline.vibration'.tr(),
+                  value: _hasBaseline
+                      ? 'profile.global.baseline.vibrationValue'.tr(
+                          namedArgs: {
+                            'value': _currentFreqBase?.toStringAsFixed(1) ?? '--',
+                          },
+                        )
+                      : '--',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: Responsive.cardPadding(context),
+            decoration: AppTheme.cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'profile.global.metrics.title'.tr(),
+                  style: TextStyle(
+                    color: AppTheme.textHigh,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.metrics.samples'.tr(),
+                  value: '$_totalWindowCount',
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.metrics.avgMotion'.tr(),
+                  value: avgRms.toStringAsFixed(4),
+                ),
+                _buildGlobalProfileRow(
+                  label: 'profile.global.metrics.avgVibration'.tr(),
+                  value: avgFreq.toStringAsFixed(1),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildWellnessDisclaimer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlobalProfileRow({
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: AppTheme.textMedium,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: AppTheme.textHigh,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _localizedMlModeName(MLMode mode) {
+    switch (mode) {
+      case MLMode.ema:
+        return 'sensor.aiMode.ema'.tr();
+      case MLMode.hybrid:
+        return 'sensor.aiMode.hybrid'.tr();
+      case MLMode.endToEnd:
+        return 'sensor.aiMode.endToEnd'.tr();
+    }
   }
 
   // 기록 요약
@@ -214,18 +393,16 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
     return Container(
       padding: Responsive.cardPadding(context),
-      decoration: BoxDecoration(
+      decoration: AppTheme.cardDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF00E676).withOpacity(0.2),
-            const Color(0xFF4CAF50).withOpacity(0.1),
+            const Color(0xFF00E676).withValues(alpha: 0.2),
+            const Color(0xFF4CAF50).withValues(alpha: 0.1),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF00E676).withOpacity(0.3),
-          width: 2,
-        ),
+        borderRadius: 20,
+        borderColor: const Color(0xFF00E676).withValues(alpha: 0.3),
+        borderWidth: 2,
       ),
       child: Column(
         children: [
@@ -237,27 +414,20 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               gradient: const LinearGradient(
                 colors: [Color(0xFF00E676), Color(0xFF4CAF50)],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF00E676).withOpacity(0.4),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ],
             ),
             child: Icon(
               Icons.person,
-              color: Colors.white,
+              color: AppTheme.textHigh,
               size: Responsive.isSmallScreen(context) ? 32 : 40,
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            '나의 컨디션 점수 기록',
+            '나의 퍼포먼스 점수 기록',
             style: TextStyle(
               fontSize: Responsive.isSmallScreen(context) ? 18 : 20,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: AppTheme.textHigh,
             ),
           ),
           const SizedBox(height: 16),
@@ -265,13 +435,13 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildSummaryItem(
-                '총 분석',
+                '총 기록',
                 '$totalCount회',
                 Icons.fitness_center,
                 Colors.blue,
               ),
               _buildSummaryItem(
-                '평균 컨디션 점수',
+                '평균 퍼포먼스 점수',
                 avgFatigue.toStringAsFixed(2),
                 Icons.trending_flat,
                 Colors.orange,
@@ -283,17 +453,29 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     );
   }
 
-  // 분석 권장사항 카드
+  Widget _buildBannerSlot({required Key key}) {
+    return Container(
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface1,
+        borderRadius: 20,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: BannerAdWidget(
+        key: key,
+        placeholderText: 'ads.slot',
+        padding: const EdgeInsets.symmetric(vertical: 4),
+      ),
+    );
+  }
+
+  // 기록 권장사항 카드
   Widget _buildMeasurementTipsCard() {
     return Container(
       padding: Responsive.cardPadding(context),
-      decoration: BoxDecoration(
+      decoration: AppTheme.cardDecoration(
         color: AppTheme.cardDark,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryGreen.withOpacity(0.3),
-          width: 1,
-        ),
+        borderRadius: 20,
+        borderColor: AppTheme.primaryGreen.withValues(alpha: 0.3),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,7 +486,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withOpacity(0.2),
+                  color: AppTheme.primaryGreen.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -314,12 +496,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                '분석 권장사항',
+              Text(
+                '기록 권장사항',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppTheme.textHigh,
                 ),
               ),
             ],
@@ -330,14 +512,14 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
-            child: const Column(
+            child: Column(
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,10 +532,10 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '하루 1~2회 분석으로\n개인화 향상',
+                        '하루 1~2회 모션 기록으로\n개인화 향상',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white,
+                          color: AppTheme.textHigh,
                           height: 1.4,
                         ),
                       ),
@@ -372,10 +554,10 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '같은 시간대에 분석하면\n개인화 예측이 더 안정적으로 동작합니다',
+                        '같은 시간대에 기록하면\n개인화 예측이 더 안정적으로 동작합니다',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white,
+                          color: AppTheme.textHigh,
                           height: 1.4,
                         ),
                       ),
@@ -438,9 +620,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         accuracyInfo = '기본 단계';
         benefit = '나만의 패턴을 학습하는 중';
         features = [
-          '✓ 수식 기반 컨디션 점수 생성',
+          '✓ 수식 기반 퍼포먼스 점수 생성',
           '✓ 내 기준 맞추기 진행 중',
-          '→ 분석을 반복할수록 더 정확해집니다',
+          '→ 기록을 반복할수록 더 정확해집니다',
         ];
         break;
       case MLMode.hybrid:
@@ -452,19 +634,19 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           '✓ 개인 기준 맞추기 완료',
           '✓ AI 모델 보정 적용 (30%)',
           '✓ 이전 기록 활용',
-          '→ 나에게 맞춘 컨디션 점수',
+          '→ 나에게 맞춘 퍼포먼스 점수',
         ];
         break;
       case MLMode.endToEnd:
         modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 집중 단계)
         modeIcon = Icons.psychology;
-        accuracyInfo = '최적화된 분석 ⭐️';
-        benefit = 'AI가 개인 패턴을 더 정확하게 분석합니다';
+        accuracyInfo = '최적화된 모션 기록 ⭐️';
+        benefit = 'AI가 개인 패턴을 더 정확하게 기록합니다';
         features = [
           '✓ AI가 직접 예측',
           '✓ 움직임 패턴을 학습',
           '✓ 개인별 최적화 완료',
-          '✓ 개인화된 컨디션 점수 안내',
+          '✓ 개인화된 퍼포먼스 점수 안내',
         ];
         break;
     }
@@ -492,19 +674,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                   gradient: LinearGradient(
                     colors: [
                       modeColor,
-                      modeColor.withOpacity(0.7),
+                      modeColor.withValues(alpha: 0.7),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: modeColor.withOpacity(0.4),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
                 ),
-                child: Icon(modeIcon, color: Colors.white, size: 28),
+                child: Icon(modeIcon, color: AppTheme.textHigh, size: 28),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -583,7 +758,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.03),
+              color: AppTheme.surface2.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
@@ -611,7 +786,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildMLProgressItem('총 기록(분석)', '$_totalMeasurementCount회'),
+              _buildMLProgressItem('총 모션 기록', '$_totalMeasurementCount회'),
               _buildMLProgressItem('세부 샘플 수', '$_totalWindowCount개'),
             ],
           ),
@@ -685,12 +860,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     size: 20,
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     '최고 단계 도달!',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppTheme.textHigh,
                     ),
                   ),
                 ],
@@ -713,7 +888,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.02),
+        color: AppTheme.surface2.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -740,7 +915,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           _buildPhaseStep(
             2,
-            '향상 분석',
+            '향상 모션 기록',
             '${MLPhaseConstants.emaPhaseThreshold}~${MLPhaseConstants.hybridPhaseThreshold - 1}회',
             'AI 보조로 개인화 향상',
             const Color(0xFF00ACC1), // 청록색
@@ -750,9 +925,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           _buildPhaseStep(
             3,
-            '완전 AI 분석',
+            '완전 AI 모션 기록',
             '${MLPhaseConstants.hybridPhaseThreshold}+회',
-            'AI 기반 최적화된 분석',
+            'AI 기반 최적화된 기록',
             const Color(0xFF9C27B0), // 진보라색
             _currentMLMode == MLMode.endToEnd,
             false,
@@ -766,10 +941,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface2.withValues(alpha: 0.52),
+        borderRadius: 12,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,10 +956,10 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '이 앱에서 제공하는 컨디션 점수는 운동 수행 패턴 참고용 정보이며, 의료적 판단이나 치료 목적 용도가 아닙니다. 건강과 관련된 중요한 결정은 반드시 전문가와 상의하시기 바랍니다.',
+              'sensor.disclaimer.full'.tr(),
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.75),
+                color: AppTheme.textMedium,
                 height: 1.45,
               ),
             ),
@@ -823,13 +997,14 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
           child: Center(
             child: isCompleted
-                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                ? Icon(Icons.check, color: AppTheme.textHigh, size: 16)
                 : Text(
                     '$phase',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: isCurrent ? Colors.white : Colors.grey.shade600,
+                      color:
+                          isCurrent ? AppTheme.textHigh : Colors.grey.shade600,
                     ),
                   ),
           ),
@@ -864,11 +1039,11 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         color: color,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
+                      child: Text(
                         '현재',
                         style: TextStyle(
                           fontSize: 9,
-                          color: Colors.white,
+                          color: AppTheme.textHigh,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -946,9 +1121,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                       ),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.balance,
-                      color: Colors.white,
+                      color: AppTheme.textHigh,
                       size: 20,
                     ),
                   ),
@@ -968,7 +1143,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         '개인별 맞춤 기준',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: AppTheme.textMedium,
                         ),
                       ),
                     ],
@@ -995,7 +1170,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.03),
+              color: AppTheme.surface2.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: baselineColor.withOpacity(0.3),
@@ -1142,86 +1317,79 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     final minFatigue = _statistics['min_fatigue'] ?? 1.0;
     final maxFatigue = _statistics['max_fatigue'] ?? 1.0;
 
-    return Card(
-      elevation: 3,
-      color: const Color(0xFF1E1E1E),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.1),
-            width: 1.5,
+    return Container(
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface1,
+        borderRadius: 12,
+      ),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9800).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.bar_chart,
+                  color: Color(0xFFFF9800),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '지수 통계',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textHigh,
+                ),
+              ),
+            ],
           ),
-        ),
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF9800).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.bar_chart,
-                    color: Color(0xFFFF9800),
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  '지수 통계',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 16),
+          _buildStatRow('총 모션 기록 세션', '$count회', Colors.blue),
+          const Divider(height: 24),
+          Text(
+            '퍼포먼스 점수',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textMedium,
             ),
-            const SizedBox(height: 16),
-            _buildStatRow('총 분석 세션', '$count회', Colors.blue),
-            const Divider(height: 24),
-            const Text(
-              '컨디션 점수',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.white70,
-              ),
+          ),
+          const SizedBox(height: 8),
+          _buildStatRow('평균', avgFatigue.toStringAsFixed(2), Colors.orange),
+          const SizedBox(height: 8),
+          _buildStatRow('최소', minFatigue.toStringAsFixed(2), Colors.green),
+          const SizedBox(height: 8),
+          _buildStatRow('최대', maxFatigue.toStringAsFixed(2), Colors.red),
+          const Divider(height: 24),
+          Text(
+            '지수값 평균',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textMedium,
             ),
-            const SizedBox(height: 8),
-            _buildStatRow('평균', avgFatigue.toStringAsFixed(2), Colors.orange),
-            const SizedBox(height: 8),
-            _buildStatRow('최소', minFatigue.toStringAsFixed(2), Colors.green),
-            const SizedBox(height: 8),
-            _buildStatRow('최대', maxFatigue.toStringAsFixed(2), Colors.red),
-            const Divider(height: 24),
-            const Text(
-              '지수값 평균',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.white70,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildStatRow(
-              '평균 근육 활동량',
-              avgRms.toStringAsFixed(4),
-              Colors.purple,
-            ),
-            const SizedBox(height: 8),
-            _buildStatRow(
-              '평균 진동수',
-              '${avgFreq.toStringAsFixed(1)}회/초',
-              Colors.blue,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          _buildStatRow(
+            '평균 근육 활동량',
+            avgRms.toStringAsFixed(4),
+            Colors.purple,
+          ),
+          const SizedBox(height: 8),
+          _buildStatRow(
+            '평균 진동수',
+            '${avgFreq.toStringAsFixed(1)}회/초',
+            Colors.blue,
+          ),
+        ],
       ),
     );
   }
@@ -1232,9 +1400,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
-            color: Colors.white70,
+            color: AppTheme.textMedium,
           ),
         ),
         Container(

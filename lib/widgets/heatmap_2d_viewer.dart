@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:path_drawing/path_drawing.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
+import '../theme/app_theme.dart';
 
 class Heatmap2DViewer extends StatefulWidget {
   const Heatmap2DViewer({
@@ -122,8 +124,8 @@ class _Heatmap2DViewerState extends State<Heatmap2DViewer> {
                         fit: StackFit.expand,
                         children: [
                           ColorFiltered(
-                            colorFilter: const ColorFilter.mode(
-                              Colors.white,
+                            colorFilter: ColorFilter.mode(
+                              AppTheme.textHigh,
                               BlendMode.modulate,
                             ),
                             child: SvgPicture.string(
@@ -245,7 +247,7 @@ class _Heatmap2DViewerState extends State<Heatmap2DViewer> {
   Widget _buildFallbackMap() {
     return Container(
       color: const Color(0xFF131A30),
-      child: const Center(
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -256,8 +258,8 @@ class _Heatmap2DViewerState extends State<Heatmap2DViewer> {
             ),
             SizedBox(height: 10),
             Text(
-              '기본 컨디션 맵으로 표시 중입니다.',
-              style: TextStyle(color: Colors.white60, fontSize: 12),
+              'viewer.heatmap2d.fallback'.tr(),
+              style: TextStyle(color: AppTheme.textLow, fontSize: 12),
             ),
           ],
         ),
@@ -287,6 +289,7 @@ class _Heatmap2DViewerState extends State<Heatmap2DViewer> {
 
     for (final region in _hitRegions) {
       if (region.path.contains(mapped)) {
+        HapticFeedback.lightImpact();
         widget.onMuscleTap?.call(region.code);
         return;
       }

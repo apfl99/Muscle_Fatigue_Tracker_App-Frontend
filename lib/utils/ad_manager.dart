@@ -8,6 +8,11 @@ import 'const.dart';
 
 class AdManager {
   static final AdManager instance = AdManager._internal();
+  static const bool _forceTestAds = bool.fromEnvironment(
+    'MUSCLECARE_FORCE_TEST_ADS',
+    defaultValue: false,
+  );
+
   factory AdManager() => instance;
   AdManager._internal();
 
@@ -18,6 +23,9 @@ class AdManager {
   bool _isLoadingInterstitial = false;
 
   VoidCallback? _onInterstitialAdClosed;
+  Timer? _interstitialRetryTimer;
+  Duration _interstitialRetryDelay = const Duration(seconds: 20);
+  DateTime? _lastNetworkInterstitialErrorAt;
 
   Future<void> initialize() async {
     if (_initialized || _isInitializing) {
@@ -39,21 +47,30 @@ class AdManager {
         debugPrint('MobileAds init done');
       }
 
+      _initialized = true;
       loadInterstitialAd();
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('MobileAds init failed: $e');
         debugPrint('$stackTrace');
       }
+      _initialized = false;
     } finally {
-      _initialized = true;
       _isInitializing = false;
     }
   }
 
   bool get isInterstitialAdReady => _isInterstitialAdReady;
+  bool get isSupportedPlatform => Platform.isAndroid || Platform.isIOS;
 
   String get interstitialAdUnitId {
+    if (!isSupportedPlatform) {
+      throw UnsupportedError('Unsupported platform');
+    }
+    if (_forceTestAds) {
+      return AdConstants.testInterstitial;
+    }
+
     if (kReleaseMode) {
       if (Platform.isAndroid) {
         return AdConstants.releaseAndroidInterstitial;
@@ -68,6 +85,19 @@ class AdManager {
   }
 
   String get bannerAdUnitId {
+    if (!isSupportedPlatform) {
+      throw UnsupportedError('Unsupported platform');
+    }
+    if (_forceTestAds) {
+      if (Platform.isAndroid) {
+        return AdConstants.testAndroidBanner;
+      }
+      if (Platform.isIOS) {
+        return AdConstants.testIoSBanner;
+      }
+      throw UnsupportedError('Unsupported platform');
+    }
+
     if (kReleaseMode) {
       if (Platform.isAndroid) {
         return AdConstants.releaseAndroidBanner;
@@ -115,11 +145,17 @@ class AdManager {
         loadInterstitialAd(force: true);
       }
     } else {
+      loadInterstitialAd(force: true);
       onClosed();
     }
   }
 
   void loadInterstitialAd({bool force = false}) {
+    if (!_initialized) {
+      unawaited(initialize());
+      return;
+    }
+
     if (_isLoadingInterstitial) {
       return;
     }
@@ -127,6 +163,8 @@ class AdManager {
       return;
     }
 
+    _interstitialRetryTimer?.cancel();
+    _interstitialRetryTimer = null;
     _isLoadingInterstitial = true;
     _interstitialAd?.dispose();
     _interstitialAd = null;
@@ -142,6 +180,7 @@ class AdManager {
             _isLoadingInterstitial = false;
             _interstitialAd = ad;
             _isInterstitialAdReady = true;
+            _interstitialRetryDelay = const Duration(seconds: 20);
             _interstitialAd?.fullScreenContentCallback =
                 FullScreenContentCallback(
               onAdDismissedFullScreenContent: (ad) {
@@ -169,16 +208,14 @@ class AdManager {
           },
           onAdFailedToLoad: (error) {
             _isLoadingInterstitial = false;
-            if (kDebugMode) {
+            if (kDebugMode && _shouldLogInterstitialLoadFailure(error)) {
               debugPrint(
                 'Interstitial load failed: ${error.message} (${error.code}) / $adUnitId',
               );
             }
             _isInterstitialAdReady = false;
             _interstitialAd = null;
-            Timer(const Duration(seconds: 20), () {
-              loadInterstitialAd(force: true);
-            });
+            _scheduleInterstitialRetry();
           },
         ),
       );
@@ -194,10 +231,34 @@ class AdManager {
   }
 
   void dispose() {
+    _interstitialRetryTimer?.cancel();
+    _interstitialRetryTimer = null;
     _interstitialAd?.dispose();
     _interstitialAd = null;
     _isInterstitialAdReady = false;
     _isLoadingInterstitial = false;
     _onInterstitialAdClosed = null;
+  }
+
+  bool _shouldLogInterstitialLoadFailure(LoadAdError error) {
+    if (error.code != 2) {
+      return true;
+    }
+    final now = DateTime.now();
+    final last = _lastNetworkInterstitialErrorAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 2)) {
+      return false;
+    }
+    _lastNetworkInterstitialErrorAt = now;
+    return true;
+  }
+
+  void _scheduleInterstitialRetry() {
+    _interstitialRetryTimer?.cancel();
+    _interstitialRetryTimer = Timer(_interstitialRetryDelay, () {
+      loadInterstitialAd(force: true);
+    });
+    final nextSeconds = (_interstitialRetryDelay.inSeconds * 2).clamp(20, 300);
+    _interstitialRetryDelay = Duration(seconds: nextSeconds.toInt());
   }
 }

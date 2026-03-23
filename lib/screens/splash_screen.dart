@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -7,11 +8,13 @@ import 'package:provider/provider.dart';
 import '../providers/heatmap_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/ad_manager.dart';
+import '../utils/splash_ad_cooldown.dart';
 import 'main_home_page.dart';
 
 abstract class SplashAdController {
   Future<void> initialize();
   bool get isInterstitialReady;
+  void loadInterstitial();
   void showInterstitial({required VoidCallback onClosed});
 }
 
@@ -28,6 +31,11 @@ class AdManagerSplashController implements SplashAdController {
   bool get isInterstitialReady => _adManager.isInterstitialAdReady;
 
   @override
+  void loadInterstitial() {
+    _adManager.loadInterstitialAd(force: true);
+  }
+
+  @override
   void showInterstitial({required VoidCallback onClosed}) {
     _adManager.showInterstitialAd(onClosed: onClosed);
   }
@@ -38,14 +46,20 @@ class SplashScreen extends StatefulWidget {
     super.key,
     this.minimumSplashDuration = const Duration(milliseconds: 2500),
     this.adLoadTimeout = const Duration(seconds: 3),
+    this.adDisplayTimeout = const Duration(seconds: 6),
+    this.adCooldown = const Duration(minutes: 30),
     this.homeBuilder,
     this.adController,
+    this.adCooldownStore,
   });
 
   final Duration minimumSplashDuration;
   final Duration adLoadTimeout;
+  final Duration adDisplayTimeout;
+  final Duration adCooldown;
   final WidgetBuilder? homeBuilder;
   final SplashAdController? adController;
+  final SplashAdCooldownStore? adCooldownStore;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -57,34 +71,65 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _runSplashFlow();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _runSplashFlow();
+    });
   }
 
   Future<void> _runSplashFlow() async {
     final adController = widget.adController ??
         AdManagerSplashController(adManager: AdManager.instance);
+    final adCooldownStore = widget.adCooldownStore ?? SplashAdCooldownStore();
 
     unawaited(_warmupHomeData());
-    unawaited(adController.initialize());
+    final canShowAd = await adCooldownStore.canShow(
+      cooldown: widget.adCooldown,
+    );
+    if (!mounted || _navigated) {
+      return;
+    }
+    if (!canShowAd) {
+      _navigateToHome();
+      return;
+    }
+
+    final adInitFuture = adController.initialize();
     await Future<void>.delayed(widget.minimumSplashDuration);
+    await adInitFuture.timeout(widget.adLoadTimeout, onTimeout: () {});
 
     if (!mounted || _navigated) {
       return;
     }
 
-    if (adController.isInterstitialReady) {
-      await _showInterstitialAndWaitClose(adController);
-    } else {
-      // 최소 스플래시 시간 이후에도 광고가 준비되지 않았다면 지연 없이 홈으로 이동한다.
-      // (네트워크 실패/광고 로드 실패 포함)
-      _navigateToHome();
-      return;
+    await _waitUntilInterstitialReady(adController: adController);
+    final didShowAd = await _showInterstitialAndWaitClose(adController);
+    if (didShowAd) {
+      await adCooldownStore.markShownNow();
     }
 
     if (!mounted || _navigated) {
       return;
     }
     _navigateToHome();
+  }
+
+  Future<void> _waitUntilInterstitialReady({
+    required SplashAdController adController,
+  }) async {
+    if (adController.isInterstitialReady) {
+      return;
+    }
+
+    final deadline = DateTime.now().add(widget.adLoadTimeout);
+    while (mounted &&
+        !adController.isInterstitialReady &&
+        DateTime.now().isBefore(deadline)) {
+      adController.loadInterstitial();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
   }
 
   Future<void> _warmupHomeData() async {
@@ -95,9 +140,13 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  Future<void> _showInterstitialAndWaitClose(
+  Future<bool> _showInterstitialAndWaitClose(
     SplashAdController adController,
   ) async {
+    if (!adController.isInterstitialReady) {
+      return false;
+    }
+
     final closedCompleter = Completer<void>();
 
     adController.showInterstitial(
@@ -109,9 +158,10 @@ class _SplashScreenState extends State<SplashScreen> {
     );
 
     await closedCompleter.future.timeout(
-      widget.adLoadTimeout,
+      widget.adDisplayTimeout,
       onTimeout: () {},
     );
+    return true;
   }
 
   void _navigateToHome() {
@@ -144,20 +194,20 @@ class _SplashScreenState extends State<SplashScreen> {
               const SizedBox(height: 32),
               Text(
                 'Muscle Care',
-                style: GoogleFonts.poppins(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.2,
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textHigh,
+                  letterSpacing: -1.0,
                 ),
               ),
               const SizedBox(height: 10),
               Text(
-                '운동 수행 패턴 분석',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  color: Colors.white70,
-                  letterSpacing: 0.4,
+                'splash.tagline'.tr(),
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: AppTheme.textMedium,
+                  letterSpacing: 0.0,
                 ),
               ),
               const SizedBox(height: 48),

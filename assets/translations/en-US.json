@@ -1,0 +1,523 @@
+{
+  "app": {
+    "title": "Muscle Care"
+  },
+  "splash": {
+    "tagline": "Movement Pattern Recording"
+  },
+  "ads": {
+    "loading": "Loading ad...",
+    "slot": "Ad"
+  },
+  "common": {
+    "start": "Get Started",
+    "refresh": "Refresh Records",
+    "retry": "Retry",
+    "viewDetailAnalysis": "View Motion Report",
+    "later": "Later",
+    "andMore": "{} and more",
+    "cancel": "Cancel",
+    "apply": "Apply",
+    "complete": "Done",
+    "delete": "Delete",
+    "reset": "Reset"
+  },
+  "profile": {
+    "title": "Profile",
+    "global": {
+      "summary": {
+        "title": "Performance Summary",
+        "totalLogs": "Total motion logs",
+        "avgScore": "Average performance score",
+        "mlMode": "Personalization mode",
+        "nextPhase": "Next phase",
+        "remaining": "{count} sessions left"
+      },
+      "baseline": {
+        "title": "Personal Baseline",
+        "motion": "Motion baseline",
+        "vibration": "Vibration baseline",
+        "vibrationValue": "{value} times/sec"
+      },
+      "metrics": {
+        "title": "Reference Metrics",
+        "samples": "Window samples",
+        "avgMotion": "Average motion activity",
+        "avgVibration": "Average vibration frequency"
+      }
+    }
+  },
+  "home": {
+    "title": "Today's Performance",
+    "logSaved": "Workout volume log saved successfully.",
+    "fab": {
+      "label": "Log"
+    },
+    "tooltips": {
+      "analysis": "View Detailed Analysis",
+      "history": "History"
+    },
+    "onboarding": {
+      "title": "MuscleCare v2.0",
+      "headline": "Track workouts daily and check your performance score.",
+      "description": "If you add a workout volume log with the + button on Home, the body map updates instantly."
+    },
+    "streak": {
+      "day": "Day {day}",
+      "subtitle": "You are keeping your workout streak."
+    },
+    "hero": {
+      "title": "My 3D Body Map",
+      "subtitle": "Check your motion consistency at a glance.",
+      "tapDetail": "Tap to view details",
+      "nextTarget": "Today's target: {muscle}"
+    },
+    "timeline": {
+      "title": "Workout Timeline",
+      "empty": "No records yet. Use the bottom-right button to add your first workout volume log.",
+      "manualLog": "Manual workout volume log · {}",
+      "cardio": "Cardio {duration}{distance}",
+      "weight": "{set} / {rep}{weight}",
+      "unit": {
+        "minute": "{value}m",
+        "set": "{value} sets",
+        "rep": "{value} reps"
+      }
+    },
+    "guide": {
+      "startRecord": "Start logging here"
+    }
+  },
+  "sensor": {
+    "tooltips": {
+      "history": "Index History",
+      "profile": "My Profile",
+      "settings": "Settings"
+    },
+    "errors": {
+      "cannotStartSensor": "Unable to start sensor. Please check whether your device supports sensors.",
+      "baselineFailed": "Failed to set baseline. Please try again."
+    },
+    "state": {
+      "analyzing": "Motion Tracking...",
+      "done": "Tracking Complete",
+      "prepareBaseline": "Ready for Baseline",
+      "ready": "Ready for Motion Tracking",
+      "remaining": "{seconds}s left"
+    },
+    "baseline": {
+      "completed": "Baseline setup completed"
+    },
+    "buttons": {
+      "viewProfile": "View in Profile",
+      "checkingBaseline": "Checking baseline...",
+      "startBaseline": "Start Baseline",
+      "startAnalysis": "Start {seconds}s Motion Tracking",
+      "stopAnalysis": "Stop Motion Tracking"
+    },
+    "result": {
+      "title": "Motion Consistency Report"
+    },
+    "metrics": {
+      "activity": "Muscle Activity",
+      "activitySub": "Tremor Strength",
+      "variation": "Signal Variation",
+      "variationSub": "Irregularity",
+      "frequency": "Vibration Frequency",
+      "frequencyUnit": "{value} times/sec",
+      "frequencySub": "Primary Frequency"
+    },
+    "qualityWarning": {
+      "message": "Keep the sensor more stable • coverage {coverage} • accel {accel} / gyro {gyro}"
+    },
+    "baselineStatus": {
+      "keepStill10s": "Do not move the device and hold still for 10 seconds...",
+      "cannotStartSensor": "Unable to start the sensor. Please check device support.",
+      "keepStillRemaining": "Keep still • {seconds}s remaining",
+      "completed": "Baseline setup completed!",
+      "collectFailed": "Failed to collect data. Reduce surrounding vibration and try again."
+    },
+    "aiStatus": {
+      "ema": "Calibrating baseline from movement data",
+      "hybrid": "AI-assisted personalization in progress",
+      "endToEnd": "AI is directly analyzing movement patterns"
+    },
+    "aiMode": {
+      "ema": "Basic Learning",
+      "hybrid": "Enhanced Analysis",
+      "endToEnd": "Full AI Analysis",
+      "round": "{mode} · Session {round}",
+      "progressWithCount": "Learning progress {percent}% ({count}/{span})",
+      "progressOnly": "Learning progress {percent}%",
+      "tip": "Regular logs improve personalization stability.",
+      "phase": "Stage {phase}"
+    },
+    "fatigue": {
+      "delayed": "Adjust Intensity Needed",
+      "unknown": "Unknown Status"
+    },
+    "baselineGuide": {
+      "title": "Baseline Setup Guide",
+      "need": "A personal baseline is required\nfor movement pattern analysis.",
+      "howTo": "How to set up (one-time)",
+      "step1": {
+        "title": "Prepare Device",
+        "desc": "Place your phone flat on a desk."
+      },
+      "step2": {
+        "title": "Start Baseline",
+        "desc": "Tap baseline start and collect movement data for about 10 seconds."
+      },
+      "step3": {
+        "title": "Complete",
+        "desc": "Your personal baseline is saved after completion."
+      },
+      "why": "Why baseline is needed?\n• Compensates device sensor differences\n• Reflects individual hand tremor traits\n• Improves condition score consistency",
+      "start": "Start Baseline",
+      "completedToast": "Baseline setup completed. You can now start motion tracking."
+    },
+    "settings": {
+      "title": "Settings",
+      "analysisDuration": "Motion Tracking Duration (sec)",
+      "seconds": "{seconds}s",
+      "locked": "You cannot change settings during baseline setup/motion tracking.",
+      "dataManagement": "Data Management",
+      "deleteAllLogs": "Delete All Motion Logs",
+      "deleteAllDone": "All motion logs were deleted.",
+      "resetBaseline": "Reset Personal Baseline",
+      "resetBaselineDone": "Personal baseline has been reset.",
+      "disclaimer": "This app is for general fitness and workout logging and is not a medical device. Do not use it for clinical decision-making or treatment decisions.",
+      "confirm": {
+        "title": "Confirm",
+        "deleteAllLogs": "Delete all motion logs?\nThis action cannot be undone.",
+        "resetBaseline": "Reset personal baseline?\n\nIt will be reset to average values,\nand all learned personal baseline data will be removed."
+      }
+    },
+    "instructions": {
+      "analysisDone": "Motion tracking completed",
+      "analysisDoneDesc": "Keeping recording conditions consistent yields more stable reference indicators.",
+      "viewPersonalizationTip": "View personalization tips",
+      "analyzingTitle": "Motion Tracking",
+      "analyzingDesc": "Recording movement data to calculate your performance score.\nPlease stay still for {seconds} seconds.",
+      "baselineIntroTitle": "Set my condition score baseline",
+      "baselineStep1": "Place your smartphone flat on a desk. (Do not move)",
+      "baselineStep2": "Keep the screen facing up in a low-vibration environment.",
+      "baselineStep3": "Tap ‘Start Baseline’ to collect movement data for about 10 seconds and set your personal baseline.",
+      "baselineWhy": "Why baseline setup is needed?\n• Corrects sensor differences by device\n• Reflects individual hand tremor characteristics\n• Improves consistency of future condition scores",
+      "preAnalysisTitle": "Before Motion Tracking",
+      "preStep1": "Sit down and rest your arm comfortably on the desk.",
+      "preStep2": "Hold the smartphone lightly with one hand and keep still.",
+      "preStep3": "Place it flat with the screen facing upward.",
+      "preStep4": "When ready, tap the start button below."
+    },
+    "disclaimer": {
+      "full": "This app is for general fitness and workout logging and is not a medical device. Do not use it for clinical decision-making or treatment decisions.",
+      "compact": "This app is for general fitness and workout logging and is not a medical device. Do not use it for clinical decision-making or treatment decisions."
+    },
+    "aiProcessing": {
+      "title": "AI Processing",
+      "subtitle": "Results will be applied shortly."
+    },
+    "baselineDialog": {
+      "title": "Personal Baseline Setup",
+      "initialGuide": "Place the device flat on a desk, then tap baseline setup.",
+      "keepStill10s": "Do not move the device and hold still for 10 seconds...",
+      "startFailed": "Failed to start sensor. Please try again.",
+      "remaining": "Do not move • {seconds}s remaining...",
+      "processing": "Analyzing baseline data...",
+      "done": "Baseline setup completed!",
+      "collectFailed": "Data collection failed. Please try again.",
+      "resultTitle": "Saved Baseline Values",
+      "start": "Start Baseline"
+    }
+  },
+  "heatmap": {
+    "title": "Today's Performance Map",
+    "statusBadge": "{label} · Avg {average} / Peak {peak}",
+    "collectingMuscleData": "Collecting muscle motion pattern data.",
+    "muscleTapMessage": "{muscle} - Status: {condition} · Cumulative performance score {score}",
+    "relatedMusclesSuffix": " · {}",
+    "recoveryTapMessage": "{muscle}{detail} · Condition: {condition}",
+    "remainingHours": "{hours}h left",
+    "status": {
+      "needRecovery": "Adjust Intensity",
+      "recovering": "Rest Recommended",
+      "recovered": "Recovered",
+      "collecting": "Collecting data"
+    },
+    "condition": {
+      "needRecovery": "Adjust intensity (about {hours}h left)",
+      "recovering": "Rest recommended (about {hours}h left)"
+    },
+    "palette": {
+      "red": "Adjust intensity needed (within 24h)",
+      "yellow": "Rest recommended (24-48h)",
+      "green": "Load stable (48h+ or no recent logs)",
+      "unknown": "Collecting data"
+    },
+    "recoveryPrediction": {
+      "title": "Muscle Recovery Prediction",
+      "description": "Check each muscle's recovery state and estimated remaining time in a graph.",
+      "estimatedHours": "Estimated recovery time: {hours}h"
+    },
+    "nextWorkout": {
+      "badge": "Target · {muscle}",
+      "title": "Next Workout Suggestion",
+      "copy": "Yesterday's {overloaded} load was high. Today, we recommend motion tracking focused on {target}.",
+      "copyFallback": "Today, we recommend a balanced recovery session centered on {target}.",
+      "confidence": "Confidence {value}%"
+    },
+    "share": {
+      "cta": "Share 3D Map",
+      "metricPerformance": "Performance",
+      "metricVolume": "Volume",
+      "captureUnavailable": "Preparing 3D capture. Please try again in a moment.",
+      "failed": "Failed to generate a share image.",
+      "headline": "Today Target: {target}",
+      "subline": "Yesterday's {overloaded} load peaked · Today focus on {target}",
+      "sublineFallback": "Today we recommend a recovery-focused routine on {target}.",
+      "subject": "MuscleCare 3D Performance Map",
+      "watermark": "Analyzed by MuscleCare",
+      "message": "My 3D performance map today. Target: {target} · Score {score} · Volume {volume}\n#MuscleCare #3DWorkout"
+    }
+  },
+  "workoutLog": {
+    "title": "Today's Workout Volume Log",
+    "save": "Save Workout Volume",
+    "selectExerciseHint": "Select an exercise and the proper input form will open automatically.",
+    "noSearchResult": "No search results.",
+    "noteFromAnalysis": "Logged based on motion report score {score}",
+    "fields": {
+      "searchExercise": "Search exercise",
+      "noteOptional": "Note (optional)",
+      "durationRequired": "Duration (min) *",
+      "distance": "Distance (km)",
+      "setRequired": "Set *",
+      "repRequired": "Rep *",
+      "weightRequired": "Weight (kg) *",
+      "duration": "Duration (min)"
+    },
+    "errors": {
+      "selectExercise": "Please select an exercise.",
+      "cardioDurationRequired": "For cardio, duration (min) is required.",
+      "weightSetRepRequired": "For weight training, sets and reps are required.",
+      "saveFailed": "Failed to save workout log."
+    },
+    "exerciseType": {
+      "cardio": "Cardio",
+      "weight": "Weight",
+      "unknown": "Other"
+    },
+    "muscleSize": {
+      "large": "Large muscle",
+      "small": "Small muscle",
+      "unknown": "Unknown size"
+    },
+    "hint": {
+      "primary": "Primary: {}",
+      "secondary": "Assist: {}"
+    }
+  },
+  "offline": {
+    "syncQueued": "Your log is queued and will sync automatically when the network is restored.",
+    "viewerFallback2D": "Switched to 2D body map due to device performance.",
+    "cachedMode": "Offline mode: showing cached data."
+  },
+  "history": {
+    "title": "History",
+    "totalCount": "Total {count}",
+    "errors": {
+      "loadFailed": "Failed to load history: {}"
+    },
+    "dashboard": {
+      "trend": "Trend chart",
+      "calendar": "Calendar"
+    },
+    "timelineType": {
+      "manual": "Workout logs",
+      "analysis": "Motion reports"
+    },
+    "range": {
+      "7d": "7d",
+      "30d": "30d",
+      "all": "All"
+    },
+    "analysis": {
+      "reportTitle": "Motion Consistency Report",
+      "empty": "No motion report data.",
+      "mode": {
+        "ema": "EMA",
+        "hybrid": "Hybrid",
+        "endToEnd": "E2E"
+      }
+    },
+    "calendar": {
+      "filterToday": "Filter today"
+    },
+    "empty": {
+      "title": "No logs match the selected filter.",
+      "description": "Change the top filter to inspect workout logs and motion reports in another period."
+    },
+    "unit": {
+      "minute": "{value}m",
+      "set": "{value} sets",
+      "rep": "{value} reps"
+    },
+    "subtitle": {
+      "cardio": "Workout volume log · Cardio · {duration}{distance}",
+      "weight": "Workout volume log · {set} / {rep}{weight}"
+    },
+    "filter": {
+      "trendAll": "Filter: {} · All-time trend",
+      "trendRecent": "Filter: {type} · Last {days}d trend",
+      "selectedDate": "Filter: {type} · {date} selected",
+      "month": "Filter: {type} · {year}/{month}"
+    },
+    "timelineTitle": {
+      "manual": "Workout log timeline",
+      "analysis": "Motion report timeline"
+    }
+  },
+  "viewer": {
+    "heatmap2d": {
+      "fallback": "Showing the default body map."
+    },
+    "interactive3d": {
+      "loading": "Loading the 3D body model...",
+      "retry": "Reload 3D",
+      "optimizing": "Optimizing the 3D renderer. The app keeps retrying real 3D instead of switching to 2D.",
+      "retrying": "3D recovery attempt {count}"
+    }
+  },
+  "gauge": {
+    "status": {
+      "stable": "Load is stable.",
+      "restRecommended": "Rest is recommended.",
+      "adjustNeeded": "Workout load is high. Adjust intensity.",
+      "adjustNeededStrong": "Adjust intensity now."
+    },
+    "trend": {
+      "noChange": "No change",
+      "suddenChange": "Sudden change",
+      "decline": "Condition declined",
+      "relieved": "Load relieved",
+      "maintained": "Maintained"
+    }
+  },
+  "bridgeCta": {
+    "title": "Motion log complete. Check your 3D body map now.",
+    "score": "Performance score {score}",
+    "frequency": "Vibration {value}Hz",
+    "view3d": "View 3D body map",
+    "applyToday": "Apply to today's log"
+  },
+  "errors": {
+    "sessionRequired": "Sign-in session is required. Please sign in again.",
+    "dataLoadFailed": "Failed to load data.",
+    "sessionExpired": "Session expired. Please sign in again.",
+    "searchFailed": "Failed to search exercises.",
+    "saveWorkoutFailed": "Failed to save workout log.",
+    "permissionDenied": "Permission denied. Check user identity mapping.",
+    "cardioDurationRequired": "Cardio logs require duration (min).",
+    "weightSetRepRequired": "Weight logs require sets and reps.",
+    "serverRequestFailed": "Server request failed."
+  },
+  "legacyHeatmap": {
+    "saved": "Workout log saved. Heatmap refreshed.",
+    "saving": "Saving...",
+    "recordWorkout": "Record workout",
+    "bridgeLinked": "Linked with the latest motion report.",
+    "score": "Performance score {score}",
+    "legend": "Status legend",
+    "sync": {
+      "none": "No sync info",
+      "justNow": "Updated: just now",
+      "secondsAgo": "Updated: {seconds}s ago",
+      "minutesAgo": "Updated: {minutes}m ago",
+      "hoursAgo": "Updated: {hours}h ago"
+    },
+    "error": {
+      "title": "Failed to load heatmap data.",
+      "defineHint": "Required dart-define: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY"
+    }
+  },
+  "muscleGroup": {
+    "chest": "Chest",
+    "shoulders": "Shoulders",
+    "upperArms": "Upper/Forearm",
+    "abs": "Rectus Abdominis",
+    "obliques": "Obliques",
+    "quads": "Front Thigh",
+    "posteriorChain": "Glutes/Hamstrings",
+    "calves": "Lower Leg",
+    "back": "Lats/Scapula",
+    "lowerPosterior": "Lower Back",
+    "upperPosterior": "Trap/Neck"
+  },
+  "muscle": {
+    "fullBody": "Full body",
+    "unknown": "Unregistered muscle",
+    "neck": "Neck muscles",
+    "chest": "Pectoralis Major",
+    "pectoralisMinor": "Pectoralis Minor",
+    "serratusAnterior": "Serratus Anterior",
+    "frontDeltoid": "Anterior Deltoid",
+    "lateralDeltoid": "Lateral Deltoid",
+    "rearDeltoid": "Posterior Deltoid",
+    "trapezius": "Trapezius",
+    "traps": "Trapezius Group",
+    "upperTrapezius": "Upper Trapezius",
+    "middleTrapezius": "Middle Trapezius",
+    "lowerTrapezius": "Lower Trapezius",
+    "middleBack": "Mid Back",
+    "rhomboids": "Rhomboids",
+    "biceps": "Biceps Brachii",
+    "brachialis": "Brachialis",
+    "triceps": "Triceps Brachii",
+    "brachioradialis": "Brachioradialis",
+    "upperChest": "Upper Chest",
+    "forearm": "Forearm",
+    "forearms": "Forearm muscles",
+    "forearmFlexor": "Forearm Flexor",
+    "forearmExtensor": "Forearm Extensor",
+    "forearmFlexors": "Forearm Flexors",
+    "forearmExtensors": "Forearm Extensors",
+    "rectusAbdominis": "Rectus Abdominis",
+    "transverseAbdominis": "Transverse Abdominis",
+    "obliques": "Obliques",
+    "hipFlexor": "Hip Flexor",
+    "hipFlexors": "Hip Flexors",
+    "adductors": "Adductors",
+    "adductorLongus": "Adductor Longus",
+    "adductorBrevis": "Adductor Brevis",
+    "adductorMagnus": "Adductor Magnus",
+    "abductors": "Abductors",
+    "quadriceps": "Quadriceps",
+    "rectusFemoris": "Rectus Femoris",
+    "vastusLateralis": "Vastus Lateralis",
+    "vastusMedialis": "Vastus Medialis",
+    "vastusIntermedius": "Vastus Intermedius",
+    "hamstrings": "Hamstrings",
+    "bicepsFemoris": "Biceps Femoris",
+    "semitendinosus": "Semitendinosus",
+    "semimembranosus": "Semimembranosus",
+    "tibialisAnterior": "Tibialis Anterior",
+    "calves": "Triceps Surae",
+    "gastrocnemius": "Gastrocnemius",
+    "soleus": "Soleus",
+    "glutes": "Gluteal muscles",
+    "gluteusMaximus": "Gluteus Maximus",
+    "gluteusMedius": "Gluteus Medius",
+    "gluteusMinimus": "Gluteus Minimus",
+    "teresMajor": "Teres Major",
+    "teresMinor": "Teres Minor",
+    "latissimus": "Latissimus Dorsi",
+    "latissimusLower": "Lower Latissimus",
+    "latissimusUpper": "Upper Latissimus",
+    "infraspinatus": "Infraspinatus",
+    "supraspinatus": "Supraspinatus",
+    "subscapularis": "Subscapularis",
+    "erectorSpinae": "Erector Spinae",
+    "lowerBack": "Lumbar Erector Spinae"
+  }
+}

@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -42,7 +43,11 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
     _noteController = TextEditingController(
       text: widget.bridgePayload == null
           ? ''
-          : '정밀 분석 점수 ${widget.bridgePayload!.fatigueScore.toStringAsFixed(2)} 기반으로 기록',
+          : 'workoutLog.noteFromAnalysis'.tr(
+              namedArgs: {
+                'score': widget.bridgePayload!.fatigueScore.toStringAsFixed(2),
+              },
+            ),
     );
     _searchFocusNode = FocusNode();
 
@@ -80,38 +85,31 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
       child: SafeArea(
         child: Container(
           constraints: BoxConstraints(maxHeight: maxSheetHeight),
-          decoration: const BoxDecoration(
-            color: AppTheme.cardDark,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black45,
-                blurRadius: 20,
-                offset: Offset(0, -8),
-              ),
-            ],
+          decoration: AppTheme.cardDecoration(
+            color: AppTheme.surface1,
+            borderRadius: 28,
           ),
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
           child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '오늘의 컨디션 로그',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        'workoutLog.title'.tr(),
+                        style: AppTheme.titleLargeStyle,
                       ),
                     ),
                     IconButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).pop(false);
+                      },
+                      icon: Icon(Icons.close, color: AppTheme.textMedium),
                     ),
                   ],
                 ),
@@ -120,7 +118,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                 if (provider.searchErrorMessage != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    provider.searchErrorMessage!,
+                    provider.searchErrorMessage!.tr(),
                     style:
                         const TextStyle(color: Colors.redAccent, fontSize: 12),
                   ),
@@ -136,35 +134,37 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
+                    decoration: AppTheme.cardDecoration(
+                      color: AppTheme.surface2.withValues(alpha: 0.46),
+                      borderRadius: 16,
                     ),
-                    child: const Text(
-                      '운동 종목을 선택하면 유형별 입력 폼이 자동으로 열립니다.',
-                      style: TextStyle(color: Colors.white70, height: 1.4),
+                    child: Text(
+                      'workoutLog.selectExerciseHint'.tr(),
+                      style: TextStyle(color: AppTheme.textMedium, height: 1.4),
                     ),
                   ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _noteController,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppTheme.textHigh),
                   maxLines: 2,
-                  decoration: _inputDecoration(label: '메모(선택)'),
+                  decoration: _inputDecoration(
+                    label: 'workoutLog.fields.noteOptional'.tr(),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     key: const Key('workout_log_save_button'),
-                    onPressed: provider.isSaving ? null : () => _save(provider),
+                    onPressed: provider.isSaving
+                        ? null
+                        : () {
+                            HapticFeedback.lightImpact();
+                            _save(provider);
+                          },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: Colors.black,
                       minimumSize: const Size.fromHeight(52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
                     ),
                     child: provider.isSaving
                         ? const SizedBox(
@@ -172,8 +172,8 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text(
-                            '운동 볼륨 저장',
+                        : Text(
+                            'workoutLog.save'.tr(),
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                   ),
@@ -197,8 +197,9 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
         provider.onSearchKeywordChanged(value);
         setState(() {});
       },
-      style: const TextStyle(color: Colors.white),
-      decoration: _inputDecoration(label: '운동 종목 검색'),
+      style: TextStyle(color: AppTheme.textHigh),
+      decoration:
+          _inputDecoration(label: 'workoutLog.fields.searchExercise'.tr()),
     );
   }
 
@@ -230,28 +231,29 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
+        decoration: AppTheme.cardDecoration(
+          color: AppTheme.surface2.withValues(alpha: 0.42),
+          borderRadius: 16,
         ),
-        child: const Text(
-          '검색 결과가 없습니다.',
-          style: TextStyle(color: Colors.white60),
+        child: Text(
+          'workoutLog.noSearchResult'.tr(),
+          style: TextStyle(color: AppTheme.textLow),
         ),
       );
     }
 
     return Container(
       constraints: const BoxConstraints(maxHeight: 180),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface2.withValues(alpha: 0.38),
+        borderRadius: 16,
       ),
       child: ListView.separated(
+        physics: const ClampingScrollPhysics(),
         shrinkWrap: true,
         itemCount: suggestions.length,
         separatorBuilder: (_, __) => Divider(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: AppTheme.borderSubtle,
           height: 1,
         ),
         itemBuilder: (context, index) {
@@ -264,19 +266,19 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
             selectedColor: AppTheme.primaryGreen,
             title: Text(
               suggestion.name,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: AppTheme.textHigh),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   '${suggestion.category} · ${_exerciseTypeLabel(suggestion.exerciseType)} · ${_muscleSizeLabel(suggestion.muscleSize)}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  style: TextStyle(color: AppTheme.textMedium, fontSize: 12),
                 ),
                 if (_muscleHintText(suggestion).isNotEmpty)
                   Text(
                     _muscleHintText(suggestion),
-                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    style: TextStyle(color: AppTheme.textLow, fontSize: 11),
                   ),
               ],
             ),
@@ -284,6 +286,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                 ? const Icon(Icons.check_circle, color: AppTheme.primaryGreen)
                 : null,
             onTap: () {
+              HapticFeedback.lightImpact();
               setState(() {
                 _selectedExercise = suggestion;
                 _searchController.text = suggestion.name;
@@ -305,10 +308,9 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface2.withValues(alpha: 0.56),
+        borderRadius: 16,
       ),
       child: Row(
         children: [
@@ -324,8 +326,8 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                 '${suggestion.name} · ${_exerciseTypeLabel(suggestion.exerciseType)} · ${_muscleSizeLabel(suggestion.muscleSize)}',
                 _muscleHintText(suggestion),
               ].where((line) => line.trim().isNotEmpty).join('\n'),
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppTheme.textHigh,
                 fontSize: 12,
                 height: 1.35,
               ),
@@ -343,7 +345,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
           Expanded(
             child: _buildNumberField(
               controller: _durationController,
-              label: '운동 시간(분) *',
+              label: 'workoutLog.fields.durationRequired'.tr(),
               decimal: false,
             ),
           ),
@@ -351,7 +353,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
           Expanded(
             child: _buildNumberField(
               controller: _distanceController,
-              label: '이동 거리(km)',
+              label: 'workoutLog.fields.distance'.tr(),
               decimal: true,
             ),
           ),
@@ -366,7 +368,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
             Expanded(
               child: _buildNumberField(
                 controller: _setsController,
-                label: '세트 *',
+                label: 'workoutLog.fields.setRequired'.tr(),
                 decimal: false,
               ),
             ),
@@ -374,7 +376,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
             Expanded(
               child: _buildNumberField(
                 controller: _repsController,
-                label: '횟수 *',
+                label: 'workoutLog.fields.repRequired'.tr(),
                 decimal: false,
               ),
             ),
@@ -386,7 +388,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
             Expanded(
               child: _buildNumberField(
                 controller: _weightController,
-                label: '중량(kg) *',
+                label: 'workoutLog.fields.weightRequired'.tr(),
                 decimal: true,
               ),
             ),
@@ -394,7 +396,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
             Expanded(
               child: _buildNumberField(
                 controller: _durationController,
-                label: '운동 시간(분)',
+                label: 'workoutLog.fields.duration'.tr(),
                 decimal: false,
               ),
             ),
@@ -403,7 +405,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
         const SizedBox(height: 10),
         _buildNumberField(
           controller: _distanceController,
-          label: '이동 거리(km)',
+          label: 'workoutLog.fields.distance'.tr(),
           decimal: true,
         ),
       ],
@@ -425,7 +427,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
           decimal ? RegExp(r'[0-9.]') : RegExp(r'[0-9]'),
         ),
       ],
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: AppTheme.textHigh),
       decoration: _inputDecoration(label: label),
     );
   }
@@ -433,20 +435,22 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
   InputDecoration _inputDecoration({required String label}) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
+      labelStyle: TextStyle(color: AppTheme.textMedium),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.06),
+      fillColor: AppTheme.surface2.withValues(alpha: 0.70),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+        borderRadius: AppTheme.buttonRadius,
+        borderSide: BorderSide(color: AppTheme.borderSubtle),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+        borderRadius: AppTheme.buttonRadius,
+        borderSide: BorderSide(color: AppTheme.borderSubtle),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: AppTheme.primaryGreen),
+        borderRadius: AppTheme.buttonRadius,
+        borderSide: BorderSide(
+          color: AppTheme.primaryGreen.withValues(alpha: 0.62),
+        ),
       ),
     );
   }
@@ -455,7 +459,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
     final selected = _selectedExercise;
     if (selected == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('운동 종목을 선택해 주세요.')),
+        SnackBar(content: Text('workoutLog.errors.selectExercise'.tr())),
       );
       return;
     }
@@ -468,14 +472,16 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
 
     if (_isCardio && durationMinutes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('유산소 운동은 진행 시간(분)을 반드시 입력해 주세요.')),
+        SnackBar(
+          content: Text('workoutLog.errors.cardioDurationRequired'.tr()),
+        ),
       );
       return;
     }
 
-    if (_isWeight && (sets == null || reps == null || weightKg == null)) {
+    if (_isWeight && (sets == null || reps == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('무산소 운동은 세트/횟수/중량을 모두 입력해 주세요.')),
+        SnackBar(content: Text('workoutLog.errors.weightSetRepRequired'.tr())),
       );
       return;
     }
@@ -499,16 +505,25 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
     }
 
     if (success) {
-      await HapticFeedback.mediumImpact();
+      await HapticFeedback.lightImpact();
       if (!mounted) {
         return;
+      }
+      if (provider.lastSaveQueuedOffline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('offline.syncQueued'.tr())),
+        );
       }
       Navigator.of(context).pop(true);
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(provider.errorMessage ?? '기록 저장에 실패했습니다.')),
+      SnackBar(
+        content: Text(
+          (provider.errorMessage ?? 'workoutLog.errors.saveFailed').tr(),
+        ),
+      ),
     );
   }
 
@@ -531,22 +546,22 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
   String _exerciseTypeLabel(ExerciseType type) {
     switch (type) {
       case ExerciseType.cardio:
-        return '유산소';
+        return 'workoutLog.exerciseType.cardio'.tr();
       case ExerciseType.weight:
-        return '무산소';
+        return 'workoutLog.exerciseType.weight'.tr();
       case ExerciseType.unknown:
-        return '기타';
+        return 'workoutLog.exerciseType.unknown'.tr();
     }
   }
 
   String _muscleSizeLabel(MuscleSize size) {
     switch (size) {
       case MuscleSize.large:
-        return '대근육';
+        return 'workoutLog.muscleSize.large'.tr();
       case MuscleSize.small:
-        return '소근육';
+        return 'workoutLog.muscleSize.small'.tr();
       case MuscleSize.unknown:
-        return '근육 크기 미상';
+        return 'workoutLog.muscleSize.unknown'.tr();
     }
   }
 
@@ -556,10 +571,10 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
         _joinMuscleNames(suggestion.secondaryMuscles, maxCount: 3);
     final sections = <String>[];
     if (primary.isNotEmpty) {
-      sections.add('주동근: $primary');
+      sections.add('workoutLog.hint.primary'.tr(args: [primary]));
     }
     if (secondary.isNotEmpty) {
-      sections.add('협응근: $secondary');
+      sections.add('workoutLog.hint.secondary'.tr(args: [secondary]));
     }
     return sections.join(' · ');
   }
@@ -577,18 +592,82 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
     }
     final clipped = normalized.take(maxCount).toList();
     final hasMore = normalized.length > clipped.length;
-    return hasMore ? '${clipped.join(', ')} 외' : clipped.join(', ');
+    return hasMore
+        ? 'common.andMore'.tr(args: [clipped.join(', ')])
+        : clipped.join(', ');
   }
 
   String _formatMuscleCodeToLabel(String code) {
-    final normalized = code.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return '근육 부위';
+    final canonical = _normalizeWorkoutMuscleCode(code);
+    if (canonical.isEmpty) {
+      return 'muscle.unknown'.tr();
     }
-    final canonical = _workoutMuscleAliases[normalized] ?? normalized;
-    return _workoutMuscleDisplayNameMap[canonical] ?? '근육 부위';
+    final displayKey = _workoutMuscleDisplayNameMap[canonical];
+    if (displayKey != null) {
+      return displayKey.tr();
+    }
+
+    final dynamicKey = 'muscle.${_snakeToCamelCase(canonical)}';
+    final translated = dynamicKey.tr();
+    if (translated != dynamicKey) {
+      return translated;
+    }
+
+    return 'muscle.unknown'.tr();
+  }
+
+  String _normalizeWorkoutMuscleCode(String rawCode) {
+    var normalized = rawCode.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return '';
+    }
+    normalized = normalized.replaceAll(RegExp(r'[\s\-./]+'), '_');
+    normalized = normalized.replaceAll(RegExp(r'_+'), '_');
+    normalized = normalized.replaceAll(RegExp(r'^_+|_+$'), '');
+    if (normalized.endsWith('_muscle')) {
+      normalized =
+          normalized.substring(0, normalized.length - '_muscle'.length);
+    }
+    final tokens = normalized
+        .split('_')
+        .where((token) => token.trim().isNotEmpty)
+        .toList();
+    if (tokens.length > 1 && _workoutSideTokens.contains(tokens.first)) {
+      tokens.removeAt(0);
+    }
+    if (tokens.length > 1 && _workoutSideTokens.contains(tokens.last)) {
+      tokens.removeLast();
+    }
+    final compact = tokens.join('_');
+    if (compact.isEmpty) {
+      return '';
+    }
+    return _workoutMuscleAliases[compact] ?? compact;
+  }
+
+  String _snakeToCamelCase(String value) {
+    final tokens = value.split('_').where((token) => token.isNotEmpty).toList();
+    if (tokens.isEmpty) {
+      return value;
+    }
+    return tokens.first +
+        tokens
+            .skip(1)
+            .map((token) => '${token[0].toUpperCase()}${token.substring(1)}')
+            .join();
   }
 }
+
+const Set<String> _workoutSideTokens = {
+  'left',
+  'right',
+  'l',
+  'r',
+  'lt',
+  'rt',
+  'lhs',
+  'rhs',
+};
 
 const Map<String, String> _workoutMuscleAliases = {
   'abs': 'rectus_abdominis',
@@ -610,53 +689,75 @@ const Map<String, String> _workoutMuscleAliases = {
   'biceps_brachii': 'biceps',
   'wrist_flexor': 'forearm_flexor',
   'wrist_extensor': 'forearm_extensor',
-  'forearm': 'forearm_flexor',
-  'forearms': 'forearm_flexor',
+  'forearm': 'forearms',
+  'forearms': 'forearms',
+  'triceps_brachii': 'triceps',
+  'triceps_surae': 'calves',
+  'hamstring': 'hamstrings',
+  'adductor': 'adductors',
+  'adductors_group': 'adductors',
+  'abductor': 'abductors',
+  'abductors_group': 'abductors',
   'glute_medius': 'gluteus_medius',
+  'glute_maximus': 'gluteus_maximus',
+  'glute_minimus': 'gluteus_minimus',
+  'latissimus_dorsi_lower': 'latissimus_lower',
+  'latissimus_dorsi_upper': 'latissimus_upper',
   'upper_trap': 'trapezius',
   'middle_trap': 'trapezius',
   'lower_trap': 'trapezius',
 };
 
 const Map<String, String> _workoutMuscleDisplayNameMap = {
-  'neck': '경부 근육',
-  'chest': '대흉근',
-  'pectoralis_minor': '소흉근',
-  'serratus_anterior': '전거근',
-  'front_deltoid': '전면 삼각근',
-  'lateral_deltoid': '측면 삼각근',
-  'rear_deltoid': '후면 삼각근',
-  'trapezius': '승모근',
-  'biceps': '상완이두근',
-  'brachialis': '상완근',
-  'triceps': '상완삼두근',
-  'brachioradialis': '상완요골근',
-  'forearm': '전완근',
-  'forearm_flexor': '전완 굴근',
-  'forearm_extensor': '전완 신근',
-  'rectus_abdominis': '복직근',
-  'obliques': '복사근',
-  'hip_flexor': '장요근',
-  'adductors': '내전근군',
-  'abductors': '외전근군',
-  'quadriceps': '대퇴사두근',
-  'hamstrings': '햄스트링',
-  'tibialis_anterior': '전경골근',
-  'calves': '하퇴 삼두근',
-  'gastrocnemius': '비복근',
-  'soleus': '가자미근',
-  'glutes': '둔근군',
-  'gluteus_maximus': '대둔근',
-  'gluteus_medius': '중둔근',
-  'gluteus_minimus': '소둔근',
-  'latissimus': '광배근',
-  'latissimus_lower': '광배근 하부',
-  'latissimus_upper': '광배근 상부',
-  'teres_major': '대원근',
-  'teres_minor': '소원근',
-  'infraspinatus': '극하근',
-  'supraspinatus': '극상근',
-  'subscapularis': '견갑하근',
-  'erector_spinae': '척추기립근',
-  'lower_back': '요부 척추기립근',
+  'neck': 'muscle.neck',
+  'chest': 'muscle.chest',
+  'pectoralis_minor': 'muscle.pectoralisMinor',
+  'serratus_anterior': 'muscle.serratusAnterior',
+  'front_deltoid': 'muscle.frontDeltoid',
+  'lateral_deltoid': 'muscle.lateralDeltoid',
+  'rear_deltoid': 'muscle.rearDeltoid',
+  'trapezius': 'muscle.trapezius',
+  'biceps': 'muscle.biceps',
+  'brachialis': 'muscle.brachialis',
+  'triceps': 'muscle.triceps',
+  'brachioradialis': 'muscle.brachioradialis',
+  'forearm': 'muscle.forearm',
+  'forearms': 'muscle.forearms',
+  'forearm_flexor': 'muscle.forearmFlexor',
+  'forearm_extensor': 'muscle.forearmExtensor',
+  'rectus_abdominis': 'muscle.rectusAbdominis',
+  'obliques': 'muscle.obliques',
+  'hip_flexor': 'muscle.hipFlexor',
+  'adductors': 'muscle.adductors',
+  'adductor_longus': 'muscle.adductorLongus',
+  'adductor_brevis': 'muscle.adductorBrevis',
+  'adductor_magnus': 'muscle.adductorMagnus',
+  'abductors': 'muscle.abductors',
+  'quadriceps': 'muscle.quadriceps',
+  'rectus_femoris': 'muscle.rectusFemoris',
+  'vastus_lateralis': 'muscle.vastusLateralis',
+  'vastus_medialis': 'muscle.vastusMedialis',
+  'vastus_intermedius': 'muscle.vastusIntermedius',
+  'hamstrings': 'muscle.hamstrings',
+  'biceps_femoris': 'muscle.bicepsFemoris',
+  'semitendinosus': 'muscle.semitendinosus',
+  'semimembranosus': 'muscle.semimembranosus',
+  'tibialis_anterior': 'muscle.tibialisAnterior',
+  'calves': 'muscle.calves',
+  'gastrocnemius': 'muscle.gastrocnemius',
+  'soleus': 'muscle.soleus',
+  'glutes': 'muscle.glutes',
+  'gluteus_maximus': 'muscle.gluteusMaximus',
+  'gluteus_medius': 'muscle.gluteusMedius',
+  'gluteus_minimus': 'muscle.gluteusMinimus',
+  'latissimus': 'muscle.latissimus',
+  'latissimus_lower': 'muscle.latissimusLower',
+  'latissimus_upper': 'muscle.latissimusUpper',
+  'teres_major': 'muscle.teresMajor',
+  'teres_minor': 'muscle.teresMinor',
+  'infraspinatus': 'muscle.infraspinatus',
+  'supraspinatus': 'muscle.supraspinatus',
+  'subscapularis': 'muscle.subscapularis',
+  'erector_spinae': 'muscle.erectorSpinae',
+  'lower_back': 'muscle.lowerBack',
 };

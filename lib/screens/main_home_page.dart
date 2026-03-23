@@ -1,4 +1,6 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,7 +8,9 @@ import '../features/heatmap/model/heatmap_models.dart';
 import '../providers/heatmap_provider.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_disclaimer_footer.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/heatmap_2d_viewer.dart';
 import '../widgets/interactive_muscle_3d_viewer.dart';
 import '../widgets/workout_log_bottom_sheet.dart';
 import 'heatmap_full_viewer_page.dart';
@@ -34,6 +38,9 @@ class _MainHomePageState extends State<MainHomePage>
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
   late final Animation<double> _pulseOpacity;
+  bool _isPulseRunning = false;
+  bool _use2DPreviewFallback = false;
+  bool _homeOrbitIntroConsumed = false;
 
   @override
   void initState() {
@@ -41,7 +48,7 @@ class _MainHomePageState extends State<MainHomePage>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+    );
     _pulseScale = Tween<double>(begin: 0.92, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -64,8 +71,22 @@ class _MainHomePageState extends State<MainHomePage>
 
   @override
   void dispose() {
+    _pulseController.stop();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  void _syncPulseAnimation(bool shouldRun) {
+    if (shouldRun == _isPulseRunning) {
+      return;
+    }
+    _isPulseRunning = shouldRun;
+    if (shouldRun) {
+      _pulseController.repeat(reverse: true);
+    } else {
+      _pulseController.stop();
+      _pulseController.value = 0.0;
+    }
   }
 
   Future<void> _showOnboardingIfNeeded() async {
@@ -78,43 +99,45 @@ class _MainHomePageState extends State<MainHomePage>
     await showModalBottomSheet<void>(
       context: context,
       isDismissible: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) {
         return Container(
-          decoration: BoxDecoration(
-            color: AppTheme.cardDark,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(
-              color: AppTheme.primaryGreen.withValues(alpha: 0.25),
-            ),
+          decoration: AppTheme.cardDecoration(
+            color: AppTheme.surface1,
+            borderRadius: 28,
+            borderColor: AppTheme.primaryGreen.withValues(alpha: 0.24),
           ),
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'MuscleCare v2.0',
-                style: TextStyle(
+              Text(
+                'home.onboarding.title'.tr(),
+                style: const TextStyle(
                   color: AppTheme.primaryGreen,
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                '매일 운동을 기록하고 오늘의 신체 컨디션을 확인하세요.',
+              Text(
+                'home.onboarding.headline'.tr(),
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
+                  color: AppTheme.textHigh,
+                  fontSize: 22,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                '홈의 + 버튼으로 컨디션 로그를 남기면 히트맵이 즉시 갱신됩니다.',
+              Text(
+                'home.onboarding.description'.tr(),
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppTheme.textMedium,
+                  fontSize: 14,
                   height: 1.45,
                 ),
               ),
@@ -125,15 +148,15 @@ class _MainHomePageState extends State<MainHomePage>
                   onPressed: () => Navigator.of(context).pop(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppTheme.ctaOnBrand,
                     minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: AppTheme.buttonRadius,
                     ),
                   ),
-                  child: const Text(
-                    '시작하기',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  child: Text(
+                    'common.start'.tr(),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -149,40 +172,65 @@ class _MainHomePageState extends State<MainHomePage>
   Future<void> _openWorkoutLogSheet({
     MeasurementBridgePayload? bridgePayload,
   }) async {
+    await HapticFeedback.lightImpact();
+    if (!mounted) {
+      return;
+    }
     debugPrint('[funnel] on_fab_clicked {"source":"main_home_fab"}');
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => WorkoutLogBottomSheet(bridgePayload: bridgePayload),
     );
+    if (!mounted) {
+      return;
+    }
 
-    if (result == true && mounted) {
+    if (result == true) {
+      final provider = context.read<HeatmapProvider>();
+      if (provider.lastSaveQueuedOffline) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('컨디션 로그 저장이 완료되었습니다.')),
+        SnackBar(content: Text('home.logSaved'.tr())),
       );
     }
+  }
+
+  void _switchHomePreviewTo2D() {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('viewer.interactive3d.optimizing'.tr())),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<HeatmapProvider>(
       builder: (context, provider, _) {
+        final pagePadding = AppTheme.resolvedPagePadding(context);
         final timelineItems = _buildTimelineItems(
           workoutLogs: provider.workoutLogs,
         );
+        final showPulseGuide = timelineItems.isEmpty;
+        _syncPulseAnimation(showPulseGuide);
 
         return Scaffold(
           backgroundColor: AppTheme.darkBackground,
           appBar: AppBar(
             backgroundColor: AppTheme.darkBackground,
-            foregroundColor: Colors.white,
-            title: const Text('오늘의 컨디션'),
+            foregroundColor: AppTheme.textHigh,
+            title: Text('home.title'.tr()),
             actions: [
               IconButton(
-                tooltip: '상세 분석 보기',
+                tooltip: 'home.tooltips.analysis'.tr(),
                 icon: const Icon(Icons.analytics_outlined),
                 onPressed: () {
+                  HapticFeedback.lightImpact();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const SensorAnalysisPage(),
@@ -191,9 +239,10 @@ class _MainHomePageState extends State<MainHomePage>
                 },
               ),
               IconButton(
-                tooltip: '히스토리',
+                tooltip: 'home.tooltips.history'.tr(),
                 icon: const Icon(Icons.history),
                 onPressed: () {
+                  HapticFeedback.lightImpact();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const MeasurementHistoryPage(),
@@ -208,44 +257,49 @@ class _MainHomePageState extends State<MainHomePage>
             key: const Key('main_home_fab'),
             onPressed: () => _openWorkoutLogSheet(),
             backgroundColor: AppTheme.primaryGreen,
-            foregroundColor: Colors.black,
+            foregroundColor: AppTheme.ctaOnBrand,
             icon: const Icon(Icons.add),
-            label: const Text(
-              '기록',
-              style: TextStyle(fontWeight: FontWeight.w800),
+            label: Text(
+              'home.fab.label'.tr(),
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
-          body: Stack(
-            children: [
-              RefreshIndicator(
-                color: AppTheme.primaryGreen,
-                onRefresh: () async {
-                  await provider.refreshAll();
-                },
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                  children: [
-                    _buildStreakCard(provider.streakDays),
-                    const SizedBox(height: 14),
-                    _buildHeroCard(
-                      provider: provider,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTimelineCard(
-                      timelineItems: timelineItems,
-                      isLoading: provider.isLoading,
-                    ),
-                    if (provider.errorMessage != null) ...[
-                      const SizedBox(height: 10),
-                      _buildFallbackCard(provider.errorMessage!),
+          body: SafeArea(
+            child: Stack(
+              children: [
+                RefreshIndicator(
+                  color: AppTheme.primaryGreen,
+                  onRefresh: () async {
+                    await provider.refreshAll();
+                  },
+                  child: ListView(
+                    physics: const ClampingScrollPhysics(),
+                    padding: pagePadding.copyWith(top: 8, bottom: 120),
+                    children: [
+                      _buildStreakCard(provider.streakDays),
+                      AppTheme.gap16,
+                      _buildHeroCard(
+                        provider: provider,
+                      ),
+                      AppTheme.gap16,
+                      _buildTimelineCard(
+                        timelineItems: timelineItems,
+                        isLoading: provider.isLoading,
+                      ),
+                      if (provider.errorMessage != null) ...[
+                        const SizedBox(height: 10),
+                        _buildFallbackCard(provider.errorMessage!),
+                      ],
+                      const SizedBox(height: 12),
+                      _buildNaturalBannerSlot(),
+                      const SizedBox(height: 12),
+                      const AppDisclaimerFooter(compact: true),
                     ],
-                    const SizedBox(height: 12),
-                    _buildNaturalBannerSlot(),
-                  ],
+                  ),
                 ),
-              ),
-              if (timelineItems.isEmpty) _buildPulseFabGuide(),
-            ],
+                if (showPulseGuide) _buildPulseFabGuide(),
+              ],
+            ),
           ),
         );
       },
@@ -255,17 +309,7 @@ class _MainHomePageState extends State<MainHomePage>
   Widget _buildStreakCard(int streakDays) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black45,
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
+      decoration: AppTheme.cardDecoration(),
       child: Row(
         children: [
           Container(
@@ -286,17 +330,19 @@ class _MainHomePageState extends State<MainHomePage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '🔥 ${streakDays.toString().padLeft(2, '0')}일차',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  'home.streak.day'.tr(
+                    namedArgs: {'day': streakDays.toString().padLeft(2, '0')},
+                  ),
+                  style: TextStyle(
+                    color: AppTheme.textHigh,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  '연속 운동 기록을 이어가고 있어요',
-                  style: TextStyle(color: Colors.white70),
+                Text(
+                  'home.streak.subtitle'.tr(),
+                  style: TextStyle(color: AppTheme.textMedium),
                 ),
               ],
             ),
@@ -309,22 +355,28 @@ class _MainHomePageState extends State<MainHomePage>
   Widget _buildHeroCard({
     required HeatmapProvider provider,
   }) {
+    final suggestion = provider.nextWorkoutSuggestion;
+    final targetMuscleCode = suggestion.targetMuscleCode;
+    final targetDisplayName = _displayMuscleName(targetMuscleCode);
+    final shouldPlayAutoFocusIntro =
+        !_homeOrbitIntroConsumed && targetMuscleCode.trim().isNotEmpty;
+    if (shouldPlayAutoFocusIntro) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _homeOrbitIntroConsumed) {
+          return;
+        }
+        setState(() {
+          _homeOrbitIntroConsumed = true;
+        });
+      });
+    }
     return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black54,
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: AppTheme.cardDecoration(),
       child: InkWell(
         key: const Key('hero_preview_card'),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppTheme.cardRadius,
         onTap: () {
+          HapticFeedback.lightImpact();
           Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => const HeatmapFullViewerPage(),
@@ -336,28 +388,45 @@ class _MainHomePageState extends State<MainHomePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '나의 3D 바디 맵',
+              Text(
+                'home.hero.title'.tr(),
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textHigh,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                '오늘의 신체 컨디션을 확인하세요.',
-                style: TextStyle(color: Colors.white70),
+              Text(
+                'home.hero.subtitle'.tr(),
+                style: TextStyle(color: AppTheme.textMedium),
               ),
+              if (targetMuscleCode.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'home.hero.nextTarget'.tr(
+                    namedArgs: {'muscle': targetDisplayName},
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF7CD0FF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Container(
                 height: 240,
                 decoration: BoxDecoration(
                   color: AppTheme.cardDark,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: AppTheme.cardRadius,
+                  border: Border.all(color: AppTheme.borderSubtle),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: AppTheme.cardRadius,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -368,13 +437,24 @@ class _MainHomePageState extends State<MainHomePage>
                             horizontal: 8,
                             vertical: 8,
                           ),
-                          child: InteractiveMuscle3DViewer(
-                            entries: provider.heatmapEntries,
-                            borderRadius: 16,
-                            interactive: false,
-                            autoRotate: true,
-                            showHotspots: false,
-                          ),
+                          child: _use2DPreviewFallback
+                              ? Heatmap2DViewer(
+                                  entries: provider.heatmapEntries,
+                                  borderRadius: 16,
+                                )
+                              : InteractiveMuscle3DViewer(
+                                  key: ValueKey(provider.hashCode.toString()),
+                                  entries: provider.heatmapEntries,
+                                  borderRadius: 16,
+                                  interactive: false,
+                                  autoRotate: false,
+                                  showHotspots: false,
+                                  recommendedMuscleCode: targetMuscleCode,
+                                  autoFocusTargetMuscleCode: targetMuscleCode,
+                                  enableAutoFocusIntro:
+                                      shouldPlayAutoFocusIntro,
+                                  onFallbackTo2D: _switchHomePreviewTo2D,
+                                ),
                         ),
                       ),
                       Positioned(
@@ -386,12 +466,16 @@ class _MainHomePageState extends State<MainHomePage>
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.48),
-                            borderRadius: BorderRadius.circular(14),
+                            color: AppTheme.surface1.withValues(alpha: 0.72),
+                            borderRadius: AppTheme.buttonRadius,
+                            border: Border.all(color: AppTheme.borderSubtle),
                           ),
-                          child: const Text(
-                            '탭해서 상세 보기',
-                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          child: Text(
+                            'home.hero.tapDetail'.tr(),
+                            style: TextStyle(
+                              color: AppTheme.textHigh,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ),
@@ -417,27 +501,18 @@ class _MainHomePageState extends State<MainHomePage>
     required bool isLoading,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black45,
-            blurRadius: 16,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
+      decoration: AppTheme.cardDecoration(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '운동 기록 타임라인',
+          Text(
+            'home.timeline.title'.tr(),
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+              color: AppTheme.textHigh,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 10),
@@ -449,11 +524,11 @@ class _MainHomePageState extends State<MainHomePage>
               ),
             )
           else if (timelineItems.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Text(
-                '아직 기록이 없습니다. 오른쪽 아래 버튼으로 첫 컨디션 로그를 남겨보세요.',
-                style: TextStyle(color: Colors.white70, height: 1.4),
+                'home.timeline.empty'.tr(),
+                style: TextStyle(color: AppTheme.textMedium, height: 1.4),
               ),
             )
           else
@@ -481,16 +556,16 @@ class _MainHomePageState extends State<MainHomePage>
                         children: [
                           Text(
                             item.title,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppTheme.textHigh,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             item.subtitle,
-                            style: const TextStyle(
-                              color: Colors.white70,
+                            style: TextStyle(
+                              color: AppTheme.textMedium,
                               fontSize: 12,
                             ),
                           ),
@@ -500,14 +575,13 @@ class _MainHomePageState extends State<MainHomePage>
                     const SizedBox(width: 8),
                     Text(
                       _formatDateTime(item.occurredAt),
-                      style:
-                          const TextStyle(color: Colors.white60, fontSize: 11),
+                      style: TextStyle(color: AppTheme.textLow, fontSize: 11),
                     ),
                   ],
                 );
               },
               separatorBuilder: (_, __) => Divider(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: AppTheme.borderSubtle,
                 height: 16,
               ),
               itemCount: timelineItems.length,
@@ -521,13 +595,14 @@ class _MainHomePageState extends State<MainHomePage>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(14),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.accentDanger.withValues(alpha: 0.10),
+        borderRadius: 16,
+        borderColor: AppTheme.accentDanger.withValues(alpha: 0.30),
       ),
       child: Text(
-        message,
-        style: const TextStyle(color: Colors.redAccent),
+        message.tr(),
+        style: const TextStyle(color: AppTheme.accentDanger),
       ),
     );
   }
@@ -536,12 +611,12 @@ class _MainHomePageState extends State<MainHomePage>
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(20),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface1,
+        borderRadius: 24,
       ),
       child: const BannerAdWidget(
-        placeholderText: '광고 영역',
+        placeholderText: 'ads.slot',
         padding: EdgeInsets.symmetric(vertical: 6),
       ),
     );
@@ -563,13 +638,13 @@ class _MainHomePageState extends State<MainHomePage>
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.cardDark.withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(14),
+              decoration: AppTheme.cardDecoration(
+                color: AppTheme.surface2.withValues(alpha: 0.96),
+                borderRadius: 16,
               ),
-              child: const Text(
-                '여기서 기록 시작',
-                style: TextStyle(color: Colors.white, fontSize: 12),
+              child: Text(
+                'home.guide.startRecord'.tr(),
+                style: TextStyle(color: AppTheme.textHigh, fontSize: 12),
               ),
             ),
             const SizedBox(width: 6),
@@ -591,7 +666,7 @@ class _MainHomePageState extends State<MainHomePage>
       (log) => _TimelineItem(
         occurredAt: log.performedAt,
         title: log.exerciseName,
-        subtitle: '수기 컨디션 로그 · ${_formatSetRep(log)}',
+        subtitle: 'home.timeline.manualLog'.tr(args: [_formatSetRep(log)]),
         icon: Icons.fitness_center,
         color: AppTheme.primaryGreen,
       ),
@@ -603,19 +678,34 @@ class _MainHomePageState extends State<MainHomePage>
 
   String _formatSetRep(WorkoutLogRecord log) {
     if (log.exerciseType == ExerciseType.cardio) {
-      final durationText =
-          log.durationMinutes == null ? '-' : '${log.durationMinutes}분';
+      final durationText = log.durationMinutes == null
+          ? '-'
+          : 'home.timeline.unit.minute'.tr(
+              namedArgs: {'value': '${log.durationMinutes}'},
+            );
       final distanceText = log.distanceKm == null
           ? ''
           : ' · ${log.distanceKm!.toStringAsFixed(1)}km';
-      return '유산소 $durationText$distanceText';
+      return 'home.timeline.cardio'.tr(
+        namedArgs: {'duration': durationText, 'distance': distanceText},
+      );
     }
 
-    final setText = log.sets == null ? '-' : '${log.sets}세트';
-    final repText = log.reps == null ? '-' : '${log.reps}회';
+    final setText = log.sets == null
+        ? '-'
+        : 'home.timeline.unit.set'.tr(namedArgs: {'value': '${log.sets}'});
+    final repText = log.reps == null
+        ? '-'
+        : 'home.timeline.unit.rep'.tr(namedArgs: {'value': '${log.reps}'});
     final weightText =
         log.weightKg == null ? '' : ' · ${log.weightKg!.toStringAsFixed(1)}kg';
-    return '$setText / $repText$weightText';
+    return 'home.timeline.weight'.tr(
+      namedArgs: {
+        'set': setText,
+        'rep': repText,
+        'weight': weightText,
+      },
+    );
   }
 
   String _formatDateTime(DateTime dateTime) {
@@ -624,6 +714,46 @@ class _MainHomePageState extends State<MainHomePage>
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
     return '$month/$day $hour:$minute';
+  }
+
+  String _displayMuscleName(String muscleCode) {
+    final normalized = _normalizeHomeHeroMuscleCode(muscleCode);
+    if (normalized.isEmpty) {
+      return 'muscle.fullBody'.tr();
+    }
+
+    final mappedKey = _homeHeroMuscleNameByCode[normalized];
+    if (mappedKey != null) {
+      return mappedKey.tr();
+    }
+
+    final dynamicKey = 'muscle.${_snakeToCamelCase(normalized)}';
+    final dynamicTranslated = dynamicKey.tr();
+    if (dynamicTranslated != dynamicKey) {
+      return dynamicTranslated;
+    }
+
+    return 'muscle.unknown'.tr();
+  }
+
+  String _normalizeHomeHeroMuscleCode(String muscleCode) {
+    final normalized = muscleCode.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return normalized;
+    }
+    return _homeHeroMuscleAliases[normalized] ?? normalized;
+  }
+
+  String _snakeToCamelCase(String value) {
+    final tokens = value.split('_').where((token) => token.isNotEmpty).toList();
+    if (tokens.isEmpty) {
+      return value;
+    }
+    return tokens.first +
+        tokens
+            .skip(1)
+            .map((token) => '${token[0].toUpperCase()}${token.substring(1)}')
+            .join();
   }
 }
 
@@ -642,3 +772,46 @@ class _TimelineItem {
   final IconData icon;
   final Color color;
 }
+
+const Map<String, String> _homeHeroMuscleNameByCode = {
+  'chest': 'muscle.chest',
+  'pectoralis_major': 'muscle.chest',
+  'front_deltoid': 'muscle.frontDeltoid',
+  'lateral_deltoid': 'muscle.lateralDeltoid',
+  'rear_deltoid': 'muscle.rearDeltoid',
+  'biceps': 'muscle.biceps',
+  'triceps': 'muscle.triceps',
+  'forearms': 'muscle.forearms',
+  'forearm_flexor': 'muscle.forearmFlexor',
+  'forearm_extensor': 'muscle.forearmExtensor',
+  'latissimus': 'muscle.latissimus',
+  'trapezius': 'muscle.trapezius',
+  'quadriceps': 'muscle.quadriceps',
+  'hamstrings': 'muscle.hamstrings',
+  'glutes': 'muscle.glutes',
+  'calves': 'muscle.calves',
+  'rectus_abdominis': 'muscle.rectusAbdominis',
+  'obliques': 'muscle.obliques',
+};
+
+const Map<String, String> _homeHeroMuscleAliases = {
+  'pecs': 'chest',
+  'pectoralis_minor': 'chest',
+  'anterior_deltoid': 'front_deltoid',
+  'front_delts': 'front_deltoid',
+  'lateral_delts': 'lateral_deltoid',
+  'side_deltoid': 'lateral_deltoid',
+  'posterior_deltoid': 'rear_deltoid',
+  'rear_delts': 'rear_deltoid',
+  'biceps_brachii': 'biceps',
+  'triceps_brachii': 'triceps',
+  'forearm': 'forearms',
+  'fore_arm': 'forearms',
+  'wrist_flexor': 'forearm_flexor',
+  'wrist_extensor': 'forearm_extensor',
+  'latissimus_dorsi': 'latissimus',
+  'lats': 'latissimus',
+  'quads': 'quadriceps',
+  'abs': 'rectus_abdominis',
+  'abdominals': 'rectus_abdominis',
+};

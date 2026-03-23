@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
@@ -40,6 +42,7 @@ void main() async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
   await _initializeSupabaseClient();
 
   await UserIdentity.instance.ensureInitialized();
@@ -107,7 +110,17 @@ void main() async {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   }
 
-  runApp(const MyApp());
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('ko', 'KR'),
+      ],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en', 'US'),
+      child: const MyApp(),
+    ),
+  );
 }
 
 Future<void> _initializeSupabaseClient() async {
@@ -182,8 +195,12 @@ class MyApp extends StatelessWidget {
       create: (_) => HeatmapProvider(),
       child: MaterialApp(
         title: 'Muscle Care',
+        onGenerateTitle: (_) => 'app.title'.tr(),
         theme: AppTheme.darkTheme,
         debugShowCheckedModeBanner: false,
+        localizationsDelegates: context.localizationDelegates,
+        supportedLocales: context.supportedLocales,
+        locale: context.locale,
         home: const SplashScreen(),
         // 오류 발생 시 빨간 화면 대신 에러 위젯 표시
         builder: (context, child) {
@@ -340,8 +357,13 @@ class _SensorDataPageState extends State<SensorDataPage>
     final coverage = (data['coverage'] as double?) ?? 0.0;
     final accel = data['accel'] ?? 0;
     final gyro = data['gyro'] ?? 0;
-    final message =
-        '센서를 더 안정적으로 유지해주세요 • coverage ${coverage.toStringAsFixed(2)} • accel $accel / gyro $gyro';
+    final message = 'sensor.qualityWarning.message'.tr(
+      namedArgs: {
+        'coverage': coverage.toStringAsFixed(2),
+        'accel': '$accel',
+        'gyro': '$gyro',
+      },
+    );
     _qualityWarningTimer?.cancel();
     setState(() {
       _qualityWarningMessage = message;
@@ -383,7 +405,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               _qualityWarningMessage ?? '',
               style: TextStyle(
                 fontSize: isSmall ? 12 : 14,
-                color: Colors.white,
+                color: AppTheme.textHigh,
               ),
             ),
           ),
@@ -441,6 +463,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 데이터 수집 시작
   Future<void> _startCollection() async {
+    HapticFeedback.lightImpact();
     // Baseline이 설정되지 않은 경우 먼저 설정하도록 안내
     if (!_hasBaseline) {
       _showBaselineSetupDialog();
@@ -461,9 +484,9 @@ class _SensorDataPageState extends State<SensorDataPage>
     if (!success) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('센서를 시작할 수 없습니다. 기기가 센서를 지원하는지 확인해주세요.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text('sensor.errors.cannotStartSensor'.tr()),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -503,6 +526,7 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 데이터 수집 중지
   Future<void> _stopCollection() async {
+    HapticFeedback.lightImpact();
     await _sensorStreaming.stopSensor();
     _autoStopTimer?.cancel();
 
@@ -529,26 +553,26 @@ class _SensorDataPageState extends State<SensorDataPage>
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: Colors.white70,
+            color: AppTheme.textMedium,
             fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
-            color: Colors.white,
+            color: AppTheme.textHigh,
             fontWeight: FontWeight.bold,
           ),
         ),
         Text(
           unit,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
-            color: Colors.white60,
+            color: AppTheme.textLow,
           ),
         ),
       ],
@@ -562,7 +586,7 @@ class _SensorDataPageState extends State<SensorDataPage>
     setState(() {
       _isBaselineSetting = true;
       _baselineProgress = 0.0;
-      _baselineStatus = '기기를 움직이지 말고 10초간 그대로 유지하세요...';
+      _baselineStatus = 'sensor.baselineStatus.keepStill10s'.tr();
       _justCompletedBaseline = false;
       _analysisResult = null; // 결과 카드 숨김 보장
     });
@@ -577,7 +601,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       _sensorStreaming.setExcludeFromLogging(false);
       setState(() {
         _isBaselineSetting = false;
-        _baselineStatus = '센서를 시작할 수 없습니다. 기기 지원을 확인해주세요.';
+        _baselineStatus = 'sensor.baselineStatus.cannotStartSensor'.tr();
       });
       return;
     }
@@ -596,7 +620,9 @@ class _SensorDataPageState extends State<SensorDataPage>
       setState(() {
         _baselineProgress = progress.clamp(0.0, 1.0);
         final remain = (10 - tick * 0.1);
-        _baselineStatus = '기기를 움직이지 마세요 • 남은 시간 ${remain.toStringAsFixed(1)}초';
+        _baselineStatus = 'sensor.baselineStatus.keepStillRemaining'.tr(
+          namedArgs: {'seconds': remain.toStringAsFixed(1)},
+        );
       });
 
       if (tick >= 100) {
@@ -616,7 +642,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             _hasBaseline = true;
             _isCheckingBaseline = false;
             _isBaselineSetting = false;
-            _baselineStatus = '기준 맞추기가 완료되었습니다!';
+            _baselineStatus = 'sensor.baselineStatus.completed'.tr();
             _justCompletedBaseline = true;
             _analysisResult = null; // 이번 세션은 컨디션 점수 카드 미노출
           });
@@ -629,13 +655,13 @@ class _SensorDataPageState extends State<SensorDataPage>
           if (!mounted) return;
           setState(() {
             _isBaselineSetting = false;
-            _baselineStatus = '데이터 수집에 실패했습니다. 주변 진동을 줄이고 다시 시도해주세요.';
+            _baselineStatus = 'sensor.baselineStatus.collectFailed'.tr();
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('기준 맞추기에 실패했습니다. 다시 시도해주세요.'),
+            SnackBar(
+              content: Text('sensor.errors.baselineFailed'.tr()),
               backgroundColor: Colors.orange,
-              duration: Duration(seconds: 2),
+              duration: const Duration(seconds: 2),
             ),
           );
         }
@@ -645,6 +671,8 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   @override
   Widget build(BuildContext context) {
+    const showSmartBanner = true;
+
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
@@ -676,7 +704,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                       style: GoogleFonts.poppins(
                         fontSize: isSmall ? 16 : 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppTheme.textHigh,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -702,7 +730,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 _analysisResult = null;
               });
             },
-            tooltip: '지수 기록',
+            tooltip: 'sensor.tooltips.history'.tr(),
           ),
           SizedBox(width: Responsive.isSmallScreen(context) ? 2 : 6),
           _buildAppBarIcon(
@@ -722,19 +750,20 @@ class _SensorDataPageState extends State<SensorDataPage>
               await _checkBaselineStatus();
               await _loadBaseline();
             },
-            tooltip: '내 정보',
+            tooltip: 'sensor.tooltips.profile'.tr(),
           ),
           SizedBox(width: Responsive.isSmallScreen(context) ? 2 : 6),
           _buildAppBarIcon(
             icon: Icons.settings_outlined,
             onPressed: _showSettingsDialog,
-            tooltip: '설정',
+            tooltip: 'sensor.tooltips.settings'.tr(),
           ),
           SizedBox(width: Responsive.isSmallScreen(context) ? 4 : 12),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
           padding: Responsive.responsivePadding(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -748,7 +777,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   width: double.infinity,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: AppTheme.textHigh.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: LinearProgressIndicator(
@@ -782,7 +811,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                         Responsive.isSmallScreen(context) ? 16 : 20,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: AppTheme.textHigh.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -791,7 +820,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                             : _analysisResult != null
                                 ? Icons.check_circle
                                 : Icons.touch_app_outlined,
-                        color: Colors.white,
+                        color: AppTheme.textHigh,
                         size: Responsive.isSmallScreen(context) ? 40 : 48,
                       ),
                     ),
@@ -799,25 +828,29 @@ class _SensorDataPageState extends State<SensorDataPage>
                     // 상태 텍스트
                     Text(
                       _isCollecting
-                          ? '분석 중...'
+                          ? 'sensor.state.analyzing'.tr()
                           : _analysisResult != null
-                              ? '분석 완료'
+                              ? 'sensor.state.done'.tr()
                               : (!_hasBaseline && !_isCheckingBaseline
-                                  ? '기준 맞추기 준비'
-                                  : '분석 준비'),
+                                  ? 'sensor.state.prepareBaseline'.tr()
+                                  : 'sensor.state.ready'.tr()),
                       style: TextStyle(
                         fontSize: Responsive.isSmallScreen(context) ? 20 : 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppTheme.textHigh,
                       ),
                     ),
                     if (_isCollecting) ...[
                       const SizedBox(height: 8),
                       Text(
-                        '${_remainingSeconds.toStringAsFixed(1)}초 남음',
-                        style: const TextStyle(
+                        'sensor.state.remaining'.tr(
+                          namedArgs: {
+                            'seconds': _remainingSeconds.toStringAsFixed(1),
+                          },
+                        ),
+                        style: TextStyle(
                           fontSize: 18,
-                          color: Colors.white70,
+                          color: AppTheme.textMedium,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -826,9 +859,12 @@ class _SensorDataPageState extends State<SensorDataPage>
                         child: LinearProgressIndicator(
                           value: 1 -
                               (_remainingSeconds / _customMeasurementSeconds),
-                          backgroundColor: Colors.white.withOpacity(0.2),
-                          valueColor:
-                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                          backgroundColor: AppTheme.textHigh.withValues(
+                            alpha: 0.2,
+                          ),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppTheme.textHigh,
+                          ),
                           minHeight: 8,
                         ),
                       ),
@@ -859,20 +895,20 @@ class _SensorDataPageState extends State<SensorDataPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.check_circle,
                             color: Colors.greenAccent,
                             size: 22,
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Text(
-                            '기준 맞추기가 완료되었습니다',
+                            'sensor.baseline.completed'.tr(),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppTheme.textHigh,
                             ),
                           ),
                         ],
@@ -907,9 +943,9 @@ class _SensorDataPageState extends State<SensorDataPage>
                               });
                             },
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white70,
+                              foregroundColor: AppTheme.textMedium,
                             ),
-                            child: const Text('나중에'),
+                            child: Text('common.later'.tr()),
                           ),
                           const SizedBox(width: 10),
                           ElevatedButton(
@@ -931,7 +967,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryGreen,
                             ),
-                            child: const Text('내 정보에서 보기'),
+                            child: Text('sensor.buttons.viewProfile'.tr()),
                           ),
                         ],
                       ),
@@ -983,7 +1019,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                         children: [
                           Icon(
                             Icons.play_circle_fill,
-                            color: Colors.white,
+                            color: AppTheme.ctaOnBrand,
                             size: Responsive.isSmallScreen(context) ? 24 : 28,
                           ),
                           SizedBox(
@@ -992,17 +1028,22 @@ class _SensorDataPageState extends State<SensorDataPage>
                           Flexible(
                             child: Text(
                               _isCheckingBaseline
-                                  ? '기준 확인 중...'
+                                  ? 'sensor.buttons.checkingBaseline'.tr()
                                   : !_hasBaseline
-                                      ? '기준 맞추기 시작'
-                                      : '${_customMeasurementSeconds.toStringAsFixed(1)}초 분석 시작',
+                                      ? 'sensor.buttons.startBaseline'.tr()
+                                      : 'sensor.buttons.startAnalysis'.tr(
+                                          namedArgs: {
+                                            'seconds': _customMeasurementSeconds
+                                                .toStringAsFixed(1),
+                                          },
+                                        ),
                               style: TextStyle(
                                 fontSize:
                                     Responsive.isSmallScreen(context) ? 16 : 18,
                                 fontWeight: FontWeight.bold,
                                 color: _isCheckingBaseline
                                     ? Colors.orange
-                                    : Colors.white,
+                                    : AppTheme.ctaOnBrand,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1030,19 +1071,19 @@ class _SensorDataPageState extends State<SensorDataPage>
                         children: [
                           Icon(
                             Icons.stop_circle,
-                            color: Colors.white,
+                            color: AppTheme.textHigh,
                             size: Responsive.isSmallScreen(context) ? 24 : 28,
                           ),
                           SizedBox(
                             width: Responsive.isSmallScreen(context) ? 8 : 12,
                           ),
                           Text(
-                            '분석 중지',
+                            'sensor.buttons.stopAnalysis'.tr(),
                             style: TextStyle(
                               fontSize:
                                   Responsive.isSmallScreen(context) ? 16 : 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppTheme.textHigh,
                             ),
                           ),
                         ],
@@ -1052,14 +1093,59 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ],
 
-              // 분석 중 배너 광고 (광고가 실제로 준비되었을 때만 표시)
-              if (_isCollecting) ...[
+              // 측정 대기/분석 결과 체류 구간에서만 자연스럽게 노출
+              if (showSmartBanner) ...[
                 const SizedBox(height: 16),
-                const BannerAdWidget(
-                  key: ValueKey('sensor_analysis_banner'),
-                  showPlaceholder: false,
+                Container(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.textHigh.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppTheme.textHigh.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: const BannerAdWidget(
+                    key: ValueKey('sensor_analysis_banner'),
+                    showPlaceholder: false,
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    backgroundColor: Colors.transparent,
+                  ),
                 ),
               ],
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.textHigh.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppTheme.textHigh.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.health_and_safety_outlined,
+                      color: Colors.orangeAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'sensor.disclaimer.compact'.tr(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1071,6 +1157,7 @@ class _SensorDataPageState extends State<SensorDataPage>
   Widget _buildFatigueScoreCard(Map<String, dynamic> result) {
     final fatigueScore = result['fatigueScore'] ?? 1.0;
     final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
+    final localizedFatigueLevel = _localizedFatigueLevel(fatigueLevel);
 
     return Container(
       decoration: AppTheme.cardDecoration(
@@ -1086,7 +1173,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               vertical: Responsive.isSmallScreen(context) ? 8 : 10,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: AppTheme.textHigh.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -1094,16 +1181,16 @@ class _SensorDataPageState extends State<SensorDataPage>
               children: [
                 Icon(
                   _getFatigueLevelIcon(fatigueLevel),
-                  color: Colors.white,
+                  color: AppTheme.textHigh,
                   size: Responsive.isSmallScreen(context) ? 20 : 24,
                 ),
                 SizedBox(width: Responsive.isSmallScreen(context) ? 6 : 8),
                 Text(
-                  fatigueLevel,
+                  localizedFatigueLevel,
                   style: TextStyle(
                     fontSize: Responsive.isSmallScreen(context) ? 18 : 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                   ),
                 ),
               ],
@@ -1129,7 +1216,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   style: GoogleFonts.inter(
                     fontSize: Responsive.isSmallScreen(context) ? 36 : 44,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                     letterSpacing: -1,
                   ),
                 ),
@@ -1138,7 +1225,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   '/ 3.0',
                   style: TextStyle(
                     fontSize: Responsive.isSmallScreen(context) ? 14 : 18,
-                    color: Colors.white70,
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ],
@@ -1213,22 +1300,26 @@ class _SensorDataPageState extends State<SensorDataPage>
     Color modeColor;
     IconData modeIcon;
     String statusMessage;
+    String modeLabel;
 
     switch (currentMode) {
       case MLMode.ema:
         modeColor = const Color(0xFF2196F3); // 파란색 (기본 학습)
         modeIcon = Icons.functions;
-        statusMessage = '움직임 정보를 바탕으로 기준을 맞추는 중';
+        statusMessage = 'sensor.aiStatus.ema'.tr();
+        modeLabel = 'sensor.aiMode.ema'.tr();
         break;
       case MLMode.hybrid:
         modeColor = const Color(0xFF00ACC1); // 청록색 (AI 보조)
         modeIcon = Icons.hub;
-        statusMessage = 'AI가 보조하여 개인화 향상 중';
+        statusMessage = 'sensor.aiStatus.hybrid'.tr();
+        modeLabel = 'sensor.aiMode.hybrid'.tr();
         break;
       case MLMode.endToEnd:
         modeColor = const Color(0xFF9C27B0); // 진보라색 (AI 완전)
         modeIcon = Icons.psychology;
-        statusMessage = 'AI가 직접 패턴을 분석 중';
+        statusMessage = 'sensor.aiStatus.endToEnd'.tr();
+        modeLabel = 'sensor.aiMode.endToEnd'.tr();
         break;
     }
 
@@ -1262,7 +1353,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             child: Icon(
               modeIcon,
-              color: Colors.white,
+              color: AppTheme.textHigh,
               size: 18,
             ),
           ),
@@ -1281,18 +1372,30 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${currentMode.displayName} • 분석 $nextMeasurementIndex회',
+                  'sensor.aiMode.round'.tr(
+                    namedArgs: {
+                      'mode': modeLabel,
+                      'round': nextMeasurementIndex.toString(),
+                    },
+                  ),
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.white.withOpacity(0.6),
+                    color: AppTheme.textMedium,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   showPhaseCounter
-                      ? '학습 진행도 $progressPercent% '
-                          '(${phaseCount.toInt()}/$phaseSpan회)'
-                      : '학습 진행도 $progressPercent%',
+                      ? 'sensor.aiMode.progressWithCount'.tr(
+                          namedArgs: {
+                            'percent': '$progressPercent',
+                            'count': '${phaseCount.toInt()}',
+                            'span': '$phaseSpan',
+                          },
+                        )
+                      : 'sensor.aiMode.progressOnly'.tr(
+                          namedArgs: {'percent': '$progressPercent'},
+                        ),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1313,10 +1416,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '규칙적으로 기록하면 개인화 예측이 더 안정됩니다.',
+                  'sensor.aiMode.tip'.tr(),
                   style: TextStyle(
                     fontSize: 10,
-                    color: Colors.white.withOpacity(0.55),
+                    color: AppTheme.textLow,
                   ),
                 ),
               ],
@@ -1332,7 +1435,9 @@ class _SensorDataPageState extends State<SensorDataPage>
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '${currentMode.phase}단계',
+              'sensor.aiMode.phase'.tr(
+                namedArgs: {'phase': '${currentMode.phase}'},
+              ),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
@@ -1347,18 +1452,60 @@ class _SensorDataPageState extends State<SensorDataPage>
 
   // 컨디션 레벨별 아이콘
   IconData _getFatigueLevelIcon(String level) {
-    switch (level) {
-      case '회복 완료':
+    switch (_fatigueLevelCode(level)) {
+      case 'recovered':
         return Icons.sentiment_very_satisfied;
-      case '회복 중':
+      case 'recovering':
         return Icons.sentiment_satisfied;
-      case '회복 지연':
+      case 'delayed':
         return Icons.sentiment_dissatisfied;
-      case '회복 필요':
+      case 'need_recovery':
         return Icons.sentiment_very_dissatisfied;
       default:
         return Icons.help_outline;
     }
+  }
+
+  String _localizedFatigueLevel(String level) {
+    switch (_fatigueLevelCode(level)) {
+      case 'recovered':
+        return 'heatmap.status.recovered'.tr();
+      case 'recovering':
+        return 'heatmap.status.recovering'.tr();
+      case 'delayed':
+        return 'sensor.fatigue.delayed'.tr();
+      case 'need_recovery':
+        return 'heatmap.status.needRecovery'.tr();
+      default:
+        return 'sensor.fatigue.unknown'.tr();
+    }
+  }
+
+  String _fatigueLevelCode(String level) {
+    final raw = level.trim().toLowerCase();
+    if (raw == '회복 완료' ||
+        raw == 'recovered' ||
+        raw == '부하 안정' ||
+        raw == 'load stable') {
+      return 'recovered';
+    }
+    if (raw == '회복 중' ||
+        raw == 'recovering' ||
+        raw == '휴식 권장' ||
+        raw == 'rest recommended') {
+      return 'recovering';
+    }
+    if (raw == '회복 지연' ||
+        raw == 'delayed recovery' ||
+        raw == '강도 조절 필요' ||
+        raw == 'adjust intensity needed' ||
+        raw == 'adjust intensity') {
+      return 'delayed';
+    }
+    if (raw == 'needs recovery' || raw == 'recovery needed') {
+      return 'need_recovery';
+    }
+    return 'unknown';
   }
 
   // 주요 결과 카드 (RMS, Variance, Freq)
@@ -1386,15 +1533,15 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '상세 분석 데이터',
+                  'sensor.result.title'.tr(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                   ),
                 ),
               ),
@@ -1405,31 +1552,35 @@ class _SensorDataPageState extends State<SensorDataPage>
           // RMS
           _buildMetricRow(
             icon: Icons.graphic_eq,
-            label: '근육 활동량',
+            label: 'sensor.metrics.activity'.tr(),
             value: (result['fatigueRMS'] ?? 0.0).toStringAsFixed(4),
-            subtitle: '떨림 세기',
+            subtitle: 'sensor.metrics.activitySub'.tr(),
           ),
           const SizedBox(height: 16),
 
           // Variance
           _buildMetricRow(
             icon: Icons.show_chart,
-            label: '신호 변동',
+            label: 'sensor.metrics.variation'.tr(),
             value: (result['fatigueVariance'] ?? 0.0).toStringAsFixed(4),
-            subtitle: '불규칙성',
+            subtitle: 'sensor.metrics.variationSub'.tr(),
           ),
           const SizedBox(height: 16),
 
           // Peak Frequency
           _buildMetricRow(
             icon: Icons.multiline_chart,
-            label: '진동 빈도',
-            value: '${(result['peakFreq'] ?? 0.0).toStringAsFixed(1)}회/초',
-            subtitle: '주요 주파수',
+            label: 'sensor.metrics.frequency'.tr(),
+            value: 'sensor.metrics.frequencyUnit'.tr(
+              namedArgs: {
+                'value': (result['peakFreq'] ?? 0.0).toStringAsFixed(1),
+              },
+            ),
+            subtitle: 'sensor.metrics.frequencySub'.tr(),
           ),
           const SizedBox(height: 12),
           // 분석 시간
-          Divider(color: Colors.white.withOpacity(0.1)),
+          Divider(color: AppTheme.textHigh.withValues(alpha: 0.1)),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1437,7 +1588,7 @@ class _SensorDataPageState extends State<SensorDataPage>
               Icon(
                 Icons.access_time,
                 size: 16,
-                color: Colors.white.withOpacity(0.6),
+                color: AppTheme.textMedium,
               ),
               const SizedBox(width: 8),
               Flexible(
@@ -1447,7 +1598,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.white.withOpacity(0.7),
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ),
@@ -1504,7 +1655,7 @@ class _SensorDataPageState extends State<SensorDataPage>
       constraints: const BoxConstraints(minHeight: 80),
       padding: EdgeInsets.all(isSmall ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: AppTheme.textHigh.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -1532,7 +1683,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: isSmall ? 12 : 14,
-                    color: Colors.white.withOpacity(0.6),
+                    color: AppTheme.textMedium,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1542,7 +1693,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   style: GoogleFonts.poppins(
                     fontSize: isSmall ? 18 : 22,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                     letterSpacing: -0.5,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -1554,7 +1705,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: isSmall ? 10 : 11,
-                    color: Colors.white.withOpacity(0.5),
+                    color: AppTheme.textLow,
                   ),
                 ),
               ],
@@ -1592,11 +1743,11 @@ class _SensorDataPageState extends State<SensorDataPage>
               ),
               const SizedBox(width: 12),
               Text(
-                '기준 맞추기 안내',
+                'sensor.baselineGuide.title'.tr(),
                 style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppTheme.textHigh,
                 ),
               ),
             ],
@@ -1617,18 +1768,18 @@ class _SensorDataPageState extends State<SensorDataPage>
                     width: 1,
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.info_outline,
                       color: Colors.blue,
                       size: 24,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '운동 수행 패턴 분석을 위해\n개인 기준 맞추기가 필요합니다',
-                        style: TextStyle(
+                        'sensor.baselineGuide.need'.tr(),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue,
@@ -1656,17 +1807,17 @@ class _SensorDataPageState extends State<SensorDataPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.touch_app,
                           color: AppTheme.primaryGreen,
                           size: 20,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          '설정 방법 (한 번만 하면 됩니다)',
-                          style: TextStyle(
+                          'sensor.baselineGuide.howTo'.tr(),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.primaryGreen,
@@ -1679,22 +1830,22 @@ class _SensorDataPageState extends State<SensorDataPage>
                     // 단계별 안내
                     _buildStepGuide(
                       '1',
-                      '기기 준비',
-                      '스마트폰을 책상 위에 평평하게 올려놓습니다',
+                      'sensor.baselineGuide.step1.title'.tr(),
+                      'sensor.baselineGuide.step1.desc'.tr(),
                       Icons.phone_android,
                     ),
                     const SizedBox(height: 12),
                     _buildStepGuide(
                       '2',
-                      '기준 맞추기',
-                      '기준 맞추기 버튼을 누르면 약 10초 동안 움직임 정보를 모아 기준을 설정합니다',
+                      'sensor.baselineGuide.step2.title'.tr(),
+                      'sensor.baselineGuide.step2.desc'.tr(),
                       Icons.settings_input_component,
                     ),
                     const SizedBox(height: 12),
                     _buildStepGuide(
                       '3',
-                      '완료',
-                      '설정 완료 후 내 기준이 저장됩니다',
+                      'sensor.baselineGuide.step3.title'.tr(),
+                      'sensor.baselineGuide.step3.desc'.tr(),
                       Icons.check_circle_outline,
                     ),
                   ],
@@ -1724,7 +1875,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 컨디션 점수의 일관성을 높여줍니다',
+                        'sensor.baselineGuide.why'.tr(),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.withOpacity(0.9),
@@ -1741,9 +1892,9 @@ class _SensorDataPageState extends State<SensorDataPage>
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                '나중에',
+                'common.later'.tr(),
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: AppTheme.textMedium,
                 ),
               ),
             ),
@@ -1758,9 +1909,9 @@ class _SensorDataPageState extends State<SensorDataPage>
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text(
-                '기준 맞추기',
-                style: TextStyle(color: Colors.white),
+              child: Text(
+                'sensor.baselineGuide.start'.tr(),
+                style: const TextStyle(color: AppTheme.ctaOnBrand),
               ),
             ),
           ],
@@ -1789,8 +1940,8 @@ class _SensorDataPageState extends State<SensorDataPage>
           child: Center(
             child: Text(
               step,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppTheme.textHigh,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -1810,10 +1961,10 @@ class _SensorDataPageState extends State<SensorDataPage>
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppTheme.textHigh,
                 ),
               ),
               const SizedBox(height: 2),
@@ -1821,7 +1972,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 description,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withOpacity(0.8),
+                  color: AppTheme.textMedium,
                   height: 1.3,
                 ),
               ),
@@ -1845,11 +1996,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                 _hasBaseline = true;
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                      Text('컨디션 점수 기준 맞추기가 완료되었습니다! 이제 정밀 분석을 시작할 수 있습니다.'),
+                SnackBar(
+                  content: Text('sensor.baselineGuide.completedToast'.tr()),
                   backgroundColor: Colors.green,
-                  duration: Duration(seconds: 3),
+                  duration: const Duration(seconds: 3),
                 ),
               );
             }
@@ -1883,15 +2033,15 @@ class _SensorDataPageState extends State<SensorDataPage>
                     ),
                     child: const Icon(
                       Icons.settings,
-                      color: Colors.white,
+                      color: AppTheme.ctaOnBrand,
                       size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
-                    '설정',
+                  Text(
+                    'sensor.settings.title'.tr(),
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppTheme.textHigh,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1904,20 +2054,20 @@ class _SensorDataPageState extends State<SensorDataPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // 분석 시간 설정
-                    const Row(
+                    Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.timer_outlined,
                           size: 20,
                           color: AppTheme.primaryGreen,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          '분석 시간 (초)',
+                          'sensor.settings.analysisDuration'.tr(),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: Colors.white,
+                            color: AppTheme.textHigh,
                           ),
                         ),
                       ],
@@ -1930,7 +2080,9 @@ class _SensorDataPageState extends State<SensorDataPage>
                             data: SliderThemeData(
                               activeTrackColor: AppTheme.primaryGreen,
                               thumbColor: AppTheme.primaryGreen,
-                              inactiveTrackColor: Colors.white.withOpacity(0.2),
+                              inactiveTrackColor: AppTheme.textHigh.withValues(
+                                alpha: 0.2,
+                              ),
                               overlayColor:
                                   AppTheme.primaryGreen.withOpacity(0.2),
                             ),
@@ -1939,7 +2091,13 @@ class _SensorDataPageState extends State<SensorDataPage>
                               min: 0.5,
                               max: 30,
                               divisions: 59,
-                              label: '${tempWindowSeconds.toStringAsFixed(1)}초',
+                              label: 'sensor.settings.seconds'.tr(
+                                namedArgs: {
+                                  'seconds': tempWindowSeconds.toStringAsFixed(
+                                    1,
+                                  ),
+                                },
+                              ),
                               onChanged: _isCollecting
                                   ? null
                                   : (value) {
@@ -1953,7 +2111,11 @@ class _SensorDataPageState extends State<SensorDataPage>
                         SizedBox(
                           width: 60,
                           child: Text(
-                            '${tempWindowSeconds.toStringAsFixed(1)}초',
+                            'sensor.settings.seconds'.tr(
+                              namedArgs: {
+                                'seconds': tempWindowSeconds.toStringAsFixed(1),
+                              },
+                            ),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1965,11 +2127,11 @@ class _SensorDataPageState extends State<SensorDataPage>
                       ],
                     ),
                     if (_isCollecting)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8.0),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
                         child: Text(
-                          '⚠️ 기준 맞추기/분석 중에는 설정을 변경할 수 없습니다.',
-                          style: TextStyle(
+                          'sensor.settings.locked'.tr(),
+                          style: const TextStyle(
                             color: Colors.orange,
                             fontSize: 12,
                           ),
@@ -1980,20 +2142,20 @@ class _SensorDataPageState extends State<SensorDataPage>
                     const SizedBox(height: 16),
 
                     // 데이터 관리
-                    const Row(
+                    Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.storage_outlined,
                           size: 20,
                           color: AppTheme.highFatigueColor,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          '데이터 관리',
+                          'sensor.settings.dataManagement'.tr(),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
-                            color: Colors.white,
+                            color: AppTheme.textHigh,
                           ),
                         ),
                       ],
@@ -2009,21 +2171,27 @@ class _SensorDataPageState extends State<SensorDataPage>
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (context) => AlertDialog(
-                                    title: const Row(
+                                    title: Row(
                                       children: [
-                                        Icon(Icons.warning, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('확인'),
+                                        const Icon(
+                                          Icons.warning,
+                                          color: Colors.red,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'sensor.settings.confirm.title'.tr(),
+                                        ),
                                       ],
                                     ),
-                                    content: const Text(
-                                      '모든 분석 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+                                    content: Text(
+                                      'sensor.settings.confirm.deleteAllLogs'
+                                          .tr(),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(context, false),
-                                        child: const Text('취소'),
+                                        child: Text('common.cancel'.tr()),
                                       ),
                                       ElevatedButton(
                                         onPressed: () =>
@@ -2031,7 +2199,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.red,
                                         ),
-                                        child: const Text('삭제'),
+                                        child: Text('common.delete'.tr()),
                                       ),
                                     ],
                                   ),
@@ -2052,10 +2220,15 @@ class _SensorDataPageState extends State<SensorDataPage>
 
                                   // 기준값 필요 여부 재평가
                                   await _checkBaselineStatus();
+                                  if (!mounted || !context.mounted) {
+                                    return;
+                                  }
 
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('모든 분석 기록이 삭제되었습니다.'),
+                                    SnackBar(
+                                      content: Text(
+                                        'sensor.settings.deleteAllDone'.tr(),
+                                      ),
                                       backgroundColor: Colors.red,
                                     ),
                                   );
@@ -2063,7 +2236,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                               }
                             : null,
                         icon: const Icon(Icons.delete_forever),
-                        label: const Text('모든 분석 기록 삭제'),
+                        label: Text('sensor.settings.deleteAllLogs'.tr()),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: BorderSide(
@@ -2083,26 +2256,27 @@ class _SensorDataPageState extends State<SensorDataPage>
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (context) => AlertDialog(
-                                    title: const Row(
+                                    title: Row(
                                       children: [
-                                        Icon(
+                                        const Icon(
                                           Icons.warning_amber_rounded,
                                           color: Colors.orange,
                                         ),
-                                        SizedBox(width: 8),
-                                        Text('개인 기준 초기화'),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'sensor.settings.resetBaseline'.tr(),
+                                        ),
                                       ],
                                     ),
-                                    content: const Text(
-                                      '개인 기준을 초기화하시겠습니까?\n\n'
-                                      '일반인 평균값으로 리셋되며,\n'
-                                      '학습된 내 기준이 모두 삭제됩니다.',
+                                    content: Text(
+                                      'sensor.settings.confirm.resetBaseline'
+                                          .tr(),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(context, false),
-                                        child: const Text('취소'),
+                                        child: Text('common.cancel'.tr()),
                                       ),
                                       ElevatedButton(
                                         onPressed: () =>
@@ -2110,7 +2284,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.orange,
                                         ),
-                                        child: const Text('초기화'),
+                                        child: Text('common.reset'.tr()),
                                       ),
                                     ],
                                   ),
@@ -2129,10 +2303,16 @@ class _SensorDataPageState extends State<SensorDataPage>
 
                                   // 기준값 필요 여부 재평가
                                   await _checkBaselineStatus();
+                                  if (!mounted || !context.mounted) {
+                                    return;
+                                  }
 
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('개인 기준이 초기화되었습니다.'),
+                                    SnackBar(
+                                      content: Text(
+                                        'sensor.settings.resetBaselineDone'
+                                            .tr(),
+                                      ),
                                       backgroundColor: Colors.orange,
                                     ),
                                   );
@@ -2140,7 +2320,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                               }
                             : null,
                         icon: const Icon(Icons.restore),
-                        label: const Text('개인 기준 초기화'),
+                        label: Text('sensor.settings.resetBaseline'.tr()),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.deepOrange,
                           side: BorderSide(
@@ -2156,10 +2336,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.04),
+                        color: AppTheme.textHigh.withValues(alpha: 0.04),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.08),
+                          color: AppTheme.textHigh.withValues(alpha: 0.08),
                         ),
                       ),
                       child: Row(
@@ -2173,10 +2353,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'MuscleCare는 운동 수행 패턴 참고 앱이며 의료적 판단이나 치료 목적 용도가 아닙니다. 건강 관련 의사결정이 필요한 경우 전문가와 상담하시기 바랍니다.',
+                              'sensor.settings.disclaimer'.tr(),
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white.withOpacity(0.75),
+                                color: AppTheme.textMedium,
                                 height: 1.45,
                               ),
                             ),
@@ -2192,7 +2372,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text('취소'),
+                  child: Text('common.cancel'.tr()),
                 ),
                 ElevatedButton(
                   onPressed: _isCollecting
@@ -2209,7 +2389,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                           });
                           Navigator.of(context).pop();
                         },
-                  child: const Text('적용'),
+                  child: Text('common.apply'.tr()),
                 ),
               ],
             );
@@ -2278,14 +2458,14 @@ class _SensorDataPageState extends State<SensorDataPage>
                   ),
                   child: Icon(
                     modeIcon,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                     size: 24,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '분석이 완료되었습니다',
+                    'sensor.instructions.analysisDone'.tr(),
                     style: GoogleFonts.inter(
                       fontSize: isSmall ? 15 : 17,
                       fontWeight: FontWeight.bold,
@@ -2297,10 +2477,10 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '분석 환경을 일정하게 유지하면 더 일관된 참고 지표를 얻을 수 있습니다.',
+              'sensor.instructions.analysisDoneDesc'.tr(),
               style: TextStyle(
                 fontSize: isSmall ? 13 : 14,
-                color: Colors.white.withOpacity(0.8),
+                color: AppTheme.textMedium,
                 height: 1.5,
               ),
             ),
@@ -2340,7 +2520,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '개인화 향상 팁 보기',
+                      'sensor.instructions.viewPersonalizationTip'.tr(),
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
                         color: modeColor,
@@ -2400,7 +2580,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '분석 중',
+                  'sensor.instructions.analyzingTitle'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: isSmall ? 16 : 18,
                     fontWeight: FontWeight.bold,
@@ -2411,10 +2591,14 @@ class _SensorDataPageState extends State<SensorDataPage>
             ),
             const SizedBox(height: 12),
             Text(
-              '움직임 정보를 분석하여 컨디션 점수를 계산합니다.\n${_customMeasurementSeconds.toStringAsFixed(1)}초간 그대로 유지해주세요.',
+              'sensor.instructions.analyzingDesc'.tr(
+                namedArgs: {
+                  'seconds': _customMeasurementSeconds.toStringAsFixed(1),
+                },
+              ),
               style: TextStyle(
                 fontSize: isSmall ? 14 : 15,
-                color: Colors.white.withOpacity(0.9),
+                color: AppTheme.textHigh,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -2462,11 +2646,11 @@ class _SensorDataPageState extends State<SensorDataPage>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '내 컨디션 점수 기준 맞추기',
+                    'sensor.instructions.baselineIntroTitle'.tr(),
                     style: GoogleFonts.inter(
                       fontSize: isSmall ? 15 : 17,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppTheme.textHigh,
                     ),
                   ),
                 ),
@@ -2475,19 +2659,19 @@ class _SensorDataPageState extends State<SensorDataPage>
             const SizedBox(height: 16),
             _buildInstructionItem(
               '1',
-              '스마트폰을 책상 위에 평평하게 올려두세요. (움직이지 않기)',
+              'sensor.instructions.baselineStep1'.tr(),
               isSmall,
             ),
             const SizedBox(height: 10),
             _buildInstructionItem(
               '2',
-              '화면이 위를 향하도록 두고 주변 진동이 적은 곳에서 진행하세요.',
+              'sensor.instructions.baselineStep2'.tr(),
               isSmall,
             ),
             const SizedBox(height: 10),
             _buildInstructionItem(
               '3',
-              '아래 ‘기준 맞추기 시작’ 버튼을 누르면 약 10초 동안 움직임 정보를 모아 내 기준을 설정합니다.',
+              'sensor.instructions.baselineStep3'.tr(),
               isSmall,
             ),
             const SizedBox(height: 16),
@@ -2510,10 +2694,10 @@ class _SensorDataPageState extends State<SensorDataPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 컨디션 점수의 일관성이 향상됩니다',
+                      'sensor.instructions.baselineWhy'.tr(),
                       style: TextStyle(
                         fontSize: isSmall ? 12 : 13,
-                        color: Colors.white.withOpacity(0.85),
+                        color: AppTheme.textMedium,
                         height: 1.45,
                       ),
                     ),
@@ -2538,7 +2722,7 @@ class _SensorDataPageState extends State<SensorDataPage>
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: AppTheme.textHigh.withValues(alpha: 0.1),
           width: 1.5,
         ),
       ),
@@ -2563,11 +2747,11 @@ class _SensorDataPageState extends State<SensorDataPage>
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '분석 전 안내',
+                  'sensor.instructions.preAnalysisTitle'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: isSmall ? 15 : 17,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                   ),
                 ),
               ),
@@ -2576,25 +2760,25 @@ class _SensorDataPageState extends State<SensorDataPage>
           const SizedBox(height: 16),
           _buildInstructionItem(
             '1',
-            '의자에 앉은 상태에서, 팔을 책상 위에 편히 올려주세요.',
+            'sensor.instructions.preStep1'.tr(),
             isSmall,
           ),
           const SizedBox(height: 10),
           _buildInstructionItem(
             '2',
-            '스마트폰을 한 손으로 가볍게 쥐고, 움직이지 마세요.',
+            'sensor.instructions.preStep2'.tr(),
             isSmall,
           ),
           const SizedBox(height: 10),
           _buildInstructionItem(
             '3',
-            '화면이 위를 향하도록 평평하게 두세요.',
+            'sensor.instructions.preStep3'.tr(),
             isSmall,
           ),
           const SizedBox(height: 10),
           _buildInstructionItem(
             '4',
-            '준비가 되면 아래 시작 버튼을 눌러주세요.',
+            'sensor.instructions.preStep4'.tr(),
             isSmall,
           ),
           const SizedBox(height: 12),
@@ -2612,7 +2796,7 @@ class _SensorDataPageState extends State<SensorDataPage>
           width: isSmall ? 22 : 26,
           height: isSmall ? 22 : 26,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: AppTheme.textHigh.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
@@ -2632,7 +2816,7 @@ class _SensorDataPageState extends State<SensorDataPage>
             text,
             style: TextStyle(
               fontSize: isSmall ? 12 : 13,
-              color: Colors.white.withOpacity(0.8),
+              color: AppTheme.textMedium,
               height: 1.5,
             ),
           ),
@@ -2644,17 +2828,17 @@ class _SensorDataPageState extends State<SensorDataPage>
   Widget _buildMedicalDisclaimer({bool compact = false}) {
     final textStyle = TextStyle(
       fontSize: compact ? 11 : 12,
-      color: Colors.white.withOpacity(0.75),
+      color: AppTheme.textMedium,
       height: 1.4,
     );
 
     return Container(
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: AppTheme.textHigh.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: AppTheme.textHigh.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -2668,10 +2852,9 @@ class _SensorDataPageState extends State<SensorDataPage>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '이 앱에서 제공하는 컨디션 점수는 운동 수행 패턴 참고용 정보입니다.\n'
-              '의료적 판단이나 치료 목적으로 사용할 수 없으며,\n'
-              '건강 관련 중요한 결정은 반드시 전문가와 상의하세요.\n'
-              '환경과 사용 방식에 따라 오차가 발생할 수 있습니다.',
+              compact
+                  ? 'sensor.disclaimer.compact'.tr()
+                  : 'sensor.disclaimer.full'.tr(),
               style: textStyle,
             ),
           ),
@@ -2705,19 +2888,19 @@ class _SensorDataPageState extends State<SensorDataPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI 분석 중',
+                  'sensor.aiProcessing.title'.tr(),
                   style: TextStyle(
                     fontSize: isSmall ? 14 : 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: AppTheme.textHigh,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '결과가 곧 반영됩니다.',
+                  'sensor.aiProcessing.subtitle'.tr(),
                   style: TextStyle(
                     fontSize: isSmall ? 11 : 12,
-                    color: Colors.white70,
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ],
@@ -2746,7 +2929,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
   bool _isCollecting = false;
   bool _isProcessing = false;
   double _progress = 0.0;
-  String _statusMessage = '기기를 책상 위에 평평하게 올려놓고 기준 맞추기 버튼을 눌러주세요';
+  String _statusMessage = '';
   Map<String, dynamic>? _baselineResult;
 
   Future<void> _startBaselineCollection() async {
@@ -2755,7 +2938,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
     setState(() {
       _isCollecting = true;
       _progress = 0.0;
-      _statusMessage = '기기를 움직이지 말고 10초간 그대로 유지하세요...';
+      _statusMessage = 'sensor.baselineDialog.keepStill10s'.tr();
     });
 
     // 센서 시작
@@ -2763,7 +2946,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
     if (!success) {
       setState(() {
         _isCollecting = false;
-        _statusMessage = '센서 시작에 실패했습니다. 다시 시도해주세요.';
+        _statusMessage = 'sensor.baselineDialog.startFailed'.tr();
       });
       return;
     }
@@ -2776,8 +2959,9 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
 
       setState(() {
         _progress = progress;
-        _statusMessage =
-            '기기를 움직이지 말고 ${(10 - count * 0.1).toStringAsFixed(1)}초 남음...';
+        _statusMessage = 'sensor.baselineDialog.remaining'.tr(
+          namedArgs: {'seconds': (10 - count * 0.1).toStringAsFixed(1)},
+        );
       });
 
       if (count >= 100) {
@@ -2791,7 +2975,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
     setState(() {
       _isCollecting = false;
       _isProcessing = true;
-      _statusMessage = 'baseline 데이터를 분석 중입니다...';
+      _statusMessage = 'sensor.baselineDialog.processing'.tr();
     });
 
     // 센서 중지 및 데이터 처리
@@ -2807,14 +2991,20 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
       setState(() {
         _baselineResult = result;
         _isProcessing = false;
-        _statusMessage = 'baseline 설정이 완료되었습니다!';
+        _statusMessage = 'sensor.baselineDialog.done'.tr();
       });
     } else {
       setState(() {
         _isProcessing = false;
-        _statusMessage = '데이터 수집에 실패했습니다. 다시 시도해주세요.';
+        _statusMessage = 'sensor.baselineDialog.collectFailed'.tr();
       });
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _statusMessage = 'sensor.baselineDialog.initialGuide'.tr();
   }
 
   @override
@@ -2843,11 +3033,11 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
           ),
           const SizedBox(width: 12),
           Text(
-            '개인 기준 맞추기',
+            'sensor.baselineDialog.title'.tr(),
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: AppTheme.textHigh,
             ),
           ),
         ],
@@ -2863,7 +3053,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
                 width: double.infinity,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: AppTheme.textHigh.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: LinearProgressIndicator(
@@ -2882,7 +3072,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
               _statusMessage,
               style: TextStyle(
                 fontSize: isSmall ? 14 : 16,
-                color: Colors.white,
+                color: AppTheme.textHigh,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -2906,7 +3096,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '설정된 Baseline 값',
+                      'sensor.baselineDialog.resultTitle'.tr(),
                       style: GoogleFonts.poppins(
                         fontSize: isSmall ? 14 : 16,
                         fontWeight: FontWeight.bold,
@@ -2944,9 +3134,9 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
               widget.onComplete(false);
             },
             child: Text(
-              '취소',
+              'common.cancel'.tr(),
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: AppTheme.textMedium,
               ),
             ),
           ),
@@ -2958,9 +3148,9 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              '기준 맞추기',
-              style: TextStyle(color: Colors.white),
+            child: Text(
+              'sensor.baselineDialog.start'.tr(),
+              style: const TextStyle(color: AppTheme.ctaOnBrand),
             ),
           ),
         ] else if (_baselineResult != null) ...[
@@ -2975,9 +3165,9 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              '완료',
-              style: TextStyle(color: Colors.white),
+            child: Text(
+              'common.complete'.tr(),
+              style: const TextStyle(color: AppTheme.ctaOnBrand),
             ),
           ),
         ],
@@ -2990,26 +3180,26 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: Colors.white70,
+            color: AppTheme.textMedium,
             fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
-            color: Colors.white,
+            color: AppTheme.textHigh,
             fontWeight: FontWeight.bold,
           ),
         ),
         Text(
           unit,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
-            color: Colors.white60,
+            color: AppTheme.textLow,
           ),
         ),
       ],

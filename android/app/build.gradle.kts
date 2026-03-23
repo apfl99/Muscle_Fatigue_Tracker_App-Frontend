@@ -54,14 +54,20 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+}
+
+dependencies {
+    // Flutter deferred components 경로에서 참조하는 Play Core 클래스를
+    // R8 축소 시에도 해석할 수 있도록 명시적으로 포함한다.
+    implementation("com.google.android.play:core:1.10.3")
 }
 
 flutter {

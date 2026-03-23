@@ -190,7 +190,7 @@ class SupabaseService {
       return _client
           .from('workout_logs')
           .select(
-            'performed_at, exercises!inner(muscle_size, exercise_muscle_mapping!inner(muscles!inner(code, display_name)))',
+            'performed_at, exercises!inner(muscle_size, exercise_muscle_mapping!inner(muscles!inner(code, display_name_ko, display_name)))',
           )
           .eq('user_id', user.id)
           .order('performed_at', ascending: false)
@@ -220,14 +220,17 @@ class SupabaseService {
           continue;
         }
 
-        final displayName = (muscleNode['display_name'] as String? ?? '')
-            .trim()
-            .replaceAll('\n', ' ');
+        final displayName = _sanitizeMuscleDisplayName(
+              (muscleNode['display_name_ko'] as String? ??
+                      muscleNode['display_name'] as String?)
+                  ?.replaceAll('\n', ' '),
+            ) ??
+            muscleCode;
         final current = snapshotsByCode[muscleCode];
         if (current == null || performedAt.isAfter(current.lastWorkedAt)) {
           snapshotsByCode[muscleCode] = MuscleRecoverySnapshot(
             muscleCode: muscleCode,
-            displayName: displayName.isEmpty ? muscleCode : displayName,
+            displayName: displayName,
             muscleSize: muscleSize,
             lastWorkedAt: performedAt,
           );
@@ -350,5 +353,30 @@ class SupabaseService {
       }
     }
     return DateTime.now();
+  }
+
+  String? _sanitizeMuscleDisplayName(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final compact = value.toLowerCase().replaceAll(RegExp(r'[\s_\-./]'), '');
+    const placeholders = <String>{
+      '근육부위',
+      '기타근육',
+      '알수없음',
+      '알수없는근육',
+      'unknown',
+      'other',
+      'muscle',
+      'muscles',
+      'na',
+      'none',
+      'null',
+    };
+    if (placeholders.contains(compact)) {
+      return null;
+    }
+    return value;
   }
 }

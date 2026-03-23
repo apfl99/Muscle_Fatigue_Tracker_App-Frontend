@@ -29,6 +29,9 @@ dependencies:
   provider: ^6.1.2
   path_drawing: ^1.0.1
   model_viewer_plus: ^1.10.0
+  easy_localization: ^3.0.8
+  share_plus: ^12.0.1
+  webview_flutter: ^4.13.1
 
 dependency_overrides:
   tflite_flutter:
@@ -53,5 +56,6 @@ flutter:
     - assets/images/icon.png
     - assets/images/muscle_anatomy.svg
     - assets/heatmap/
+    - assets/translations/
     - assets/models/human_muscular_system.glb
     - assets/models/human_muscular_system_segmented.glb

@@ -60,7 +60,7 @@ class FatigueConstants {
   static const double normalThreshold = 1.1; // 정상
   static const double lightThreshold = 1.4; // 회복 중
   static const double midThreshold = 1.8; // 회복 지연
-  // 1.8 이상은 회복 필요
+  // 1.8 이상은 강도 조절 필요
 
   // 변화량 임계값
   static const double noChangeDelta = 0.1; // 변화 없음
@@ -74,7 +74,7 @@ class FatigueColors {
   static const int normalColor = 0xFF4CAF50; // 초록 (정상)
   static const int lightColor = 0xFFFFA726; // 주황 (회복 중)
   static const int midColor = 0xFFFF7043; // 진한 주황 (회복 지연)
-  static const int highColor = 0xFFE53935; // 빨강 (회복 필요)
+  static const int highColor = 0xFFE53935; // 빨강 (강도 조절 필요)
 }
 
 /// ========== ML 단계 전환 설정 ==========
@@ -107,8 +107,8 @@ class MLPhaseConstants {
 /// ML 모드 열거형
 enum MLMode {
   ema('기본 학습', '개인 기준값 만들기', 1),
-  hybrid('향상 분석', 'AI 보조 분석', 2),
-  endToEnd('완전 AI 분석', 'AI 직접 예측', 3);
+  hybrid('향상 모션 기록', 'AI 보조 기록', 2),
+  endToEnd('완전 AI 모션 기록', 'AI 직접 예측', 3);
 
   final String displayName;
   final String description;

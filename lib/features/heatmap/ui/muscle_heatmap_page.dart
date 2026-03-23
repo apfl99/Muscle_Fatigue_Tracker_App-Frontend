@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../theme/app_theme.dart';
+import '../../../widgets/banner_ad_widget.dart';
 import '../data/heatmap_repository.dart';
 import '../hook/heatmap_sync_hook.dart';
 import '../model/heatmap_models.dart';
@@ -60,21 +63,26 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       return;
     }
 
+    await HapticFeedback.lightImpact();
+    if (!mounted) {
+      return;
+    }
     _isRecordSheetOpen = true;
     await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF111317),
+      useSafeArea: true,
+      backgroundColor: AppTheme.surface1,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
         return QuickWorkoutRecordSheet(
           hook: _hook,
           onSaved: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('운동 기록 저장 완료 • 히트맵을 갱신했습니다.'),
+              SnackBar(
+                content: Text('legacyHeatmap.saved'.tr()),
               ),
             );
           },
@@ -92,17 +100,16 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         backgroundColor: AppTheme.darkBackground,
         elevation: 0,
         title: Text(
-          '컨디션 히트맵',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+          'heatmap.title'.tr(),
+          style: AppTheme.titleLargeStyle,
         ),
         actions: [
           IconButton(
-            tooltip: '새로고침',
-            onPressed: () => _hook.refreshHeatmap(),
+            tooltip: 'common.refresh'.tr(),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _hook.refreshHeatmap();
+            },
             icon: const Icon(
               Icons.refresh,
               color: AppTheme.primaryGreen,
@@ -110,74 +117,92 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
           ),
         ],
       ),
-      body: AnimatedBuilder(
-        animation: _hook,
-        builder: (context, child) {
-          if (_hook.isLoading && _hook.entries.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: _hook,
+          builder: (context, child) {
+            final pagePadding = AppTheme.resolvedPagePadding(context);
+            if (_hook.isLoading && _hook.entries.isEmpty) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
 
-          if (_hook.errorMessage != null && _hook.entries.isEmpty) {
-            return _buildFatalFallback(
-              message: _hook.errorMessage!,
-            );
-          }
+            if (_hook.errorMessage != null && _hook.entries.isEmpty) {
+              return _buildFatalFallback(
+                message: _hook.errorMessage!,
+              );
+            }
 
-          return RefreshIndicator(
-            onRefresh: () => _hook.refreshHeatmap(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-              children: [
-                if (widget.bridgePayload != null) ...[
-                  _buildBridgeContext(widget.bridgePayload!),
-                  const SizedBox(height: 14),
-                ],
-                if (_hook.errorMessage != null && _hook.entries.isNotEmpty) ...[
-                  _buildNonBlockingErrorBanner(_hook.errorMessage!),
-                  const SizedBox(height: 10),
-                ],
-                MuscleHeatmapContainer(
-                  entries: _hook.entries,
-                ),
-                const SizedBox(height: 12),
-                _buildStatusSummary(),
-                const SizedBox(height: 8),
-                _buildLegend(),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    key: const ValueKey('open_quick_record_button'),
-                    onPressed: _hook.isMutating ? null : _openQuickRecordSheet,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: Text(
-                      _hook.isMutating ? '저장 중...' : '운동 기록하기',
+            return RefreshIndicator(
+              onRefresh: () => _hook.refreshHeatmap(),
+              child: ListView(
+                physics: const ClampingScrollPhysics(),
+                padding: pagePadding.copyWith(top: 8, bottom: 20),
+                children: [
+                  if (widget.bridgePayload != null) ...[
+                    _buildBridgeContext(widget.bridgePayload!),
+                    const SizedBox(height: 14),
+                  ],
+                  if (_hook.errorMessage != null &&
+                      _hook.entries.isNotEmpty) ...[
+                    _buildNonBlockingErrorBanner(_hook.errorMessage!),
+                    const SizedBox(height: 10),
+                  ],
+                  MuscleHeatmapContainer(
+                    entries: _hook.entries,
+                    viewerSyncKey: ValueKey(_hook.hashCode.toString()),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStatusSummary(),
+                  const SizedBox(height: 8),
+                  _buildLegend(),
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: AppTheme.cardDecoration(
+                      color: AppTheme.surface1,
+                      borderRadius: 20,
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: const BannerAdWidget(
+                      key: ValueKey('heatmap_page_banner'),
+                      placeholderText: 'ads.slot',
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      key: const ValueKey('open_quick_record_button'),
+                      onPressed:
+                          _hook.isMutating ? null : _openQuickRecordSheet,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: Text(
+                        _hook.isMutating
+                            ? 'legacyHeatmap.saving'.tr()
+                            : 'legacyHeatmap.recordWorkout'.tr(),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: AppTheme.ctaOnBrand,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _buildLastUpdatedLabel(_hook.lastSyncedAt),
-                  style: GoogleFonts.poppins(
-                    color: Colors.white60,
-                    fontSize: 12,
+                  const SizedBox(height: 8),
+                  Text(
+                    _buildLastUpdatedLabel(_hook.lastSyncedAt),
+                    style: GoogleFonts.poppins(
+                      color: AppTheme.textLow,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.right,
                   ),
-                  textAlign: TextAlign.right,
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -190,20 +215,17 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
-        ),
+      decoration: AppTheme.cardDecoration(
+        borderRadius: 16,
+        color: AppTheme.surface2.withValues(alpha: 0.55),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '최근 정밀 분석 결과 연동됨',
+            'legacyHeatmap.bridgeLinked'.tr(),
             style: GoogleFonts.poppins(
-              color: Colors.white,
+              color: AppTheme.textHigh,
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),
@@ -215,7 +237,11 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
             children: [
               _metricPill(
                 icon: Icons.speed_outlined,
-                text: '컨디션 점수 ${payload.fatigueScore.toStringAsFixed(2)}',
+                text: 'legacyHeatmap.score'.tr(
+                  namedArgs: {
+                    'score': payload.fatigueScore.toStringAsFixed(2),
+                  },
+                ),
               ),
               _metricPill(
                 icon: Icons.schedule_outlined,
@@ -238,7 +264,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
         border: Border.all(
           color: Colors.orange.withValues(alpha: 0.3),
         ),
@@ -278,7 +304,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       children: [
         Expanded(
           child: _statusTile(
-            label: '회복 필요',
+            label: 'heatmap.status.needRecovery'.tr(),
             count: redCount,
             color: HeatmapPalette.red,
           ),
@@ -286,7 +312,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _statusTile(
-            label: '회복 중',
+            label: 'heatmap.status.recovering'.tr(),
             count: yellowCount,
             color: HeatmapPalette.yellow,
           ),
@@ -294,7 +320,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _statusTile(
-            label: '회복 완료',
+            label: 'heatmap.status.recovered'.tr(),
             count: greenCount,
             color: HeatmapPalette.green,
           ),
@@ -328,7 +354,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
           Text(
             label,
             style: GoogleFonts.poppins(
-              color: Colors.white70,
+              color: AppTheme.textMedium,
               fontSize: 11,
             ),
           ),
@@ -342,9 +368,9 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '상태 범례',
+          'legacyHeatmap.legend'.tr(),
           style: GoogleFonts.poppins(
-            color: Colors.white,
+            color: AppTheme.textHigh,
             fontWeight: FontWeight.w600,
             fontSize: 13,
           ),
@@ -375,7 +401,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
           child: Text(
             HeatmapPalette.labelForStatus(status),
             style: GoogleFonts.poppins(
-              color: Colors.white70,
+              color: AppTheme.textMedium,
               fontSize: 12,
             ),
           ),
@@ -391,18 +417,19 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: AppTheme.surface2.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderSubtle),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white70),
+          Icon(icon, size: 14, color: AppTheme.textMedium),
           const SizedBox(width: 4),
           Text(
             text,
             style: GoogleFonts.poppins(
-              color: Colors.white70,
+              color: AppTheme.textMedium,
               fontSize: 11,
             ),
           ),
@@ -413,21 +440,27 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
 
   String _buildLastUpdatedLabel(DateTime? syncedAt) {
     if (syncedAt == null) {
-      return '동기화 정보 없음';
+      return 'legacyHeatmap.sync.none'.tr();
     }
 
     final now = DateTime.now();
     final diff = now.difference(syncedAt);
     if (diff.inSeconds < 10) {
-      return '업데이트: 방금';
+      return 'legacyHeatmap.sync.justNow'.tr();
     }
     if (diff.inMinutes < 1) {
-      return '업데이트: ${diff.inSeconds}초 전';
+      return 'legacyHeatmap.sync.secondsAgo'.tr(
+        namedArgs: {'seconds': '${diff.inSeconds}'},
+      );
     }
     if (diff.inHours < 1) {
-      return '업데이트: ${diff.inMinutes}분 전';
+      return 'legacyHeatmap.sync.minutesAgo'.tr(
+        namedArgs: {'minutes': '${diff.inMinutes}'},
+      );
     }
-    return '업데이트: ${diff.inHours}시간 전';
+    return 'legacyHeatmap.sync.hoursAgo'.tr(
+      namedArgs: {'hours': '${diff.inHours}'},
+    );
   }
 
   Widget _buildFatalFallback({required String message}) {
@@ -436,10 +469,9 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
       child: Center(
         child: Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white12),
+          decoration: AppTheme.cardDecoration(
+            color: AppTheme.surface2.withValues(alpha: 0.72),
+            borderRadius: 14,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -451,9 +483,9 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
               ),
               const SizedBox(height: 10),
               Text(
-                '히트맵 데이터를 불러오지 못했습니다.',
+                'legacyHeatmap.error.title'.tr(),
                 style: GoogleFonts.poppins(
-                  color: Colors.white,
+                  color: AppTheme.textHigh,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
@@ -462,7 +494,7 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
               Text(
                 message,
                 style: GoogleFonts.poppins(
-                  color: Colors.white70,
+                  color: AppTheme.textMedium,
                   fontSize: 12,
                 ),
                 textAlign: TextAlign.center,
@@ -471,19 +503,21 @@ class _MuscleHeatmapPageState extends State<MuscleHeatmapPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _hook.refreshHeatmap(),
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    _hook.refreshHeatmap();
+                  },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryGreen,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppTheme.ctaOnBrand,
                   ),
-                  child: const Text('다시 시도'),
+                  child: Text('common.retry'.tr()),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                '필요 dart-define: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY',
+                'legacyHeatmap.error.defineHint'.tr(),
                 style: GoogleFonts.poppins(
-                  color: Colors.white54,
+                  color: AppTheme.textLow,
                   fontSize: 11,
                 ),
                 textAlign: TextAlign.center,

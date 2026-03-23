@@ -5,10 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
 import '../providers/heatmap_provider.dart';
+import '../services/heatmap_share_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_disclaimer_footer.dart';
 import '../widgets/banner_ad_widget.dart';
 import '../widgets/heatmap_2d_viewer.dart';
 import '../widgets/interactive_muscle_3d_viewer.dart';
@@ -26,12 +29,38 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   bool _use2DFallback = false;
   bool _fallbackSnackbarShown = false;
   bool _isMuscleSheetOpen = false;
+  bool _isSharing = false;
+  bool _autoFocusIntroConsumed = false;
+  final InteractiveMuscle3DController _viewerController =
+      InteractiveMuscle3DController();
+
+  @override
+  void dispose() {
+    _viewerController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<HeatmapProvider>(
       builder: (context, provider, _) {
         final score = _calculateConditionScore(provider.heatmapEntries);
+        final suggestion = provider.nextWorkoutSuggestion;
+        final targetMuscleCode = _normalizeMuscleCode(
+          suggestion.targetMuscleCode,
+        );
+        final shouldPlayAutoFocusIntro =
+            !_autoFocusIntroConsumed && targetMuscleCode.isNotEmpty;
+        if (shouldPlayAutoFocusIntro) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _autoFocusIntroConsumed) {
+              return;
+            }
+            setState(() {
+              _autoFocusIntroConsumed = true;
+            });
+          });
+        }
         final pagePadding = AppTheme.resolvedPagePadding(context);
         final viewerHeight = (MediaQuery.sizeOf(context).height * 0.44).clamp(
           280.0,
@@ -76,10 +105,16 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                                         provider.hashCode.toString(),
                                       ),
                                       entries: provider.heatmapEntries,
+                                      controller: _viewerController,
                                       exposeBackgroundKey: true,
                                       showHotspots: false,
                                       highlightedMuscleCode:
                                           _selectedMuscleCode,
+                                      recommendedMuscleCode: targetMuscleCode,
+                                      autoFocusTargetMuscleCode:
+                                          targetMuscleCode,
+                                      enableAutoFocusIntro:
+                                          shouldPlayAutoFocusIntro,
                                       onMuscleTap: (muscleCode) =>
                                           _onMuscleTapped(provider, muscleCode),
                                       onFallbackTo2D: _switchTo2DViewer,
@@ -89,6 +124,11 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                               left: 14,
                               top: 14,
                               child: _buildStatusBadge(score),
+                            ),
+                            Positioned(
+                              right: 14,
+                              top: 14,
+                              child: _buildTargetBadge(targetMuscleCode),
                             ),
                             if (provider.isLoading)
                               const Center(
@@ -102,6 +142,11 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                     ),
                   ),
                   AppTheme.gap16,
+                  _buildTargetSuggestionCard(
+                    provider: provider,
+                    suggestion: suggestion,
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -137,6 +182,29 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      key: const Key('heatmap_share_button'),
+                      onPressed: _isSharing
+                          ? null
+                          : () => _shareCurrent3DMap(provider),
+                      icon: _isSharing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.ios_share_rounded),
+                      label: Text('heatmap.share.cta'.tr()),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: const Color(0xFF13314B),
+                        foregroundColor: AppTheme.textHigh,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Container(
                     decoration: AppTheme.cardDecoration(
@@ -152,6 +220,8 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                   ),
                   const SizedBox(height: 12),
                   _buildRecoveryInsightCard(provider),
+                  const SizedBox(height: 12),
+                  const AppDisclaimerFooter(compact: true),
                 ],
               ),
             ),
@@ -162,18 +232,15 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   }
 
   void _switchTo2DViewer() {
-    if (!mounted || _use2DFallback) {
+    if (!mounted) {
       return;
     }
-    setState(() {
-      _use2DFallback = true;
-    });
     if (_fallbackSnackbarShown) {
       return;
     }
     _fallbackSnackbarShown = true;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('offline.viewerFallback2D'.tr())),
+      SnackBar(content: Text('viewer.interactive3d.optimizing'.tr())),
     );
   }
 
@@ -337,6 +404,259 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     );
   }
 
+  Widget _buildTargetBadge(String targetMuscleCode) {
+    if (targetMuscleCode.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      key: const Key('next_workout_target_badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppTheme.surface1.withValues(alpha: 0.78),
+        borderRadius: AppTheme.buttonRadius,
+        border:
+            Border.all(color: const Color(0xFF4BB9E6).withValues(alpha: 0.64)),
+      ),
+      child: Text(
+        'heatmap.nextWorkout.badge'.tr(
+          namedArgs: {'muscle': _displayNameForCode(targetMuscleCode)},
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF77D3FF),
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTargetSuggestionCard({
+    required HeatmapProvider provider,
+    required NextWorkoutSuggestion suggestion,
+  }) {
+    final targetCode = _normalizeMuscleCode(suggestion.targetMuscleCode);
+    final targetName = _displayNameForCode(targetCode);
+    final overloaded = suggestion.overloadedMuscleCodes
+        .take(2)
+        .map(_displayNameForCode)
+        .join(', ');
+    final copy = overloaded.isEmpty
+        ? 'heatmap.nextWorkout.copyFallback'.tr(
+            namedArgs: {'target': targetName},
+          )
+        : 'heatmap.nextWorkout.copy'.tr(
+            namedArgs: {
+              'overloaded': overloaded,
+              'target': targetName,
+            },
+          );
+    final confidencePercent =
+        (suggestion.confidence * 100).round().clamp(0, 100);
+    return Container(
+      key: const Key('next_workout_suggestion_card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.cardDecoration(
+        color: AppTheme.surface1,
+        borderRadius: 18,
+        borderColor: const Color(0xFF2D6F8C).withValues(alpha: 0.55),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3EA9DE).withValues(alpha: 0.20),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.track_changes_rounded,
+                  color: Color(0xFF66C9F8),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'heatmap.nextWorkout.title'.tr(),
+                  style: TextStyle(
+                    color: AppTheme.textHigh,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                'heatmap.nextWorkout.confidence'.tr(
+                  namedArgs: {'value': '$confidencePercent'},
+                ),
+                style: const TextStyle(
+                  color: Color(0xFF77D3FF),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            copy,
+            style: TextStyle(
+              color: AppTheme.textMedium,
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildMetricPill(
+                icon: Icons.bolt_rounded,
+                label: 'heatmap.share.metricPerformance'.tr(),
+                value: provider.performanceScore.toString(),
+              ),
+              const SizedBox(width: 8),
+              _buildMetricPill(
+                icon: Icons.fitness_center_rounded,
+                label: 'heatmap.share.metricVolume'.tr(),
+                value: provider.todayWorkoutVolume.toString(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricPill({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppTheme.surface2.withValues(alpha: 0.54),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderSubtle),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: AppTheme.textMedium),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '$label · $value',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppTheme.textMedium,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareCurrent3DMap(HeatmapProvider provider) async {
+    if (_isSharing) {
+      return;
+    }
+    setState(() {
+      _isSharing = true;
+    });
+
+    try {
+      final framePng =
+          await _viewerController.capturePngBytes(pixelRatio: 1.28);
+      if (framePng == null || framePng.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('heatmap.share.captureUnavailable'.tr())),
+          );
+        }
+        return;
+      }
+
+      final suggestion = provider.nextWorkoutSuggestion;
+      final targetCode = _normalizeMuscleCode(suggestion.targetMuscleCode);
+      final targetName = _displayNameForCode(targetCode);
+      final overloaded = suggestion.overloadedMuscleCodes
+          .take(2)
+          .map(_displayNameForCode)
+          .join(', ');
+      final shareSubline = overloaded.isEmpty
+          ? 'heatmap.share.sublineFallback'.tr(
+              namedArgs: {'target': targetName},
+            )
+          : 'heatmap.share.subline'.tr(
+              namedArgs: {
+                'overloaded': overloaded,
+                'target': targetName,
+              },
+            );
+      final shareImageFile = await HeatmapShareService.buildShareableImage(
+        modelPngBytes: framePng,
+        performanceScore: provider.performanceScore,
+        workoutVolume: provider.todayWorkoutVolume,
+        performanceLabel: 'heatmap.share.metricPerformance'.tr(),
+        volumeLabel: 'heatmap.share.metricVolume'.tr(),
+        headline: 'heatmap.share.headline'.tr(
+          namedArgs: {'target': targetName},
+        ),
+        subline: shareSubline,
+        watermark: 'heatmap.share.watermark'.tr(),
+      );
+      final shareText = 'heatmap.share.message'.tr(
+        namedArgs: {
+          'target': targetName,
+          'score': provider.performanceScore.toString(),
+          'volume': provider.todayWorkoutVolume.toString(),
+        },
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile(
+              shareImageFile.path,
+              mimeType: 'image/png',
+              name: 'musclecare_map.png',
+            ),
+          ],
+          subject: 'heatmap.share.subject'.tr(),
+          text: shareText,
+        ),
+      );
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[HeatmapFullViewerPage] share failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('heatmap.share.failed'.tr())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharing = false;
+        });
+      }
+    }
+  }
+
   String _statusLabel(double peakScore) {
     if (peakScore >= 2.6) {
       return 'heatmap.status.needRecovery'.tr();
@@ -393,6 +713,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                 final row = rows[index];
                 final selected = _selectedMuscleCode == row.muscleCode;
                 return InkWell(
+                  key: Key('recovery_row_${row.muscleCode}'),
                   borderRadius: AppTheme.buttonRadius,
                   onTap: () => _onRecoveryRowTapped(row),
                   child: Container(
@@ -766,7 +1087,8 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                           backgroundColor: AppTheme.surface1.withValues(
                             alpha: 0.70,
                           ),
-                          valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(statusColor),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -794,7 +1116,9 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                     border: Border.all(color: AppTheme.borderSubtle),
                   ),
                   child: Text(
-                    '예상 회복 시간: ${recoveryHours.clamp(0, 72)}시간',
+                    'heatmap.recoveryPrediction.estimatedHours'.tr(
+                      namedArgs: {'hours': recoveryHours.clamp(0, 72).toString()},
+                    ),
                     style: TextStyle(
                       color: AppTheme.textHigh,
                       fontSize: 12,
@@ -886,32 +1210,33 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   String _displayNameForCode(String muscleCode) {
     final normalized = _normalizeMuscleCode(muscleCode);
     if (normalized.isEmpty) {
-      return context.locale.languageCode == 'ko' ? '근육' : 'Muscle';
+      return 'muscle.unknown'.tr();
     }
+
     final displayKey = _muscleDisplayNameMap[normalized];
     if (displayKey != null) {
       return displayKey.tr();
     }
-    return _humanizeMuscleCode(normalized);
+
+    final dynamicKey = 'muscle.${_snakeToCamelCase(normalized)}';
+    final translated = dynamicKey.tr();
+    if (translated != dynamicKey) {
+      return translated;
+    }
+
+    return 'muscle.unknown'.tr();
   }
 
-  String _humanizeMuscleCode(String code) {
-    final words = code
-        .replaceAll(RegExp(r'[_-]+'), ' ')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .toList();
-    if (words.isEmpty) {
-      return context.locale.languageCode == 'ko' ? '근육' : 'Muscle';
+  String _snakeToCamelCase(String value) {
+    final tokens = value.split('_').where((token) => token.isNotEmpty).toList();
+    if (tokens.isEmpty) {
+      return value;
     }
-    return words
-        .map(
-          (word) => word.length == 1
-              ? word.toUpperCase()
-              : '${word[0].toUpperCase()}${word.substring(1)}',
-        )
-        .join(' ');
+    return tokens.first +
+        tokens
+            .skip(1)
+            .map((token) => '${token[0].toUpperCase()}${token.substring(1)}')
+            .join();
   }
 
   String _resolvedDisplayName({
@@ -1132,8 +1457,8 @@ const Map<String, String> _muscleAliases = {
   'triceps_surae': 'calves',
   'wrist_flexor': 'forearm_flexor',
   'wrist_extensor': 'forearm_extensor',
-  'forearm': 'forearm_flexor',
-  'forearms': 'forearm_flexor',
+  'forearm': 'forearms',
+  'forearms': 'forearms',
   'gastrocnemius_medial': 'gastrocnemius',
   'gastrocnemius_lateral': 'gastrocnemius',
   'calf': 'calves',
@@ -1154,9 +1479,10 @@ const Map<String, String> _renderGroupByMuscleCode = {
   'biceps': 'upper_arms',
   'triceps': 'upper_arms',
   'brachialis': 'upper_arms',
-  'brachioradialis': 'upper_arms',
-  'forearm_flexor': 'upper_arms',
-  'forearm_extensor': 'upper_arms',
+  'brachioradialis': 'forearms',
+  'forearms': 'forearms',
+  'forearm_flexor': 'forearms',
+  'forearm_extensor': 'forearms',
   'rectus_abdominis': 'abs',
   'obliques': 'obliques',
   'quadriceps': 'quads',
@@ -1256,6 +1582,7 @@ const Map<String, String> _muscleDisplayNameMap = {
   'triceps': 'muscle.triceps',
   'brachioradialis': 'muscle.brachioradialis',
   'forearm': 'muscle.forearm',
+  'forearms': 'muscle.forearms',
   'forearm_flexor': 'muscle.forearmFlexor',
   'forearm_extensor': 'muscle.forearmExtensor',
   'rectus_abdominis': 'muscle.rectusAbdominis',

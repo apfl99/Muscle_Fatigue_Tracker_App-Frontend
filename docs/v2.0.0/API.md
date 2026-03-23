@@ -22,6 +22,7 @@
 - 검색 확장(한글/초성/동의어): `supabase/migrations/20260301052000_req30_search_korean_synonyms.sql`
 - V2 고도화(유산소/무산소 분리 + 로그 유연화): `supabase/migrations/20260301070000_req30_v2_cardio_weight_split.sql`
 - 해부학 JSON 업그레이드(근육 배열/히트맵 가중치): `supabase/migrations/20260305142000_req30_anatomy_json_upgrade.sql`
+- 근육 표준화/placeholder 제거/계약 강화: `supabase/migrations/20260308100000_req30_muscle_standardization.sql`
 
 권장 실행 순서:
 
@@ -31,6 +32,7 @@
 4. `20260301052000_req30_search_korean_synonyms.sql`
 5. `20260301070000_req30_v2_cardio_weight_split.sql`
 6. `20260305142000_req30_anatomy_json_upgrade.sql`
+7. `20260308100000_req30_muscle_standardization.sql`
 
 ---
 
@@ -42,8 +44,9 @@
 - `exercises (1)` -> `(N) exercise_search_aliases`
 - `muscles (1)` -> `(N) exercise_muscle_mapping`
 
-즉, `workout_logs.exercise_id -> exercise_muscle_mapping -> muscles` 경로로
-각 운동 로그가 영향을 주는 근육 목록을 계산합니다.
+히트맵 계산 시 기본 경로는
+`workout_logs.exercise_id -> exercises.primary_muscles/secondary_muscles -> muscles` 이며,
+`exercise_muscle_mapping`은 참조/호환용 브릿지 테이블로 유지됩니다.
 
 ---
 
@@ -54,7 +57,19 @@
 - `id uuid PK`
 - `code text UNIQUE NOT NULL` (소문자 snake_case, SVG Path ID와 1:1 매핑)
 - `display_name text NOT NULL`
+- `display_name_ko text NOT NULL` (placeholder 금지)
+- `display_name_latin text NULL`
+- `anatomy_id text NULL` (FMA/UBERON 등 표준 ID 확장 필드)
+- `parent_muscle_code text NULL` (`muscles.code` self FK)
+- `side text NOT NULL DEFAULT 'bilateral'` (`left|right|bilateral|unknown`)
 - `display_order integer NOT NULL DEFAULT 0`
+- `created_at timestamptz NOT NULL DEFAULT now()`
+- `updated_at timestamptz NOT NULL DEFAULT now()`
+
+### `public.muscle_code_aliases`
+
+- `alias_code text PK` (정규화된 별칭 코드)
+- `muscle_code text NOT NULL FK -> muscles(code)`
 - `created_at timestamptz NOT NULL DEFAULT now()`
 - `updated_at timestamptz NOT NULL DEFAULT now()`
 
@@ -117,6 +132,8 @@
 - `idx_exercises_muscle_size (muscle_size)`
 - `idx_exercises_primary_muscles_gin (gin, primary_muscles)`
 - `idx_exercises_secondary_muscles_gin (gin, secondary_muscles)`
+- `idx_muscles_anatomy_id_unique (anatomy_id) where anatomy_id is not null`
+- `idx_muscles_parent_muscle_code (parent_muscle_code)`
 - `idx_exercises_name_trgm (gin, name gin_trgm_ops)`
 - `idx_exercises_name_norm_trgm (gin, search_normalize_text(name) gin_trgm_ops)`
 - `idx_exercise_aliases_alias_trgm (gin, alias gin_trgm_ops)`
@@ -134,7 +151,7 @@
 
 ## 5) RLS 정책
 
-### Reference Table (`muscles`, `exercises`, `exercise_muscle_mapping`)
+### Reference Table (`muscles`, `muscle_code_aliases`, `exercises`, `exercise_muscle_mapping`)
 
 - `SELECT`만 `authenticated`에 허용
 - `INSERT/UPDATE/DELETE` 정책 없음 (기본 거부)
@@ -184,12 +201,24 @@
 [
   {
     "muscle": "quadriceps",
+    "muscle_code": "quadriceps",
+    "display_name_ko": "대퇴사두근",
+    "display_name_latin": "Musculus quadriceps femoris",
+    "anatomy_id": null,
+    "parent_muscle_code": null,
+    "side": "bilateral",
     "status": "red",
     "fatigue_score": 2.0,
     "last_trained_at": "2026-03-08T08:04:59.08414+00:00"
   },
   {
     "muscle": "calves",
+    "muscle_code": "calves",
+    "display_name_ko": "종아리",
+    "display_name_latin": "Musculus gastrocnemius",
+    "anatomy_id": null,
+    "parent_muscle_code": null,
+    "side": "bilateral",
     "status": "yellow",
     "fatigue_score": 1.0,
     "last_trained_at": "2026-03-08T08:04:59.08414+00:00"
@@ -214,6 +243,10 @@
   - 72h~7d: `0.15`
   - 7d~14d: `0.05`
 - 근육별 `fatigue_score = Σ(역할가중치 × 시간감쇠)`
+- 응답 보장:
+  - `muscle_code`: 항상 `^[a-z0-9_]+$` 준수
+  - `display_name_ko`: placeholder(`근육부위`, `기타 근육`, `Unknown`, `Other`) 미반환
+  - 레거시 호환을 위해 `muscle` 필드는 `muscle_code`와 동일값 유지
 
 ### Error Responses
 
@@ -299,20 +332,24 @@
 3. 검색 RPC 호출 시 `p_keyword`에 사용자 입력값 전달
 4. 키워드 입력 유형(영문/한글/초성)을 프론트에서 별도로 분기하지 않음
 5. 검색 응답(`id`, `name`, `category`, `exercise_type`, `muscle_size`, `primary_muscles`, `secondary_muscles`)으로 자동완성 목록을 구성
-6. 히트맵 응답 배열을 `muscle` 기준으로 SVG path와 매핑
+6. 히트맵 응답에서 `muscle_code`를 SVG path 키로 사용 (`muscle`은 레거시 호환 필드)
 7. 서버 시간 기준(`now()`)으로 색상이 계산되므로 클라이언트에서 시간 계산 금지
 8. 기록 저장 시 payload 규칙:
    - 유산소(`exercise_type='cardio'`): `duration_minutes` 필수, `sets/reps/weight_kg`는 `null` 가능
    - 무산소(`exercise_type='weight'`): `sets/reps` 필수, `duration_minutes/distance_km`는 선택
+9. 프론트 fallback 문자열(`근육 부위`, `Unknown`) 표시 금지:
+   - 항상 API의 `display_name_ko`를 우선 렌더링
+   - `display_name_ko` 비어있음/placeholder인 경우를 에러로 기록(정상 플로우에서 0건이어야 함)
 
 ---
 
 ## 8) Seed 데이터 요약
 
-- 근육 코드: 27개
-- 운동 종목: 250개
+- 근육 표준 코드: 34개
+- 운동 종목: 1073개
 - 카테고리: free_weight, machine, bodyweight, cable, band, kettlebell, olympic, strongman, cardio, plyometric
 - 메타데이터: `exercise_type(cardio|weight)`, `muscle_size(large|small)` 포함
 - 해부학 데이터: `primary_muscles`, `secondary_muscles`, `biomechanics_note` 포함
+- 근육 표준 메타: `display_name_ko`, `display_name_latin`, `anatomy_id`, `parent_muscle_code`, `side`
 - 매핑: 그룹 기반 주동근/협응근 자동 생성
 - 검색 별칭(한글/동의어/약어): 업서트 방식으로 관리 (현재 117건)

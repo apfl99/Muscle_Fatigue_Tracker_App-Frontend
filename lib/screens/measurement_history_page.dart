@@ -1,6 +1,8 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
@@ -8,6 +10,7 @@ import '../model/database_helper.dart';
 import '../model/measure_session.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/banner_ad_widget.dart';
 
 enum _DashboardMode {
   trend,
@@ -114,7 +117,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       }
       setState(() {
         _isLoading = false;
-        _errorMessage = '히스토리 로딩 중 오류가 발생했습니다: $error';
+        _errorMessage = 'history.errors.loadFailed'.tr(args: ['$error']);
       });
     }
   }
@@ -198,12 +201,14 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
 
   _TimelineEntry _toAnalysisEntry(MeasureSession session) {
     final level = FatigueCalculator.getFatigueLevel(session.fatigue);
+    final localizedLevel = _localizedFatigueLevel(level);
     final modeLabel = _analysisModeLabel(session.mode);
     return _TimelineEntry(
       type: _TimelineEntryType.analysis,
       occurredAt: session.timestamp,
-      title: '정밀 분석 리포트',
-      subtitle: '$modeLabel · $level (${session.fatigue.toStringAsFixed(2)})',
+      title: 'history.analysis.reportTitle'.tr(),
+      subtitle:
+          '$modeLabel · $localizedLevel (${session.fatigue.toStringAsFixed(2)})',
       icon: Icons.graphic_eq_rounded,
       color: _analysisModeColor(session.mode),
     );
@@ -215,21 +220,25 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       backgroundColor: AppTheme.darkBackground,
       appBar: AppBar(
         backgroundColor: AppTheme.darkBackground,
-        foregroundColor: Colors.white,
-        title: const Text('히스토리'),
+        foregroundColor: AppTheme.textHigh,
+        title: Text('history.title'.tr()),
         actions: [
           IconButton(
-            onPressed: _loadHistory,
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _loadHistory();
+            },
             icon: const Icon(Icons.refresh),
-            tooltip: '새로고침',
+            tooltip: 'common.refresh'.tr(),
           ),
         ],
       ),
-      body: _buildBody(),
+      body: SafeArea(child: _buildBody()),
     );
   }
 
   Widget _buildBody() {
+    final pagePadding = AppTheme.resolvedPagePadding(context);
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.primaryGreen),
@@ -255,12 +264,12 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                 onPressed: _loadHistory,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryGreen,
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppTheme.ctaOnBrand,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
-                child: const Text('다시 시도'),
+                child: Text('common.retry'.tr()),
               ),
             ],
           ),
@@ -271,7 +280,12 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          padding: EdgeInsets.fromLTRB(
+            pagePadding.left,
+            12,
+            pagePadding.right,
+            10,
+          ),
           child: _buildTopDashboard(),
         ),
         Expanded(
@@ -281,29 +295,61 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             child: CustomScrollView(
               key: const Key('history_timeline_scroll'),
               controller: _scrollController,
+              physics: const ClampingScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding.left,
+                      2,
+                      pagePadding.right,
+                      10,
+                    ),
                     child: Row(
                       children: [
                         Text(
                           _timelineTitle(),
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: AppTheme.textHigh,
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         const Spacer(),
                         Text(
-                          '총 ${_filteredTimeline.length}건',
-                          style: const TextStyle(
-                            color: Colors.white60,
+                          'history.totalCount'.tr(
+                            namedArgs: {
+                              'count': _filteredTimeline.length.toString(),
+                            },
+                          ),
+                          style: TextStyle(
+                            color: AppTheme.textLow,
                             fontSize: 12,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding.left,
+                      0,
+                      pagePadding.right,
+                      10,
+                    ),
+                    child: Container(
+                      decoration: AppTheme.cardDecoration(
+                        color: AppTheme.surface1,
+                        borderRadius: 20,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: const BannerAdWidget(
+                        key: ValueKey('history_page_banner'),
+                        placeholderText: 'ads.slot',
+                        padding: EdgeInsets.symmetric(vertical: 4),
+                      ),
                     ),
                   ),
                 ),
@@ -314,7 +360,12 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                   )
                 else
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding.left,
+                      0,
+                      pagePadding.right,
+                      24,
+                    ),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -349,17 +400,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
 
   Widget _buildTopDashboard() {
     return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black45,
-            blurRadius: 16,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
+      decoration: AppTheme.cardDecoration(),
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,7 +409,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             children: [
               _dashboardTab(
                 key: const Key('history_mode_trend'),
-                label: '추이 그래프 보기',
+                label: 'history.dashboard.trend'.tr(),
                 selected: _dashboardMode == _DashboardMode.trend,
                 onTap: () {
                   setState(() {
@@ -380,7 +421,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               const SizedBox(width: 8),
               _dashboardTab(
                 key: const Key('history_mode_calendar'),
-                label: '캘린더 보기',
+                label: 'history.dashboard.calendar'.tr(),
                 selected: _dashboardMode == _DashboardMode.calendar,
                 onTap: () {
                   setState(() {
@@ -403,8 +444,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           Text(
             _filterSummary(),
             key: const Key('history_filter_label'),
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: AppTheme.textMedium,
               fontSize: 12,
             ),
           ),
@@ -422,8 +463,11 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
     return Expanded(
       child: InkWell(
         key: key,
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: AppTheme.buttonRadius,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeInOut,
@@ -431,19 +475,19 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           decoration: BoxDecoration(
             color: selected
                 ? AppTheme.primaryGreen.withValues(alpha: 0.2)
-                : Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(14),
+                : AppTheme.surface2.withValues(alpha: 0.5),
+            borderRadius: AppTheme.buttonRadius,
             border: Border.all(
               color: selected
                   ? AppTheme.primaryGreen.withValues(alpha: 0.7)
-                  : Colors.white.withValues(alpha: 0.14),
+                  : AppTheme.borderSubtle,
             ),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? AppTheme.primaryGreen : Colors.white70,
+              color: selected ? AppTheme.primaryGreen : AppTheme.textMedium,
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
@@ -456,21 +500,21 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   Widget _buildTimelineTypeToggle() {
     return CupertinoSlidingSegmentedControl<_TimelineFilter>(
       key: const Key('history_timeline_toggle'),
-      backgroundColor: Colors.white.withValues(alpha: 0.08),
+      backgroundColor: AppTheme.surface2,
       thumbColor: AppTheme.primaryGreen.withValues(alpha: 0.24),
       groupValue: _timelineFilter,
-      children: const <_TimelineFilter, Widget>{
+      children: <_TimelineFilter, Widget>{
         _TimelineFilter.manual: Padding(
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Text(
-            '운동 일지',
+            'history.timelineType.manual'.tr(),
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
         _TimelineFilter.analysis: Padding(
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Text(
-            '정밀 분석',
+            'history.timelineType.analysis'.tr(),
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
@@ -479,6 +523,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
         if (value == null) {
           return;
         }
+        HapticFeedback.lightImpact();
         setState(() {
           _timelineFilter = value;
         });
@@ -494,9 +539,9 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
         Wrap(
           spacing: 8,
           children: [
-            _rangeChip('7일', 7),
-            _rangeChip('30일', 30),
-            _rangeChip('전체', null),
+            _rangeChip('history.range.7d'.tr(), 7),
+            _rangeChip('history.range.30d'.tr(), 30),
+            _rangeChip('history.range.all'.tr(), null),
           ],
         ),
         const SizedBox(height: 10),
@@ -514,18 +559,20 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       selected: _trendRangeDays == value,
       selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
       labelStyle: TextStyle(
-        color:
-            _trendRangeDays == value ? AppTheme.primaryGreen : Colors.white70,
+        color: _trendRangeDays == value
+            ? AppTheme.primaryGreen
+            : AppTheme.textMedium,
         fontSize: 12,
         fontWeight: FontWeight.w700,
       ),
-      backgroundColor: Colors.white.withValues(alpha: 0.05),
+      backgroundColor: AppTheme.surface2,
       side: BorderSide(
         color: _trendRangeDays == value
             ? AppTheme.primaryGreen.withValues(alpha: 0.65)
-            : Colors.white.withValues(alpha: 0.14),
+            : AppTheme.borderSubtle,
       ),
       onSelected: (_) {
+        HapticFeedback.lightImpact();
         setState(() {
           _trendRangeDays = value;
         });
@@ -537,10 +584,10 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   Widget _buildTrendChart() {
     final spots = _analysisSpots();
     if (spots.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          '정밀 분석 리포트 데이터가 없습니다.',
-          style: TextStyle(color: Colors.white60, fontSize: 12),
+          'history.analysis.empty'.tr(),
+          style: TextStyle(color: AppTheme.textLow, fontSize: 12),
         ),
       );
     }
@@ -554,7 +601,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           drawVerticalLine: false,
           horizontalInterval: 0.5,
           getDrawingHorizontalLine: (_) => FlLine(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: AppTheme.textHigh.withValues(alpha: 0.05),
             strokeWidth: 1,
           ),
         ),
@@ -572,7 +619,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               reservedSize: 34,
               getTitlesWidget: (value, _) => Text(
                 value.toStringAsFixed(1),
-                style: const TextStyle(color: Colors.white54, fontSize: 10),
+                style: TextStyle(color: AppTheme.textLow, fontSize: 10),
               ),
             ),
           ),
@@ -586,8 +633,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                 .map(
                   (item) => LineTooltipItem(
                     item.y.toStringAsFixed(2),
-                    const TextStyle(
-                      color: Colors.white,
+                    TextStyle(
+                      color: AppTheme.textHigh,
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                     ),
@@ -601,16 +648,23 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             spots: spots,
             isCurved: true,
             barWidth: 3,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF42A5F5), Color(0xFFAB47BC)],
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.accentBrand,
+                AppTheme.accentBrand.withValues(alpha: 0.65),
+              ],
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: AppTheme.chartGlowGradient(AppTheme.accentBrand),
             ),
             dotData: FlDotData(
               show: true,
               getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
                 radius: 3.5,
-                color: Colors.white,
+                color: AppTheme.surface1,
                 strokeWidth: 1.4,
-                strokeColor: const Color(0xFF42A5F5),
+                strokeColor: AppTheme.accentBrand,
               ),
             ),
           ),
@@ -651,20 +705,22 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           focusedDay: _focusedDay,
           selectedDayPredicate: (day) =>
               _selectedDay != null && _isSameDate(day, _selectedDay!),
-          headerStyle: const HeaderStyle(
+          headerStyle: HeaderStyle(
             formatButtonVisible: false,
             titleCentered: true,
             titleTextStyle: TextStyle(
-              color: Colors.white,
+              color: AppTheme.textHigh,
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
-            leftChevronIcon: Icon(Icons.chevron_left, color: Colors.white70),
-            rightChevronIcon: Icon(Icons.chevron_right, color: Colors.white70),
+            leftChevronIcon:
+                Icon(Icons.chevron_left, color: AppTheme.textMedium),
+            rightChevronIcon:
+                Icon(Icons.chevron_right, color: AppTheme.textMedium),
           ),
-          daysOfWeekStyle: const DaysOfWeekStyle(
-            weekdayStyle: TextStyle(color: Colors.white54),
-            weekendStyle: TextStyle(color: Colors.white54),
+          daysOfWeekStyle: DaysOfWeekStyle(
+            weekdayStyle: TextStyle(color: AppTheme.textMedium),
+            weekendStyle: TextStyle(color: AppTheme.textMedium),
           ),
           calendarStyle: CalendarStyle(
             todayDecoration: BoxDecoration(
@@ -679,8 +735,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               color: Color(0xFF42A5F5),
               shape: BoxShape.circle,
             ),
-            defaultTextStyle: const TextStyle(color: Colors.white),
-            outsideTextStyle: const TextStyle(color: Colors.white38),
+            defaultTextStyle: TextStyle(color: AppTheme.textHigh),
+            outsideTextStyle: TextStyle(color: AppTheme.textLow),
           ),
           eventLoader: (day) {
             return _filteredTimeline
@@ -715,8 +771,8 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
               });
               _recomputeTimeline(resetVisible: true);
             },
-            child: const Text(
-              '오늘 날짜 필터',
+            child: Text(
+              'history.calendar.filterToday'.tr(),
               style: TextStyle(color: AppTheme.primaryGreen),
             ),
           ),
@@ -727,17 +783,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
 
   Widget _buildTimelineCard(_TimelineEntry entry) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black45,
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
+      decoration: AppTheme.cardDecoration(),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: Container(
@@ -751,15 +797,15 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
         ),
         title: Text(
           entry.title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppTheme.textHigh,
             fontWeight: FontWeight.w700,
           ),
         ),
         subtitle: Text(
           entry.subtitle,
-          style: const TextStyle(
-            color: Colors.white70,
+          style: TextStyle(
+            color: AppTheme.textMedium,
             fontSize: 12,
           ),
         ),
@@ -768,7 +814,9 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              entry.type == _TimelineEntryType.manual ? '운동 일지' : '정밀 분석',
+              entry.type == _TimelineEntryType.manual
+                  ? 'history.timelineType.manual'.tr()
+                  : 'history.timelineType.analysis'.tr(),
               style: TextStyle(
                 color: entry.color,
                 fontSize: 10,
@@ -778,7 +826,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             const SizedBox(height: 3),
             Text(
               _formatDateTime(entry.occurredAt),
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
+              style: TextStyle(color: AppTheme.textLow, fontSize: 11),
             ),
           ],
         ),
@@ -787,30 +835,30 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   }
 
   Widget _buildEmptyTimeline() {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.inbox_outlined,
               size: 54,
-              color: Colors.white38,
+              color: AppTheme.textLow,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
-              '선택된 조건에 맞는 기록이 없습니다.',
+              'history.empty.title'.tr(),
               style: TextStyle(
-                color: Colors.white70,
+                color: AppTheme.textMedium,
                 fontSize: 14,
               ),
             ),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(
-              '상단 필터를 바꿔 다른 기간의 운동 일지와 정밀 분석 리포트를 확인해보세요.',
+              'history.empty.description'.tr(),
               style: TextStyle(
-                color: Colors.white54,
+                color: AppTheme.textLow,
                 fontSize: 12,
                 height: 1.4,
               ),
@@ -825,28 +873,44 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   String _manualSubtitle(WorkoutLogRecord log) {
     if (log.exerciseType == ExerciseType.cardio) {
       final duration =
-          log.durationMinutes == null ? '-' : '${log.durationMinutes}분';
+          log.durationMinutes == null
+              ? '-'
+              : 'history.unit.minute'.tr(
+                  namedArgs: {'value': '${log.durationMinutes}'},
+                );
       final distance = log.distanceKm == null
           ? ''
           : ' · ${log.distanceKm!.toStringAsFixed(1)}km';
-      return '컨디션 로그 · 유산소 · $duration$distance';
+      return 'history.subtitle.cardio'.tr(
+        namedArgs: {'duration': duration, 'distance': distance},
+      );
     }
 
-    final sets = log.sets == null ? '-' : '${log.sets}세트';
-    final reps = log.reps == null ? '-' : '${log.reps}회';
+    final sets = log.sets == null
+        ? '-'
+        : 'history.unit.set'.tr(namedArgs: {'value': '${log.sets}'});
+    final reps = log.reps == null
+        ? '-'
+        : 'history.unit.rep'.tr(namedArgs: {'value': '${log.reps}'});
     final weight =
         log.weightKg == null ? '' : ' · ${log.weightKg!.toStringAsFixed(1)}kg';
-    return '컨디션 로그 · $sets / $reps$weight';
+    return 'history.subtitle.weight'.tr(
+      namedArgs: {
+        'set': sets,
+        'rep': reps,
+        'weight': weight,
+      },
+    );
   }
 
   String _analysisModeLabel(String mode) {
     switch (mode) {
       case 'hybrid':
-        return 'Hybrid';
+        return 'history.analysis.mode.hybrid'.tr();
       case 'endToEnd':
-        return 'E2E';
+        return 'history.analysis.mode.endToEnd'.tr();
       default:
-        return 'EMA';
+        return 'history.analysis.mode.ema'.tr();
     }
   }
 
@@ -863,24 +927,84 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
 
   String _filterSummary() {
     final typeLabel =
-        _timelineFilter == _TimelineFilter.manual ? '운동 일지' : '정밀 분석';
+        _timelineFilter == _TimelineFilter.manual
+            ? 'history.timelineType.manual'.tr()
+            : 'history.timelineType.analysis'.tr();
     if (_dashboardMode == _DashboardMode.trend) {
       if (_trendRangeDays == null) {
-        return '필터: $typeLabel · 전체 기간 추이';
+        return 'history.filter.trendAll'.tr(args: [typeLabel]);
       }
-      return '필터: $typeLabel · 최근 $_trendRangeDays일 추이';
+      return 'history.filter.trendRecent'.tr(
+        namedArgs: {
+          'type': typeLabel,
+          'days': '$_trendRangeDays',
+        },
+      );
     }
 
     if (_selectedDay != null) {
-      return '필터: $typeLabel · ${_dateLabel(_selectedDay!)} 선택';
+      return 'history.filter.selectedDate'.tr(
+        namedArgs: {
+          'type': typeLabel,
+          'date': _dateLabel(_selectedDay!),
+        },
+      );
     }
-    return '필터: $typeLabel · ${_focusedDay.year}년 ${_focusedDay.month}월';
+    return 'history.filter.month'.tr(
+      namedArgs: {
+        'type': typeLabel,
+        'year': '${_focusedDay.year}',
+        'month': '${_focusedDay.month}',
+      },
+    );
   }
 
   String _timelineTitle() {
     return _timelineFilter == _TimelineFilter.manual
-        ? '운동 일지 타임라인'
-        : '정밀 분석 타임라인';
+        ? 'history.timelineTitle.manual'.tr()
+        : 'history.timelineTitle.analysis'.tr();
+  }
+
+  String _localizedFatigueLevel(String level) {
+    switch (_fatigueLevelCode(level)) {
+      case 'recovered':
+        return 'heatmap.status.recovered'.tr();
+      case 'recovering':
+        return 'heatmap.status.recovering'.tr();
+      case 'delayed':
+        return 'sensor.fatigue.delayed'.tr();
+      case 'need_recovery':
+        return 'heatmap.status.needRecovery'.tr();
+      default:
+        return 'sensor.fatigue.unknown'.tr();
+    }
+  }
+
+  String _fatigueLevelCode(String level) {
+    final raw = level.trim().toLowerCase();
+    if (raw == '회복 완료' ||
+        raw == 'recovered' ||
+        raw == '부하 안정' ||
+        raw == 'load stable') {
+      return 'recovered';
+    }
+    if (raw == '회복 중' ||
+        raw == 'recovering' ||
+        raw == '휴식 권장' ||
+        raw == 'rest recommended') {
+      return 'recovering';
+    }
+    if (raw == '회복 지연' ||
+        raw == 'delayed recovery' ||
+        raw == '강도 조절 필요' ||
+        raw == 'adjust intensity needed' ||
+        raw == 'adjust intensity') {
+      return 'delayed';
+    }
+    if (raw == 'needs recovery' || raw == 'recovery needed') {
+      return 'need_recovery';
+    }
+    return 'unknown';
   }
 
   bool _isSameDate(DateTime a, DateTime b) {

@@ -14,6 +14,8 @@ import '../theme/app_theme.dart';
 /// 3D 뷰어의 런타임 JS payload를 외부에서 주입/동기화하기 위한 컨트롤러.
 class InteractiveMuscle3DController extends ChangeNotifier {
   String _runtimePayloadJson = '';
+  Future<Uint8List?> Function({double pixelRatio})? _captureDelegate;
+  void Function(String orbit)? _cameraOrbitDelegate;
 
   String get runtimePayloadJson => _runtimePayloadJson;
 
@@ -32,6 +34,31 @@ class InteractiveMuscle3DController extends ChangeNotifier {
     _runtimePayloadJson = '';
     notifyListeners();
   }
+
+  void bindBridge({
+    required Future<Uint8List?> Function({double pixelRatio}) captureDelegate,
+    required void Function(String orbit) cameraOrbitDelegate,
+  }) {
+    _captureDelegate = captureDelegate;
+    _cameraOrbitDelegate = cameraOrbitDelegate;
+  }
+
+  void unbindBridge() {
+    _captureDelegate = null;
+    _cameraOrbitDelegate = null;
+  }
+
+  Future<Uint8List?> capturePngBytes({double pixelRatio = 1.0}) async {
+    final capture = _captureDelegate;
+    if (capture == null) {
+      return null;
+    }
+    return capture(pixelRatio: pixelRatio);
+  }
+
+  void setCameraOrbit(String orbit) {
+    _cameraOrbitDelegate?.call(orbit);
+  }
 }
 
 class InteractiveMuscle3DViewer extends StatefulWidget {
@@ -48,6 +75,9 @@ class InteractiveMuscle3DViewer extends StatefulWidget {
     this.onFallbackTo2D,
     this.mockModelSrc,
     this.controller,
+    this.recommendedMuscleCode,
+    this.autoFocusTargetMuscleCode,
+    this.enableAutoFocusIntro = false,
   });
 
   final List<MuscleHeatmapEntry> entries;
@@ -61,6 +91,9 @@ class InteractiveMuscle3DViewer extends StatefulWidget {
   final VoidCallback? onFallbackTo2D;
   final String? mockModelSrc;
   final InteractiveMuscle3DController? controller;
+  final String? recommendedMuscleCode;
+  final String? autoFocusTargetMuscleCode;
+  final bool enableAutoFocusIntro;
 
   @override
   State<InteractiveMuscle3DViewer> createState() =>
@@ -70,9 +103,11 @@ class InteractiveMuscle3DViewer extends StatefulWidget {
 class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   static const String _primaryModelAssetPath =
       'assets/models/human_muscular_system_segmented.glb';
+  static const String _secondaryModelAssetPath =
+      'assets/models/human_muscular_system.glb';
   static const String _defaultMockModelSrc =
       'https://raw.githubusercontent.com/msorkhpar/3d-human-model-vite/main/body.glb';
-  static const Duration _fallbackTimeout = Duration(seconds: 10);
+  static const Duration _fallbackTimeout = Duration(seconds: 18);
   static const bool _e2eStub3D = bool.fromEnvironment(
     'MUSCLECARE_E2E_STUB_3D',
     defaultValue: false,
@@ -88,14 +123,19 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   bool _showFallback = false;
   bool _usingMockModelSource = false;
   int _retryVersion = 0;
+  int _activeModelSourceIndex = 0;
+  int _runtimeRecoveryAttempts = 0;
   String _resolvedModelSrc = _defaultMockModelSrc;
   late String _entriesFingerprint;
   Timer? _fallbackTimer;
   Timer? _runtimeUpdateDebounce;
+  Timer? _orbitIntroTimer;
+  Timer? _runtimeRecoveryTimer;
   WebViewController? _webViewController;
-  bool _fallbackNotified = false;
   String _runtimePayloadJson = '';
   String _lastAppliedRuntimePayloadJson = '';
+  String _cameraOrbitValue = '0deg 90deg auto';
+  List<String> _modelSourceCandidates = const [];
 
   @override
   void initState() {
@@ -105,6 +145,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     );
     _resolvedModelSrc = widget.mockModelSrc ?? _defaultMockModelSrc;
     widget.controller?.addListener(_handleExternalControllerUpdate);
+    _bindControllerBridge();
+    _syncIntroCameraOrbit(initial: true);
     _ensureModelSourceReady();
   }
 
@@ -113,7 +155,9 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_handleExternalControllerUpdate);
+      oldWidget.controller?.unbindBridge();
       widget.controller?.addListener(_handleExternalControllerUpdate);
+      _bindControllerBridge();
     }
 
     if (widget.mockModelSrc != oldWidget.mockModelSrc &&
@@ -126,13 +170,20 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     final nextFingerprint = _buildEntriesFingerprint(
       _effectiveEntries(widget.entries),
     );
-    final nextHighlighted = _normalizeMuscleCode(widget.highlightedMuscleCode ?? '');
+    final nextHighlighted =
+        _normalizeMuscleCode(widget.highlightedMuscleCode ?? '');
     final previousHighlighted = _normalizeMuscleCode(
       oldWidget.highlightedMuscleCode ?? '',
     );
     if (nextFingerprint != _entriesFingerprint ||
         nextHighlighted != previousHighlighted) {
       _entriesFingerprint = nextFingerprint;
+    }
+
+    if (oldWidget.autoFocusTargetMuscleCode !=
+            widget.autoFocusTargetMuscleCode ||
+        oldWidget.enableAutoFocusIntro != widget.enableAutoFocusIntro) {
+      _syncIntroCameraOrbit();
     }
   }
 
@@ -141,6 +192,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     // 화면 전환 시 watchdog 타이머가 백그라운드에서 남지 않도록 정리한다.
     _fallbackTimer?.cancel();
     _runtimeUpdateDebounce?.cancel();
+    _orbitIntroTimer?.cancel();
+    _runtimeRecoveryTimer?.cancel();
     super.deactivate();
   }
 
@@ -148,57 +201,62 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   void dispose() {
     _fallbackTimer?.cancel();
     _runtimeUpdateDebounce?.cancel();
+    _orbitIntroTimer?.cancel();
+    _runtimeRecoveryTimer?.cancel();
+    widget.controller?.unbindBridge();
     widget.controller?.removeListener(_handleExternalControllerUpdate);
     super.dispose();
   }
 
   Future<void> _ensureModelSourceReady() async {
-    try {
-      await rootBundle.load(_primaryModelAssetPath);
-      if (!mounted) {
-        return;
+    final candidates = <String>[];
+    for (final assetPath in const [
+      _primaryModelAssetPath,
+      _secondaryModelAssetPath,
+    ]) {
+      try {
+        await rootBundle.load(assetPath);
+        candidates.add(assetPath);
+      } catch (_) {
+        // 다음 후보를 시도한다.
       }
-      setState(() {
-        _assetReady = true;
-        _assetFailed = false;
-        _showFallback = false;
-        _usingMockModelSource = false;
-        _resolvedModelSrc = _primaryModelAssetPath;
-        _modelReady = false;
-        _fallbackNotified = false;
-        _lastAppliedRuntimePayloadJson = '';
-      });
-      _startFallbackWatchdog();
-    } catch (error) {
-      debugPrint(
-        '[InteractiveMuscle3DViewer] 로컬 3D 모델 에셋 부재 → mock URL 사용: $error',
-      );
-      if (!mounted) {
-        return;
-      }
-      final fallbackSrc = widget.mockModelSrc ?? _defaultMockModelSrc;
-      if (fallbackSrc.trim().isEmpty) {
-        setState(() {
-          _assetReady = false;
-          _assetFailed = true;
-          _showFallback = true;
-          _usingMockModelSource = false;
-        });
-        _notifyFallbackTo2D();
-        return;
-      }
-      setState(() {
-        _assetReady = true;
-        _assetFailed = false;
-        _showFallback = false;
-        _usingMockModelSource = true;
-        _resolvedModelSrc = fallbackSrc;
-        _modelReady = false;
-        _fallbackNotified = false;
-        _lastAppliedRuntimePayloadJson = '';
-      });
-      _startFallbackWatchdog();
     }
+
+    final remoteFallback = (widget.mockModelSrc ?? _defaultMockModelSrc).trim();
+    if (remoteFallback.isNotEmpty) {
+      candidates.add(remoteFallback);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (candidates.isEmpty) {
+      setState(() {
+        _assetReady = false;
+        _assetFailed = true;
+        _showFallback = true;
+        _usingMockModelSource = false;
+        _modelSourceCandidates = const [];
+      });
+      return;
+    }
+
+    final nextIndex = _activeModelSourceIndex.clamp(0, candidates.length - 1);
+    final nextSource = candidates[nextIndex];
+    setState(() {
+      _modelSourceCandidates = candidates;
+      _activeModelSourceIndex = nextIndex;
+      _assetReady = true;
+      _assetFailed = false;
+      _showFallback = false;
+      _usingMockModelSource = !nextSource.startsWith('assets/');
+      _resolvedModelSrc = nextSource;
+      _modelReady = false;
+      _lastAppliedRuntimePayloadJson = '';
+      _runtimeRecoveryAttempts = 0;
+    });
+    _startFallbackWatchdog();
   }
 
   void _startFallbackWatchdog() {
@@ -207,34 +265,44 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       if (!mounted || _modelReady) {
         return;
       }
-      debugPrint('[InteractiveMuscle3DViewer] 모델 로드 지연으로 fallback 표시');
-      setState(() {
-        _showFallback = true;
-      });
-      _notifyFallbackTo2D();
+      debugPrint('[InteractiveMuscle3DViewer] 3D 로드 지연 감지 → 런타임 복구 시도');
+      _scheduleRuntimeRecovery(advanceSource: _runtimeRecoveryAttempts >= 1);
     });
   }
 
-  void _retryModelLoad() {
+  void _retryModelLoad({bool advanceSource = false}) {
+    _runtimeRecoveryTimer?.cancel();
+    final candidateCount = _modelSourceCandidates.length;
+    var nextSourceIndex = _activeModelSourceIndex;
+    if (advanceSource && candidateCount > 1) {
+      nextSourceIndex = (nextSourceIndex + 1) % candidateCount;
+    }
     setState(() {
       _retryVersion += 1;
+      _activeModelSourceIndex = nextSourceIndex;
       _modelReady = false;
       _showFallback = false;
       _assetFailed = false;
       _assetReady = false;
-      _fallbackNotified = false;
       _lastAppliedRuntimePayloadJson = '';
     });
     _webViewController = null;
     _ensureModelSourceReady();
   }
 
-  void _notifyFallbackTo2D() {
-    if (_fallbackNotified) {
+  void _scheduleRuntimeRecovery({bool advanceSource = false}) {
+    if (!mounted) {
       return;
     }
-    _fallbackNotified = true;
-    widget.onFallbackTo2D?.call();
+    _runtimeRecoveryTimer?.cancel();
+    _runtimeRecoveryAttempts += 1;
+    setState(() {
+      _showFallback = true;
+    });
+    _runtimeRecoveryTimer = Timer(
+      Duration(milliseconds: advanceSource ? 240 : 120),
+      () => _retryModelLoad(advanceSource: advanceSource),
+    );
   }
 
   List<MuscleHeatmapEntry> _effectiveEntries(List<MuscleHeatmapEntry> entries) {
@@ -253,6 +321,92 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     _queueRuntimeUpdate(immediate: true);
   }
 
+  void _bindControllerBridge() {
+    widget.controller?.bindBridge(
+      captureDelegate: _captureCurrentFramePngBytes,
+      cameraOrbitDelegate: _setCameraOrbitFromController,
+    );
+  }
+
+  void _setCameraOrbitFromController(String orbit) {
+    final normalized = orbit.trim();
+    if (normalized.isEmpty || normalized == _cameraOrbitValue) {
+      return;
+    }
+    if (!mounted) {
+      _cameraOrbitValue = normalized;
+      return;
+    }
+    setState(() {
+      _cameraOrbitValue = normalized;
+    });
+  }
+
+  void _syncIntroCameraOrbit({bool initial = false}) {
+    _orbitIntroTimer?.cancel();
+    final targetCode = _normalizeMuscleCode(
+      widget.autoFocusTargetMuscleCode ?? '',
+    );
+    if (targetCode.isEmpty) {
+      _cameraOrbitValue = '0deg 90deg auto';
+      return;
+    }
+    final targetDegrees = _resolveTargetOrbitDegrees(targetCode);
+    if (!widget.enableAutoFocusIntro) {
+      _cameraOrbitValue = _buildCameraOrbit(targetDegrees);
+      return;
+    }
+
+    final startDegrees = (targetDegrees + 180.0) % 360.0;
+    _cameraOrbitValue = _buildCameraOrbit(startDegrees);
+    void applyTarget() {
+      if (!mounted) {
+        _cameraOrbitValue = _buildCameraOrbit(targetDegrees);
+        return;
+      }
+      setState(() {
+        _cameraOrbitValue = _buildCameraOrbit(targetDegrees);
+      });
+    }
+
+    _orbitIntroTimer = Timer(
+      initial
+          ? const Duration(milliseconds: 260)
+          : const Duration(milliseconds: 120),
+      applyTarget,
+    );
+  }
+
+  double _resolveTargetOrbitDegrees(String muscleCode) {
+    switch (muscleCode) {
+      case 'latissimus':
+      case 'latissimus_upper':
+      case 'latissimus_lower':
+      case 'trapezius':
+      case 'erector_spinae':
+      case 'lower_back':
+      case 'rear_deltoid':
+      case 'hamstrings':
+      case 'glutes':
+        return 180.0;
+      case 'lateral_deltoid':
+      case 'obliques':
+        return 90.0;
+      case 'front_deltoid':
+      case 'chest':
+      case 'rectus_abdominis':
+      case 'quadriceps':
+      case 'calves':
+      default:
+        return 0.0;
+    }
+  }
+
+  String _buildCameraOrbit(double degrees) {
+    final normalized = ((degrees % 360) + 360) % 360;
+    return '${normalized.toStringAsFixed(0)}deg 90deg auto';
+  }
+
   @override
   Widget build(BuildContext context) {
     final effectiveEntries = _effectiveEntries(widget.entries);
@@ -263,10 +417,14 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     final highlightedMuscleCode = _normalizeMuscleCode(
       widget.highlightedMuscleCode ?? '',
     );
+    final recommendedMuscleCode = _normalizeMuscleCode(
+      widget.recommendedMuscleCode ?? widget.autoFocusTargetMuscleCode ?? '',
+    );
     final runtimePayloadJson = _buildRuntimePayloadJson(
       statusByMuscle: statusByMuscle,
       severityByMuscle: severityByMuscle,
       highlightedMuscleCode: highlightedMuscleCode,
+      recommendedMuscleCode: recommendedMuscleCode,
     );
     if (_runtimePayloadJson != runtimePayloadJson) {
       _runtimePayloadJson = runtimePayloadJson;
@@ -321,14 +479,15 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
                 touchAction: mv.TouchAction.none,
 
                 // 2. 오토 프레이밍: 수동 거리 조절(m, %)을 전부 폐기하고 자동 핏(Fit) 적용
-                cameraOrbit: '0deg 90deg auto',
+                cameraOrbit: _cameraOrbitValue,
                 cameraTarget: 'auto auto auto',
+                interpolationDecay: 260,
 
                 // 3. 다크 테마 + 경계 분리 강화 조명
                 environmentImage: 'neutral',
-                exposure: 0.92,
-                shadowIntensity: 0.95,
-                shadowSoftness: 0.20,
+                exposure: 0.78,
+                shadowIntensity: 0.98,
+                shadowSoftness: 0.06,
                 orbitSensitivity: 1,
 
                 backgroundColor: Colors.transparent,
@@ -348,6 +507,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
                 debugLogging: false,
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
+                  _bindControllerBridge();
                   _queueRuntimeUpdate();
                 },
                 javascriptChannels: <mv.JavascriptChannel>{
@@ -390,9 +550,11 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
                       final type = message.message.trim().toLowerCase();
                       if (type == 'ready') {
                         _fallbackTimer?.cancel();
+                        _runtimeRecoveryTimer?.cancel();
                         setState(() {
                           _modelReady = true;
                           _showFallback = false;
+                          _runtimeRecoveryAttempts = 0;
                         });
                         _queueRuntimeUpdate(immediate: true);
                       } else if (type == 'error') {
@@ -401,9 +563,12 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
                         );
                         setState(() {
                           _modelReady = false;
-                          _showFallback = true;
                         });
-                        _notifyFallbackTo2D();
+                        _scheduleRuntimeRecovery(
+                          advanceSource:
+                              _runtimeRecoveryAttempts >= 1 &&
+                              _modelSourceCandidates.length > 1,
+                        );
                       }
                     },
                   ),
@@ -479,6 +644,74 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     }
   }
 
+  Future<Uint8List?> _captureCurrentFramePngBytes({
+    double pixelRatio = 1.0,
+  }) async {
+    if (!_modelReady) {
+      return null;
+    }
+    final controller = _webViewController;
+    if (controller == null) {
+      return null;
+    }
+
+    final clampedRatio = pixelRatio.clamp(0.8, 2.2);
+    final js = '''
+(() => {
+  try {
+    if (!window.__muscleViewerApi ||
+        typeof window.__muscleViewerApi.capturePngDataUrl !== 'function') {
+      return '';
+    }
+    return window.__muscleViewerApi.capturePngDataUrl($clampedRatio);
+  } catch (error) {
+    if (typeof ModelLog !== 'undefined') {
+      ModelLog.postMessage('capture failed: ' + error);
+    }
+    return '';
+  }
+})()
+''';
+    try {
+      final result = await controller.runJavaScriptReturningResult(js);
+      final dataUrl = _normalizeJavaScriptStringResult(result);
+      if (!dataUrl.startsWith('data:image/')) {
+        return null;
+      }
+      final commaIndex = dataUrl.indexOf(',');
+      if (commaIndex < 0 || commaIndex + 1 >= dataUrl.length) {
+        return null;
+      }
+      return base64Decode(dataUrl.substring(commaIndex + 1));
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[InteractiveMuscle3DViewer] 캔버스 캡처 실패: $error');
+      }
+      return null;
+    }
+  }
+
+  String _normalizeJavaScriptStringResult(Object? result) {
+    if (result == null) {
+      return '';
+    }
+    final raw = result.toString().trim();
+    if (raw.isEmpty || raw == 'null' || raw == 'undefined') {
+      return '';
+    }
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is String) {
+          return decoded;
+        }
+      } catch (_) {
+        // noop: raw 문자열 그대로 반환
+      }
+    }
+    return raw;
+  }
+
   String _extractMuscleCodeFromTapMessage(String rawMessage) {
     final trimmed = rawMessage.trim();
     if (trimmed.isEmpty) {
@@ -517,7 +750,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
             const SizedBox(height: 12),
             Text(
               _usingMockModelSource
-                  ? '${'viewer.interactive3d.loading'.tr()} (mock)'
+                  ? '${'viewer.interactive3d.loading'.tr()} (network fallback)'
                   : 'viewer.interactive3d.loading'.tr(),
               style: TextStyle(color: AppTheme.textMedium, fontSize: 12),
             ),
@@ -574,7 +807,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       color: AppTheme.surface1.withValues(alpha: 0.76),
       child: Center(
         child: Container(
-          width: 240,
+          width: 276,
           padding: const EdgeInsets.all(16),
           decoration: AppTheme.cardDecoration(
             color: AppTheme.surface2,
@@ -590,11 +823,23 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
               ),
               const SizedBox(height: 10),
               Text(
-                'offline.viewerFallback2D'.tr(),
+                'viewer.interactive3d.optimizing'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppTheme.textMedium,
                   fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'viewer.interactive3d.retrying'.tr(
+                  namedArgs: {'count': _runtimeRecoveryAttempts.toString()},
+                ),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.textMedium,
+                  fontSize: 11,
                   height: 1.35,
                 ),
               ),
@@ -668,6 +913,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     required Map<String, HeatmapStatus> statusByMuscle,
     required Map<String, double> severityByMuscle,
     required String highlightedMuscleCode,
+    required String recommendedMuscleCode,
   }) {
     final payload = <String, dynamic>{
       'statusByMuscle': statusByMuscle.map(
@@ -677,6 +923,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         (key, value) => MapEntry(key, double.parse(value.toStringAsFixed(4))),
       ),
       'highlightedMuscleCode': highlightedMuscleCode,
+      'recommendedMuscleCode': recommendedMuscleCode,
     };
     return jsonEncode(payload);
   }
@@ -755,7 +1002,11 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   const INITIAL_PAYLOAD_TEXT = $initialPayloadLiteral;
   const COLOR_NEON_GREEN = [0.0, 0.9608, 0.5412, 1.0];  // #00F58A
   const COLOR_RED = [0.95, 0.18, 0.16, 1.0];
+  const COLOR_RECOMMENDED = [0.10, 0.72, 0.96, 1.0];
+  const COLOR_FOREARMS = [0.00, 0.90, 0.96, 1.0];
   const COLOR_UNKNOWN = [0.28, 0.33, 0.43, 0.90];
+  const READY_RETRY_MS = 220;
+  const MAX_READY_RETRIES = 72;
 
   const materialNameByMuscle = {
     chest: 'Material_Chest',
@@ -768,12 +1019,13 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     lateral_deltoid: 'Material_Shoulders',
     rear_deltoid: 'Material_Shoulders',
     upper_arms: 'Material_UpperArms',
-    triceps: 'Material_UpperArms',
-    biceps: 'Material_UpperArms',
+    triceps: 'Material_Triceps',
+    biceps: 'Material_Biceps',
     brachialis: 'Material_UpperArms',
     brachioradialis: 'Material_UpperArms',
-    forearm_flexor: 'Material_UpperArms',
-    forearm_extensor: 'Material_UpperArms',
+    forearm_flexor: 'Material_Forearms',
+    forearm_extensor: 'Material_Forearms',
+    forearms: 'Material_Forearms',
     rectus_abdominis: 'Material_Abs',
     obliques: 'Material_Obliques',
     quads: 'Material_Quads',
@@ -824,7 +1076,14 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     '07_lower_abdomen': 'obliques',
     '04_shoulders': 'front_deltoid',
     '10_upper_arms': 'biceps',
-    '12_fore_arms': 'forearm_flexor',
+    '10_upper_arms_front': 'biceps',
+    '10_upper_arms_back': 'triceps',
+    '11_upper_arms': 'triceps',
+    '12_fore_arms': 'forearms',
+    '12_forearms': 'forearms',
+    'fore_arms': 'forearms',
+    'forearms': 'forearms',
+    'wrist': 'forearms',
     '15_thighs': 'quadriceps',
     '17_legs': 'hamstrings',
     '22_buttocks': 'glutes',
@@ -877,12 +1136,20 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       muscleByMaterialName[materialName] = normalizeCode(muscleCode);
     }
   }
+  muscleByMaterialName['material_biceps'] = 'biceps';
+  muscleByMaterialName['material_triceps'] = 'triceps';
+  muscleByMaterialName['material_forearms'] = 'forearms';
+  muscleByMaterialName['material_upperarms'] = 'biceps';
 
   const runtimeState = {
     statusByMuscle: {},
     severityByMuscle: {},
     highlightedMuscleCode: '',
+    recommendedMuscleCode: '',
   };
+  let readyRetryCount = 0;
+  let readyTimer = null;
+  let disposed = false;
 
   function setRuntimeState(payload) {
     if (!payload || typeof payload !== 'object') {
@@ -891,15 +1158,45 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     runtimeState.statusByMuscle = payload.statusByMuscle || {};
     runtimeState.severityByMuscle = payload.severityByMuscle || {};
     runtimeState.highlightedMuscleCode = normalizeCode(payload.highlightedMuscleCode || '');
+    runtimeState.recommendedMuscleCode = normalizeCode(payload.recommendedMuscleCode || '');
   }
 
-  function highlightedMaterialName() {
+  function resolveMaterialNameForMuscle(muscleCode, materialNamesLower) {
+    const code = normalizeCode(muscleCode);
+    if (!code) return '';
+
+    const preferred = normalizeCode(materialNameByMuscle[code] || '');
+    if (preferred && materialNamesLower.has(preferred)) {
+      return preferred;
+    }
+
+    if ((code === 'biceps' || code === 'triceps' || code === 'forearms' ||
+         code === 'forearm_flexor' || code === 'forearm_extensor') &&
+        materialNamesLower.has('material_upperarms')) {
+      return 'material_upperarms';
+    }
+
+    if ((code === 'forearms' || code === 'forearm_flexor' || code === 'forearm_extensor') &&
+        materialNamesLower.has('material_forearms')) {
+      return 'material_forearms';
+    }
+
+    return preferred;
+  }
+
+  function highlightedMaterialName(materialNamesLower) {
     const code = runtimeState.highlightedMuscleCode;
     if (!code) return '';
-    return String(materialNameByMuscle[code] || '');
+    return resolveMaterialNameForMuscle(code, materialNamesLower);
   }
 
-  function buildSeverityByMaterial() {
+  function recommendedMaterialName(materialNamesLower) {
+    const code = runtimeState.recommendedMuscleCode;
+    if (!code) return '';
+    return resolveMaterialNameForMuscle(code, materialNamesLower);
+  }
+
+  function buildSeverityByMaterial(materialNamesLower) {
     const severityByMaterial = {};
     for (const muscleCode of Object.keys(materialNameByMuscle)) {
       const normalized = normalizeCode(muscleCode);
@@ -908,7 +1205,10 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         continue;
       }
       const severity = clamp01(Number(rawSeverity));
-      const materialName = String(materialNameByMuscle[muscleCode] || '');
+      const materialName = resolveMaterialNameForMuscle(
+        normalized,
+        materialNamesLower,
+      );
       if (!materialName) {
         continue;
       }
@@ -935,13 +1235,17 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       return false;
     }
 
-    const severityByMaterial = buildSeverityByMaterial();
-    const focusedMaterialName = highlightedMaterialName();
+    const materialNamesLower = new Set(
+      materials.map((m) => normalizeCode(m && m.name ? m.name : '')),
+    );
+    const severityByMaterial = buildSeverityByMaterial(materialNamesLower);
+    const focusedMaterialName = highlightedMaterialName(materialNamesLower);
+    const targetMaterialName = recommendedMaterialName(materialNamesLower);
     let applied = 0;
 
     for (const material of materials) {
       if (!material) continue;
-      const materialName = String(material.name || '');
+      const materialName = normalizeCode(material.name || '');
       const hasSeverity = Object.prototype.hasOwnProperty.call(
         severityByMaterial,
         materialName,
@@ -951,6 +1255,20 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           : COLOR_UNKNOWN;
 
       const focused = focusedMaterialName && focusedMaterialName === materialName;
+      const recommended = targetMaterialName && targetMaterialName === materialName;
+      const forearmFocused = recommended &&
+          (runtimeState.recommendedMuscleCode === 'forearms' ||
+           runtimeState.recommendedMuscleCode === 'forearm_flexor' ||
+           runtimeState.recommendedMuscleCode === 'forearm_extensor');
+      if (recommended) {
+        const accentColor = forearmFocused ? COLOR_FOREARMS : COLOR_RECOMMENDED;
+        color = [
+          lerp(color[0], accentColor[0], 0.74),
+          lerp(color[1], accentColor[1], 0.74),
+          lerp(color[2], accentColor[2], 0.74),
+          1.0,
+        ];
+      }
       if (focused) {
         color = [
           Math.min(1.0, color[0] * 0.68 + 0.32),
@@ -961,24 +1279,43 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       }
 
       if (material.pbrMetallicRoughness) {
+        const severity = hasSeverity
+            ? clamp01(Number(severityByMaterial[materialName]))
+            : 0.0;
+        let metallic = hasSeverity ? lerp(0.16, 0.34, severity) : 0.10;
+        let roughness = hasSeverity ? lerp(0.66, 0.30, severity) : 0.80;
+        if (recommended) {
+          metallic = Math.min(1.0, metallic + 0.10);
+          roughness = Math.max(0.22, roughness - 0.12);
+        }
+        if (focused) {
+          metallic = Math.min(1.0, metallic + 0.12);
+          roughness = Math.max(0.18, roughness - 0.14);
+        }
         if (material.pbrMetallicRoughness.setBaseColorFactor) {
           material.pbrMetallicRoughness.setBaseColorFactor(color);
         }
         if (material.pbrMetallicRoughness.setMetallicFactor) {
-          material.pbrMetallicRoughness.setMetallicFactor(0.04);
+          material.pbrMetallicRoughness.setMetallicFactor(metallic);
         }
         if (material.pbrMetallicRoughness.setRoughnessFactor) {
-          material.pbrMetallicRoughness.setRoughnessFactor(0.82);
+          material.pbrMetallicRoughness.setRoughnessFactor(roughness);
         }
         applied += 1;
       }
       if (material.setEmissiveFactor) {
         material.setEmissiveFactor(
-          focused ? [0.16, 0.16, 0.16] : [0.0, 0.0, 0.0],
+          focused
+              ? [0.30, 0.30, 0.30]
+              : (recommended
+                    ? (forearmFocused ? [0.00, 0.22, 0.28] : [0.04, 0.14, 0.20])
+                    : (hasSeverity ? [0.02, 0.05, 0.03] : [0.0, 0.0, 0.0])),
         );
       }
       if (material.setEmissiveStrength) {
-        material.setEmissiveStrength(focused ? 1.10 : 0.20);
+        material.setEmissiveStrength(
+          focused ? 1.72 : (recommended ? 1.18 : (hasSeverity ? 0.36 : 0.16)),
+        );
       }
     }
 
@@ -1016,14 +1353,29 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       const surface = modelViewer.surfaceFromPoint(x, y);
       if (surface) {
         surfaceId = String(surface);
-        if (!muscleCode) {
-          const lower = normalizeCode(surfaceId);
-          for (const meshName of Object.keys(muscleByMeshName)) {
-            if (lower.includes(meshName)) {
-              muscleCode = muscleByMeshName[meshName];
-              break;
-            }
+        const lower = normalizeCode(surfaceId);
+        let bySurface = '';
+        for (const meshName of Object.keys(muscleByMeshName)) {
+          if (lower.includes(meshName)) {
+            bySurface = muscleByMeshName[meshName];
+            break;
           }
+        }
+        if (!bySurface &&
+            (lower.includes('forearm') || lower.includes('fore_arm') || lower.includes('wrist'))) {
+          bySurface = 'forearms';
+        }
+        if (!bySurface && lower.includes('tricep')) {
+          bySurface = 'triceps';
+        }
+        if (!bySurface && lower.includes('bicep')) {
+          bySurface = 'biceps';
+        }
+        if (!bySurface && lower.includes('upper_arms')) {
+          bySurface = 'biceps';
+        }
+        if (bySurface) {
+          muscleCode = bySurface;
         }
       }
     }
@@ -1035,16 +1387,79 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     };
   }
 
+  function capturePngDataUrl(modelViewer, pixelRatio) {
+    try {
+      const ratio = Math.min(2.2, Math.max(0.8, Number(pixelRatio || 1.0)));
+      const root = modelViewer && modelViewer.shadowRoot;
+      if (!root) {
+        log('capture shadowRoot missing');
+        return '';
+      }
+      const sourceCanvas = root.querySelector('canvas');
+      if (!sourceCanvas) {
+        log('capture canvas missing');
+        return '';
+      }
+
+      const width = Math.max(1, Math.floor(sourceCanvas.width * ratio));
+      const height = Math.max(1, Math.floor(sourceCanvas.height * ratio));
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = width;
+      exportCanvas.height = height;
+      const ctx = exportCanvas.getContext('2d', { alpha: true });
+      if (!ctx) {
+        log('capture context missing');
+        return '';
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(sourceCanvas, 0, 0, width, height);
+      return exportCanvas.toDataURL('image/png');
+    } catch (error) {
+      log('capture toDataURL failed: ' + error);
+      return '';
+    }
+  }
+
   function applyAndNotify(modelViewer) {
     try {
       const applied = applyTint(modelViewer);
       if (applied) {
+        readyRetryCount = 0;
         postReady('ready');
       }
+      return applied;
     } catch (error) {
       log('applyTint error: ' + error);
       postReady('error');
+      return false;
     }
+  }
+
+  function clearReadyTimer() {
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      readyTimer = null;
+    }
+  }
+
+  function scheduleApply(modelViewer, reason) {
+    if (disposed) return;
+    clearReadyTimer();
+    const applied = applyAndNotify(modelViewer);
+    if (applied) {
+      return;
+    }
+    readyRetryCount += 1;
+    if (readyRetryCount >= MAX_READY_RETRIES) {
+      log('materials not ready after retries: ' + reason);
+      postReady('error');
+      return;
+    }
+    readyTimer = setTimeout(
+      () => scheduleApply(modelViewer, reason),
+      READY_RETRY_MS,
+    );
   }
 
   const modelViewer = document.querySelector('model-viewer');
@@ -1058,8 +1473,9 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     window.__muscleViewerApi.dispose();
   }
 
-  modelViewer.setAttribute('shadow-intensity', '0.95');
-  modelViewer.setAttribute('shadow-softness', '0.20');
+  modelViewer.setAttribute('shadow-intensity', '0.98');
+  modelViewer.setAttribute('shadow-softness', '0.06');
+  modelViewer.setAttribute('exposure', '0.78');
 
   let pointerDown = null;
   const onPointerDown = (event) => {
@@ -1094,7 +1510,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     }
   };
 
-  const onLoad = () => applyAndNotify(modelViewer);
+  const onLoad = () => scheduleApply(modelViewer, 'load');
   const onError = () => {
     log('model-viewer error event');
     postReady('error');
@@ -1109,12 +1525,17 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     applyRuntimeUpdate(payload) {
       try {
         setRuntimeState(payload);
-        applyAndNotify(modelViewer);
+        scheduleApply(modelViewer, 'runtime_update');
       } catch (error) {
         log('runtime update failed: ' + error);
       }
     },
+    capturePngDataUrl(pixelRatio) {
+      return capturePngDataUrl(modelViewer, pixelRatio);
+    },
     dispose() {
+      disposed = true;
+      clearReadyTimer();
       modelViewer.removeEventListener('load', onLoad);
       modelViewer.removeEventListener('error', onError);
       modelViewer.removeEventListener('pointerdown', onPointerDown);
@@ -1130,7 +1551,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     log('initial payload parse failed: ' + error);
   }
 
-  setTimeout(() => applyAndNotify(modelViewer), 260);
+  setTimeout(() => scheduleApply(modelViewer, 'bootstrap'), 260);
 })();
 ''';
   }
@@ -1304,9 +1725,13 @@ const Map<String, String> _muscleAliases = {
   'posterior_deltoid': 'rear_deltoid',
   'rear_delts': 'rear_deltoid',
   'biceps_brachii': 'biceps',
+  'triceps_brachii': 'triceps',
   'brachioradialis': 'forearm_extensor',
   'wrist_flexor': 'forearm_flexor',
   'wrist_extensor': 'forearm_extensor',
+  'forearm': 'forearms',
+  'forearms': 'forearms',
+  'fore_arm': 'forearms',
   'quads': 'quadriceps',
   'rectus_femoris': 'quadriceps',
   'vastus_lateralis': 'quadriceps',
@@ -1350,6 +1775,9 @@ const Map<String, String> _muscleByMaterialAlias = {
   'material_chest': 'chest',
   'material_shoulders': 'front_deltoid',
   'material_upperarms': 'biceps',
+  'material_biceps': 'biceps',
+  'material_triceps': 'triceps',
+  'material_forearms': 'forearms',
   'material_abs': 'rectus_abdominis',
   'material_obliques': 'obliques',
   'material_quads': 'quadriceps',
@@ -1419,7 +1847,7 @@ model-viewer {
   height: 100%;
   background: transparent;
   --poster-color: transparent;
-  filter: contrast(1.08) saturate(1.05);
+  filter: contrast(1.22) saturate(1.12) brightness(0.92);
   touch-action: none;
 }
 ''';

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// 반응형 UI 헬퍼 클래스
 class Responsive {
@@ -65,23 +66,25 @@ class Responsive {
 
   /// 반응형 패딩
   static EdgeInsets responsivePadding(BuildContext context) {
-    if (isSmallScreen(context)) {
-      return const EdgeInsets.all(12);
-    } else if (isMediumScreen(context)) {
-      return const EdgeInsets.all(16);
-    } else {
-      return const EdgeInsets.all(20);
+    final width = Responsive.width(context);
+    if (width >= 1100) {
+      return const EdgeInsets.symmetric(horizontal: 44, vertical: 20);
     }
+    if (width >= 768) {
+      return const EdgeInsets.symmetric(horizontal: 32, vertical: 18);
+    }
+    return AppTheme.pagePadding.copyWith(top: 16, bottom: 16);
   }
 
   /// 반응형 카드 패딩
   static EdgeInsets cardPadding(BuildContext context) {
-    if (isSmallScreen(context)) {
-      return const EdgeInsets.all(16);
-    } else if (isMediumScreen(context)) {
-      return const EdgeInsets.all(20);
-    } else {
+    final width = Responsive.width(context);
+    if (width >= 1100) {
+      return const EdgeInsets.all(28);
+    }
+    if (width >= 768) {
       return const EdgeInsets.all(24);
     }
+    return const EdgeInsets.all(20);
   }
 }

@@ -1,0 +1,523 @@
+{
+  "app": {
+    "title": "Muscle Care"
+  },
+  "splash": {
+    "tagline": "운동 수행 패턴 기록"
+  },
+  "ads": {
+    "loading": "광고 로딩 중",
+    "slot": "광고 영역"
+  },
+  "common": {
+    "start": "시작하기",
+    "refresh": "기록 새로고침",
+    "retry": "다시 시도",
+    "viewDetailAnalysis": "모션 리포트 보기",
+    "later": "나중에",
+    "andMore": "{} 외",
+    "cancel": "취소",
+    "apply": "적용",
+    "complete": "완료",
+    "delete": "삭제",
+    "reset": "초기화"
+  },
+  "profile": {
+    "title": "내 정보",
+    "global": {
+      "summary": {
+        "title": "퍼포먼스 요약",
+        "totalLogs": "총 모션 기록",
+        "avgScore": "평균 퍼포먼스 점수",
+        "mlMode": "개인화 모드",
+        "nextPhase": "다음 단계",
+        "remaining": "{count}회 남음"
+      },
+      "baseline": {
+        "title": "개인 기준",
+        "motion": "근육 활동 기준",
+        "vibration": "진동 기준",
+        "vibrationValue": "{value}회/초"
+      },
+      "metrics": {
+        "title": "참고 지표",
+        "samples": "세부 샘플 수",
+        "avgMotion": "평균 근육 활동량",
+        "avgVibration": "평균 진동수"
+      }
+    }
+  },
+  "home": {
+    "title": "오늘의 퍼포먼스",
+    "logSaved": "운동 볼륨 기록이 완료되었습니다.",
+    "fab": {
+      "label": "기록"
+    },
+    "tooltips": {
+      "analysis": "상세 분석 보기",
+      "history": "히스토리"
+    },
+    "onboarding": {
+      "title": "MuscleCare v2.0",
+      "headline": "매일 운동을 기록하고 오늘의 퍼포먼스 점수를 확인하세요.",
+      "description": "홈의 + 버튼으로 운동 볼륨 로그를 남기면 바디 맵이 즉시 갱신됩니다."
+    },
+    "streak": {
+      "day": "🔥 {day}일차",
+      "subtitle": "연속 운동 기록을 이어가고 있어요"
+    },
+    "hero": {
+      "title": "나의 3D 바디 맵",
+      "subtitle": "오늘의 수행 패턴 변화를 확인하세요.",
+      "tapDetail": "탭해서 상세 보기",
+      "nextTarget": "오늘 추천 타겟: {muscle}"
+    },
+    "timeline": {
+      "title": "운동 기록 타임라인",
+      "empty": "아직 기록이 없습니다. 오른쪽 아래 버튼으로 첫 운동 볼륨 로그를 남겨보세요.",
+      "manualLog": "수기 운동 볼륨 로그 · {}",
+      "cardio": "유산소 {duration}{distance}",
+      "weight": "{set} / {rep}{weight}",
+      "unit": {
+        "minute": "{value}분",
+        "set": "{value}세트",
+        "rep": "{value}회"
+      }
+    },
+    "guide": {
+      "startRecord": "여기서 기록 시작"
+    }
+  },
+  "sensor": {
+    "tooltips": {
+      "history": "지수 기록",
+      "profile": "내 정보",
+      "settings": "설정"
+    },
+    "errors": {
+      "cannotStartSensor": "센서를 시작할 수 없습니다. 기기가 센서를 지원하는지 확인해주세요.",
+      "baselineFailed": "기준 맞추기에 실패했습니다. 다시 시도해주세요."
+    },
+    "state": {
+      "analyzing": "모션 기록 중...",
+      "done": "모션 기록 완료",
+      "prepareBaseline": "기준 맞추기 준비",
+      "ready": "모션 트래킹 준비",
+      "remaining": "{seconds}초 남음"
+    },
+    "baseline": {
+      "completed": "기준 맞추기가 완료되었습니다"
+    },
+    "buttons": {
+      "viewProfile": "내 정보에서 보기",
+      "checkingBaseline": "기준 확인 중...",
+      "startBaseline": "기준 맞추기 시작",
+      "startAnalysis": "{seconds}초 모션 트래킹 시작",
+      "stopAnalysis": "모션 기록 중지"
+    },
+    "result": {
+      "title": "모션 일관성 리포트 데이터"
+    },
+    "metrics": {
+      "activity": "근육 활동량",
+      "activitySub": "떨림 세기",
+      "variation": "신호 변동",
+      "variationSub": "불규칙성",
+      "frequency": "진동 빈도",
+      "frequencyUnit": "{value}회/초",
+      "frequencySub": "주요 주파수"
+    },
+    "qualityWarning": {
+      "message": "센서를 더 안정적으로 유지해주세요 • coverage {coverage} • accel {accel} / gyro {gyro}"
+    },
+    "baselineStatus": {
+      "keepStill10s": "기기를 움직이지 말고 10초간 그대로 유지하세요...",
+      "cannotStartSensor": "센서를 시작할 수 없습니다. 기기 지원을 확인해주세요.",
+      "keepStillRemaining": "기기를 움직이지 마세요 • 남은 시간 {seconds}초",
+      "completed": "기준 맞추기가 완료되었습니다!",
+      "collectFailed": "데이터 수집에 실패했습니다. 주변 진동을 줄이고 다시 시도해주세요."
+    },
+    "aiStatus": {
+      "ema": "움직임 정보를 바탕으로 기준을 맞추는 중",
+      "hybrid": "AI가 보조하여 개인화 향상 중",
+      "endToEnd": "AI가 직접 패턴을 분석 중"
+    },
+    "aiMode": {
+      "ema": "기본 학습",
+      "hybrid": "향상 분석",
+      "endToEnd": "완전 AI 분석",
+      "round": "{mode} • 기록 {round}회",
+      "progressWithCount": "학습 진행도 {percent}% ({count}/{span}회)",
+      "progressOnly": "학습 진행도 {percent}%",
+      "tip": "규칙적으로 기록하면 개인화 예측이 더 안정됩니다.",
+      "phase": "{phase}단계"
+    },
+    "fatigue": {
+      "delayed": "강도 조절 필요",
+      "unknown": "상태 미확인"
+    },
+    "baselineGuide": {
+      "title": "기준 맞추기 안내",
+      "need": "운동 수행 패턴 분석을 위해\n개인 기준 맞추기가 필요합니다",
+      "howTo": "설정 방법 (한 번만 하면 됩니다)",
+      "step1": {
+        "title": "기기 준비",
+        "desc": "스마트폰을 책상 위에 평평하게 올려놓습니다"
+      },
+      "step2": {
+        "title": "기준 맞추기",
+        "desc": "기준 맞추기 버튼을 누르면 약 10초 동안 움직임 정보를 모아 기준을 설정합니다"
+      },
+      "step3": {
+        "title": "완료",
+        "desc": "설정 완료 후 내 기준이 저장됩니다"
+      },
+      "why": "왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 컨디션 점수의 일관성을 높여줍니다",
+      "start": "기준 맞추기",
+      "completedToast": "퍼포먼스 점수 기준 맞추기가 완료되었습니다! 이제 모션 트래킹을 시작할 수 있습니다."
+    },
+    "settings": {
+      "title": "설정",
+      "analysisDuration": "모션 트래킹 시간 (초)",
+      "seconds": "{seconds}초",
+      "locked": "⚠️ 기준 맞추기/모션 기록 중에는 설정을 변경할 수 없습니다.",
+      "dataManagement": "데이터 관리",
+      "deleteAllLogs": "모든 모션 기록 삭제",
+      "deleteAllDone": "모든 모션 기록이 삭제되었습니다.",
+      "resetBaseline": "개인 기준 초기화",
+      "resetBaselineDone": "개인 기준이 초기화되었습니다.",
+      "disclaimer": "본 앱은 일반적인 피트니스 및 운동 기록 목적의 유틸리티이며, 의료 기기가 아닙니다. 의학적 판단 또는 치료 결정 용도로 사용하지 마세요.",
+      "confirm": {
+        "title": "확인",
+        "deleteAllLogs": "모든 모션 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+        "resetBaseline": "개인 기준을 초기화하시겠습니까?\n\n일반인 평균값으로 리셋되며,\n학습된 내 기준이 모두 삭제됩니다."
+      }
+    },
+    "instructions": {
+      "analysisDone": "모션 기록이 완료되었습니다",
+      "analysisDoneDesc": "기록 환경을 일정하게 유지하면 더 일관된 참고 지표를 얻을 수 있습니다.",
+      "viewPersonalizationTip": "개인화 향상 팁 보기",
+      "analyzingTitle": "모션 기록 중",
+      "analyzingDesc": "움직임 정보를 기록하여 퍼포먼스 점수를 계산합니다.\n{seconds}초간 그대로 유지해주세요.",
+      "baselineIntroTitle": "내 컨디션 점수 기준 맞추기",
+      "baselineStep1": "스마트폰을 책상 위에 평평하게 올려두세요. (움직이지 않기)",
+      "baselineStep2": "화면이 위를 향하도록 두고 주변 진동이 적은 곳에서 진행하세요.",
+      "baselineStep3": "아래 ‘기준 맞추기 시작’ 버튼을 누르면 약 10초 동안 움직임 정보를 모아 내 기준을 설정합니다.",
+      "baselineWhy": "왜 기준 맞추기가 필요할까요?\n• 기기별 센서 차이를 보정합니다\n• 개인 손떨림 특성을 반영합니다\n• 이후 컨디션 점수의 일관성이 향상됩니다",
+      "preAnalysisTitle": "모션 트래킹 전 안내",
+      "preStep1": "의자에 앉은 상태에서, 팔을 책상 위에 편히 올려주세요.",
+      "preStep2": "스마트폰을 한 손으로 가볍게 쥐고, 움직이지 마세요.",
+      "preStep3": "화면이 위를 향하도록 평평하게 두세요.",
+      "preStep4": "준비가 되면 아래 시작 버튼을 눌러주세요."
+    },
+    "disclaimer": {
+      "full": "본 앱은 일반적인 피트니스 및 운동 기록 목적의 유틸리티이며, 의료 기기가 아닙니다. 의학적 판단 또는 치료 결정 용도로 사용하지 마세요.",
+      "compact": "본 앱은 일반적인 피트니스 및 운동 기록 목적의 유틸리티이며, 의료 기기가 아닙니다. 의학적 판단 또는 치료 결정 용도로 사용하지 마세요."
+    },
+    "aiProcessing": {
+      "title": "AI 분석 중",
+      "subtitle": "결과가 곧 반영됩니다."
+    },
+    "baselineDialog": {
+      "title": "개인 기준 맞추기",
+      "initialGuide": "기기를 책상 위에 평평하게 올려놓고 기준 맞추기 버튼을 눌러주세요",
+      "keepStill10s": "기기를 움직이지 말고 10초간 그대로 유지하세요...",
+      "startFailed": "센서 시작에 실패했습니다. 다시 시도해주세요.",
+      "remaining": "기기를 움직이지 말고 {seconds}초 남음...",
+      "processing": "baseline 데이터를 분석 중입니다...",
+      "done": "baseline 설정이 완료되었습니다!",
+      "collectFailed": "데이터 수집에 실패했습니다. 다시 시도해주세요.",
+      "resultTitle": "설정된 Baseline 값",
+      "start": "기준 맞추기"
+    }
+  },
+  "heatmap": {
+    "title": "오늘의 퍼포먼스 맵",
+    "statusBadge": "{label} · 평균 {average} / 최고 {peak}",
+    "collectingMuscleData": "근육 수행 패턴 데이터를 수집하는 중입니다.",
+    "muscleTapMessage": "{muscle} - 상태: {condition} · 누적 퍼포먼스 점수 {score}",
+    "relatedMusclesSuffix": " · {}",
+    "recoveryTapMessage": "{muscle}{detail} · 컨디션: {condition}",
+    "remainingHours": "{hours}시간 남음",
+    "status": {
+      "needRecovery": "강도 조절 필요",
+      "recovering": "휴식 권장",
+      "recovered": "회복 완료",
+      "collecting": "데이터 수집 중"
+    },
+    "condition": {
+      "needRecovery": "강도 조절 필요 (예상 {hours}시간 남음)",
+      "recovering": "휴식 권장 (예상 {hours}시간 남음)"
+    },
+    "palette": {
+      "red": "강도 조절 필요 (24시간 이내)",
+      "yellow": "휴식 권장 (24~48시간)",
+      "green": "부하 안정 (48시간+ 또는 기록 없음)",
+      "unknown": "데이터 수집 중"
+    },
+    "recoveryPrediction": {
+      "title": "근육 회복 예측",
+      "description": "근육별 회복 상태와 예상 남은 시간을 그래프로 확인하세요.",
+      "estimatedHours": "예상 회복 시간: {hours}시간"
+    },
+    "nextWorkout": {
+      "badge": "오늘 타겟 · {muscle}",
+      "title": "다음 운동 제안",
+      "copy": "어제 {overloaded} 퍼포먼스가 높았습니다. 오늘은 {target} 중심의 모션 트래킹을 권장합니다.",
+      "copyFallback": "오늘은 {target} 중심의 균형 회복 세션을 권장합니다.",
+      "confidence": "신뢰도 {value}%"
+    },
+    "share": {
+      "cta": "3D 맵 공유",
+      "metricPerformance": "퍼포먼스 점수",
+      "metricVolume": "운동 볼륨",
+      "captureUnavailable": "3D 화면 캡처를 준비 중입니다. 잠시 후 다시 시도해주세요.",
+      "failed": "공유 이미지를 만드는 중 오류가 발생했습니다.",
+      "headline": "오늘 타겟: {target}",
+      "subline": "어제 {overloaded} 부하가 높았습니다 · 오늘은 {target} 중심",
+      "sublineFallback": "오늘은 {target} 중심 회복 루틴을 추천합니다.",
+      "subject": "MuscleCare 3D 퍼포먼스 맵",
+      "watermark": "MuscleCare 분석 리포트",
+      "message": "오늘의 3D 퍼포먼스 맵입니다. 타겟: {target} · 점수 {score} · 볼륨 {volume}\n#MuscleCare #3DWorkout"
+    }
+  },
+  "workoutLog": {
+    "title": "오늘의 운동 볼륨 로그",
+    "save": "운동 볼륨 저장",
+    "selectExerciseHint": "운동 종목을 선택하면 유형별 입력 폼이 자동으로 열립니다.",
+    "noSearchResult": "검색 결과가 없습니다.",
+    "noteFromAnalysis": "모션 리포트 점수 {score} 기반으로 기록",
+    "fields": {
+      "searchExercise": "운동 종목 검색",
+      "noteOptional": "메모(선택)",
+      "durationRequired": "운동 시간(분) *",
+      "distance": "이동 거리(km)",
+      "setRequired": "세트 *",
+      "repRequired": "횟수 *",
+      "weightRequired": "중량(kg) *",
+      "duration": "운동 시간(분)"
+    },
+    "errors": {
+      "selectExercise": "운동 종목을 선택해 주세요.",
+      "cardioDurationRequired": "유산소 운동은 진행 시간(분)을 반드시 입력해 주세요.",
+      "weightSetRepRequired": "무산소 운동은 세트 수와 횟수를 반드시 입력해 주세요.",
+      "saveFailed": "기록 저장에 실패했습니다."
+    },
+    "exerciseType": {
+      "cardio": "유산소",
+      "weight": "무산소",
+      "unknown": "기타"
+    },
+    "muscleSize": {
+      "large": "대근육",
+      "small": "소근육",
+      "unknown": "근육 크기 미상"
+    },
+    "hint": {
+      "primary": "주동근: {}",
+      "secondary": "협응근: {}"
+    }
+  },
+  "offline": {
+    "syncQueued": "네트워크 복구 시 자동 동기화됩니다.",
+    "viewerFallback2D": "기기 사양으로 인해 2D 바디 맵으로 전환되었습니다.",
+    "cachedMode": "오프라인 모드: 캐시된 데이터를 표시하고 있습니다."
+  },
+  "history": {
+    "title": "히스토리",
+    "totalCount": "총 {count}건",
+    "errors": {
+      "loadFailed": "히스토리 로딩에 실패했습니다: {}"
+    },
+    "dashboard": {
+      "trend": "추이 그래프 보기",
+      "calendar": "캘린더 보기"
+    },
+    "timelineType": {
+      "manual": "운동 일지",
+      "analysis": "모션 리포트"
+    },
+    "range": {
+      "7d": "7일",
+      "30d": "30일",
+      "all": "전체"
+    },
+    "analysis": {
+      "reportTitle": "모션 일관성 리포트",
+      "empty": "모션 리포트 데이터가 없습니다.",
+      "mode": {
+        "ema": "EMA",
+        "hybrid": "Hybrid",
+        "endToEnd": "E2E"
+      }
+    },
+    "calendar": {
+      "filterToday": "오늘 날짜 필터"
+    },
+    "empty": {
+      "title": "선택한 조건에 맞는 기록이 없습니다.",
+      "description": "상단 필터를 바꿔 다른 기간의 운동 일지와 모션 리포트를 확인해보세요."
+    },
+    "unit": {
+      "minute": "{value}분",
+      "set": "{value}세트",
+      "rep": "{value}회"
+    },
+    "subtitle": {
+      "cardio": "운동 볼륨 로그 · 유산소 · {duration}{distance}",
+      "weight": "운동 볼륨 로그 · {set} / {rep}{weight}"
+    },
+    "filter": {
+      "trendAll": "필터: {} · 전체 기간 추이",
+      "trendRecent": "필터: {type} · 최근 {days}일 추이",
+      "selectedDate": "필터: {type} · {date} 선택",
+      "month": "필터: {type} · {year}년 {month}월"
+    },
+    "timelineTitle": {
+      "manual": "운동 일지 타임라인",
+      "analysis": "모션 리포트 타임라인"
+    }
+  },
+  "viewer": {
+    "heatmap2d": {
+      "fallback": "기본 바디 맵으로 표시 중입니다."
+    },
+    "interactive3d": {
+      "loading": "3D 바디 모델을 불러오는 중입니다...",
+      "retry": "3D 다시 로드",
+      "optimizing": "3D 렌더러를 최적화하고 있습니다. 2D로 전환하지 않고 실제 3D 로딩을 계속 시도합니다.",
+      "retrying": "3D 복구 시도 {count}회"
+    }
+  },
+  "gauge": {
+    "status": {
+      "stable": "부하가 안정적입니다.",
+      "restRecommended": "휴식이 권장됩니다.",
+      "adjustNeeded": "운동 볼륨이 높아 강도 조절이 필요합니다.",
+      "adjustNeededStrong": "지금은 강도 조절이 필요합니다."
+    },
+    "trend": {
+      "noChange": "변화 없음",
+      "suddenChange": "컨디션 급변",
+      "decline": "컨디션 하락",
+      "relieved": "부하 완화",
+      "maintained": "유지"
+    }
+  },
+  "bridgeCta": {
+    "title": "모션 기록이 완료됐어요 · 3D 바디 맵으로 바로 확인해보세요",
+    "score": "퍼포먼스 점수 {score}",
+    "frequency": "진동 {value}Hz",
+    "view3d": "3D 바디 맵 보기",
+    "applyToday": "오늘 기록에 반영"
+  },
+  "errors": {
+    "sessionRequired": "로그인 세션이 필요합니다. 다시 로그인해 주세요.",
+    "dataLoadFailed": "데이터를 불러오는 중 오류가 발생했습니다.",
+    "sessionExpired": "로그인 세션이 만료되었습니다. 다시 로그인해 주세요.",
+    "searchFailed": "운동 검색에 실패했습니다.",
+    "saveWorkoutFailed": "운동 기록 저장에 실패했습니다.",
+    "permissionDenied": "권한 오류가 발생했습니다. 사용자 식별값 전달 로직을 확인해 주세요.",
+    "cardioDurationRequired": "유산소 기록은 운동 시간(분)을 반드시 입력해야 합니다.",
+    "weightSetRepRequired": "무산소 기록은 세트 수와 횟수를 반드시 입력해야 합니다.",
+    "serverRequestFailed": "서버 요청 처리 중 오류가 발생했습니다."
+  },
+  "legacyHeatmap": {
+    "saved": "운동 기록 저장 완료 • 히트맵을 갱신했습니다.",
+    "saving": "저장 중...",
+    "recordWorkout": "운동 기록하기",
+    "bridgeLinked": "최근 모션 리포트 결과 연동됨",
+    "score": "퍼포먼스 점수 {score}",
+    "legend": "상태 범례",
+    "sync": {
+      "none": "동기화 정보 없음",
+      "justNow": "업데이트: 방금",
+      "secondsAgo": "업데이트: {seconds}초 전",
+      "minutesAgo": "업데이트: {minutes}분 전",
+      "hoursAgo": "업데이트: {hours}시간 전"
+    },
+    "error": {
+      "title": "히트맵 데이터를 불러오지 못했습니다.",
+      "defineHint": "필요 dart-define: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY"
+    }
+  },
+  "muscleGroup": {
+    "chest": "가슴",
+    "shoulders": "어깨",
+    "upperArms": "상완/전완",
+    "abs": "복직근",
+    "obliques": "복사근",
+    "quads": "대퇴 전면",
+    "posteriorChain": "둔부/햄스트링",
+    "calves": "하퇴",
+    "back": "광배/견갑",
+    "lowerPosterior": "하부 허리",
+    "upperPosterior": "승모/목"
+  },
+  "muscle": {
+    "fullBody": "전신",
+    "unknown": "미등록 근육",
+    "neck": "경부 근육",
+    "chest": "대흉근",
+    "pectoralisMinor": "소흉근",
+    "serratusAnterior": "전거근",
+    "frontDeltoid": "전면 삼각근",
+    "lateralDeltoid": "측면 삼각근",
+    "rearDeltoid": "후면 삼각근",
+    "trapezius": "승모근",
+    "traps": "승모근군",
+    "upperTrapezius": "상부 승모근",
+    "middleTrapezius": "중부 승모근",
+    "lowerTrapezius": "하부 승모근",
+    "middleBack": "중부 등",
+    "rhomboids": "능형근",
+    "biceps": "상완이두근",
+    "brachialis": "상완근",
+    "triceps": "상완삼두근",
+    "brachioradialis": "상완요골근",
+    "upperChest": "상부 흉근",
+    "forearm": "전완근",
+    "forearms": "전완근군",
+    "forearmFlexor": "전완 굴근",
+    "forearmExtensor": "전완 신근",
+    "forearmFlexors": "전완 굴근군",
+    "forearmExtensors": "전완 신근군",
+    "rectusAbdominis": "복직근",
+    "transverseAbdominis": "복횡근",
+    "obliques": "복사근",
+    "hipFlexor": "장요근",
+    "hipFlexors": "고관절 굴근군",
+    "adductors": "내전근군",
+    "adductorLongus": "장내전근",
+    "adductorBrevis": "단내전근",
+    "adductorMagnus": "대내전근",
+    "abductors": "외전근군",
+    "quadriceps": "대퇴사두근",
+    "rectusFemoris": "대퇴직근",
+    "vastusLateralis": "외측광근",
+    "vastusMedialis": "내측광근",
+    "vastusIntermedius": "중간광근",
+    "hamstrings": "햄스트링",
+    "bicepsFemoris": "대퇴이두근",
+    "semitendinosus": "반건양근",
+    "semimembranosus": "반막양근",
+    "tibialisAnterior": "전경골근",
+    "calves": "하퇴 삼두근",
+    "gastrocnemius": "비복근",
+    "soleus": "가자미근",
+    "glutes": "둔근군",
+    "gluteusMaximus": "대둔근",
+    "gluteusMedius": "중둔근",
+    "gluteusMinimus": "소둔근",
+    "teresMajor": "대원근",
+    "teresMinor": "소원근",
+    "latissimus": "광배근",
+    "latissimusLower": "광배근 하부",
+    "latissimusUpper": "광배근 상부",
+    "infraspinatus": "극하근",
+    "supraspinatus": "극상근",
+    "subscapularis": "견갑하근",
+    "erectorSpinae": "척추기립근",
+    "lowerBack": "요부 척추기립근"
+  }
+}

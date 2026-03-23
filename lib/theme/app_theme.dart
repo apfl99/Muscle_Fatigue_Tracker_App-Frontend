@@ -1,240 +1,329 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// 앱 전체 테마 (Fitness Health Tracker 스타일)
+/// Premium dark design tokens + global theme.
 class AppTheme {
-  // 메인 컬러 팔레트 (녹색/검은색 기반)
-  static const Color primaryGreen = Color(0xFF00E676);
-  static const Color darkGreen = Color(0xFF00C853);
-  static const Color accentGreen = Color(0xFF69F0AE);
+  // Core palette
+  static const Color background = Color(0xFF090B10);
+  static const Color surface1 = Color(0xFF121620);
+  static const Color surface2 = Color(0xFF1C212D);
+  static const Color accentBrand = Color(0xFF00F58A);
+  static const Color accentDanger = Color(0xFFFF3B30);
+  static const Color ctaOnBrand = Color(0xFF000000); // required contrast
 
-  // UI_DESIGN_GUIDE 고정 컬러
-  static const Color darkBackground = Color(0xFF0A0E27);
-  static const Color cardBackground = Color(0xFF1C1F3A);
-  static const Color cardDark = Color(0xFF161932);
+  // Compatibility aliases (existing code migration-safe)
+  static const Color darkBackground = background;
+  static const Color cardBackground = surface1;
+  static const Color cardDark = surface2;
+  static const Color primaryGreen = accentBrand;
+  static const Color darkGreen = Color(0xFF00C77A);
+  static const Color accentGreen = Color(0xFF6CFFC1);
 
-  // 컨디션 레벨 컬러 (통일된 색상)
-  static const Color normalColor = Color(0xFF00E676); // 정상 - 초록
-  static const Color lightFatigueColor = Color(0xFFFFEB3B); // 회복 중 - 노랑
-  static const Color midFatigueColor = Color(0xFFFF9800); // 회복 지연 - 오렌지
-  static const Color highFatigueColor = Color(0xFFE53935); // 회복 필요 - 빨강
+  // Typography colors
+  static Color get textHigh => Colors.white.withValues(alpha: 0.92);
+  static Color get textMedium => Colors.white.withValues(alpha: 0.65);
+  static Color get textLow => Colors.white.withValues(alpha: 0.40);
 
-  // 그라데이션
+  // Border token
+  static Color get borderSubtle => Colors.white.withValues(alpha: 0.04);
+
+  // Layout/shape tokens
+  static const double pageHorizontalPaddingValue = 24.0;
+  static const EdgeInsets pagePadding = EdgeInsets.symmetric(
+    horizontal: pageHorizontalPaddingValue,
+  );
+  static const BorderRadius cardRadius = BorderRadius.all(
+    Radius.circular(24.0),
+  );
+  static const BorderRadius buttonRadius = BorderRadius.all(
+    Radius.circular(16.0),
+  );
+
+  static const SizedBox gap8 = SizedBox(height: 8.0);
+  static const SizedBox gap16 = SizedBox(height: 16.0);
+  static const SizedBox gap24 = SizedBox(height: 24.0);
+
+  // Recovery colors
+  static const Color normalColor = accentBrand;
+  static const Color lightFatigueColor = Color(0xFFFFB84D);
+  static const Color midFatigueColor = Color(0xFFFF8B57);
+  static const Color highFatigueColor = accentDanger;
+
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primaryGreen, darkGreen],
+    colors: [accentBrand, darkGreen],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient darkGradient = LinearGradient(
-    colors: [cardBackground, cardDark],
+    colors: [surface1, surface2],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  /// 컨디션 점수에 따른 배경 그라디언트 (통일된 색상 기준)
+  static LinearGradient chartGlowGradient(Color color) {
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        color.withValues(alpha: 0.38),
+        color.withValues(alpha: 0.10),
+        color.withValues(alpha: 0.00),
+      ],
+    );
+  }
+
   static LinearGradient fatigueGradient(double fatigue) {
     if (fatigue < 1.1) {
-      // 정상 - 초록
       return const LinearGradient(
-        colors: [Color(0xFF4CAF50), Color(0xFF388E3C)],
+        colors: [Color(0xFF16D98B), Color(0xFF0E7E5D)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     } else if (fatigue < 1.4) {
-      // 회복 중 - 주황
       return const LinearGradient(
-        colors: [Color(0xFFFFA726), Color(0xFFFB8C00)],
+        colors: [Color(0xFFFFB84D), Color(0xFFB6731F)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     } else if (fatigue < 1.8) {
-      // 회복 지연 - 진한 주황
       return const LinearGradient(
-        colors: [Color(0xFFFF7043), Color(0xFFE64A19)],
+        colors: [Color(0xFFFF8B57), Color(0xFFB8562D)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     } else {
-      // 회복 필요 - 빨강
       return const LinearGradient(
-        colors: [Color(0xFFE53935), Color(0xFFC62828)],
+        colors: [Color(0xFFFF5A54), Color(0xFFAD2B25)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
     }
   }
 
-  // 텍스트 스타일 (Google Fonts Poppins - 피트니스/헬스케어 앱에 최적)
-  static TextStyle get headlineStyle => GoogleFonts.poppins(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
+  // Typography tokens (Inter)
+  static TextStyle get displayLargeStyle => GoogleFonts.inter(
+        fontSize: 32,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -1.0,
+        color: textHigh,
       );
 
-  static TextStyle get titleStyle => GoogleFonts.poppins(
-        fontSize: 18,
+  static TextStyle get titleLargeStyle => GoogleFonts.inter(
+        fontSize: 22,
         fontWeight: FontWeight.w600,
-        color: Colors.white,
+        letterSpacing: -0.5,
+        color: textHigh,
       );
 
-  static TextStyle get bodyStyle => GoogleFonts.poppins(
+  static TextStyle get bodyLargeStyle => GoogleFonts.inter(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        letterSpacing: -0.2,
+        color: textHigh,
+      );
+
+  static TextStyle get bodyMediumStyle => GoogleFonts.inter(
         fontSize: 14,
-        color: const Color(0xFFB0BEC5),
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.0,
+        height: 1.5,
+        color: textMedium,
       );
 
-  static TextStyle get captionStyle => GoogleFonts.poppins(
+  static TextStyle get labelSmallStyle => GoogleFonts.inter(
         fontSize: 12,
-        color: const Color(0xFF78909C),
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+        color: textLow,
       );
 
-  // 카드 스타일
+  // Compatibility typography aliases
+  static TextStyle get headlineStyle => displayLargeStyle;
+  static TextStyle get titleStyle => titleLargeStyle;
+  static TextStyle get bodyStyle => bodyMediumStyle;
+  static TextStyle get captionStyle => labelSmallStyle;
+
+  static EdgeInsets resolvedPagePadding(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 1100) {
+      return const EdgeInsets.symmetric(horizontal: 44.0);
+    }
+    if (width >= 768) {
+      return const EdgeInsets.symmetric(horizontal: 32.0);
+    }
+    return pagePadding;
+  }
+
+  static BorderRadius radius(double value) {
+    return BorderRadius.circular(value);
+  }
+
+  // Card style (no shadows; subtle glass cut border)
   static BoxDecoration cardDecoration({
     Color? color,
     Gradient? gradient,
-    double borderRadius = 20,
+    double borderRadius = 24,
+    Border? border,
+    double borderWidth = 1,
+    Color? borderColor,
   }) {
     return BoxDecoration(
-      color: color ?? cardBackground,
+      color: gradient == null ? (color ?? surface1) : color,
       gradient: gradient,
       borderRadius: BorderRadius.circular(borderRadius),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.3),
-          blurRadius: 10,
-          offset: const Offset(0, 5),
-        ),
-      ],
+      border: border ??
+          Border.all(
+            color: borderColor ?? borderSubtle,
+            width: borderWidth,
+          ),
     );
   }
 
-  // 버튼 스타일
+  // Button styles
   static ButtonStyle primaryButtonStyle = ElevatedButton.styleFrom(
-    backgroundColor: primaryGreen,
-    foregroundColor: darkBackground,
-    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+    backgroundColor: accentBrand,
+    foregroundColor: ctaOnBrand,
+    elevation: 0,
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: buttonRadius,
     ),
-    elevation: 5,
+    textStyle: bodyLargeStyle.copyWith(fontWeight: FontWeight.w700),
   );
 
   static ButtonStyle outlineButtonStyle = OutlinedButton.styleFrom(
-    foregroundColor: primaryGreen,
-    side: const BorderSide(color: primaryGreen, width: 2),
-    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+    foregroundColor: textHigh,
+    side: BorderSide(color: borderSubtle, width: 1),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: buttonRadius,
     ),
+    textStyle: bodyLargeStyle.copyWith(fontWeight: FontWeight.w600),
   );
 
-  // 아이콘 버튼 스타일
+  // Icon container style
   static BoxDecoration iconButtonDecoration({Color? color}) {
     return BoxDecoration(
-      color: color ?? cardBackground,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.2),
-          blurRadius: 5,
-          offset: const Offset(0, 3),
-        ),
-      ],
+      color: color ?? surface2,
+      borderRadius: buttonRadius,
+      border: Border.all(
+        color: borderSubtle,
+        width: 1,
+      ),
     );
   }
 
   // ThemeData
   static ThemeData get darkTheme {
-    return ThemeData(
-      brightness: Brightness.dark,
-      primaryColor: primaryGreen,
-      scaffoldBackgroundColor: darkBackground,
-      cardColor: cardBackground,
+    final base = ThemeData.dark(useMaterial3: true);
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme).copyWith(
+      displayLarge: displayLargeStyle,
+      titleLarge: titleLargeStyle,
+      bodyLarge: bodyLargeStyle,
+      bodyMedium: bodyMediumStyle,
+      labelSmall: labelSmallStyle,
+      titleMedium: bodyLargeStyle.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+      ),
+      labelLarge: bodyLargeStyle.copyWith(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+    );
 
-      // Google Fonts Poppins 적용
-      fontFamily: GoogleFonts.poppins().fontFamily,
-
+    return base.copyWith(
+      primaryColor: accentBrand,
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.dark(
+        primary: accentBrand,
+        secondary: accentBrand,
+        surface: surface1,
+        onPrimary: ctaOnBrand,
+        onSurface: textHigh,
+        error: accentDanger,
+        onError: textHigh,
+      ),
+      textTheme: textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: darkBackground,
+        backgroundColor: background,
+        foregroundColor: textHigh,
         elevation: 0,
-        iconTheme: const IconThemeData(color: primaryGreen),
-        titleTextStyle: GoogleFonts.poppins(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
+        centerTitle: false,
+        titleTextStyle: textTheme.titleLarge,
       ),
-
-      colorScheme: const ColorScheme.dark(
-        primary: primaryGreen,
-        secondary: accentGreen,
-        surface: cardBackground,
-        error: highFatigueColor,
-      ),
-
-      textTheme: TextTheme(
-        headlineLarge: headlineStyle,
-        headlineMedium: GoogleFonts.poppins(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-        titleLarge: titleStyle,
-        titleMedium: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-        bodyLarge: GoogleFonts.poppins(
-          fontSize: 16,
-          color: const Color(0xFFB0BEC5),
-        ),
-        bodyMedium: bodyStyle,
-        bodySmall: GoogleFonts.poppins(
-          fontSize: 13,
-          color: const Color(0xFFB0BEC5),
-        ),
-        labelLarge: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-        labelMedium: captionStyle,
-        labelSmall: GoogleFonts.poppins(
-          fontSize: 11,
-          color: const Color(0xFF78909C),
-        ),
-      ),
-
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: primaryButtonStyle.copyWith(
-          textStyle: WidgetStateProperty.all(
-            GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: outlineButtonStyle.copyWith(
-          textStyle: WidgetStateProperty.all(
-            GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-
       cardTheme: CardThemeData(
-        color: cardBackground,
-        elevation: 5,
+        color: surface1,
+        elevation: 0,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: cardRadius,
+          side: BorderSide(
+            color: borderSubtle,
+            width: 1,
+          ),
         ),
       ),
+      dividerTheme: DividerThemeData(
+        color: borderSubtle,
+        thickness: 1,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: primaryButtonStyle),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: outlineButtonStyle),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: surface2,
+          foregroundColor: textHigh,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: buttonRadius),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface2,
+        hintStyle: bodyMediumStyle.copyWith(color: textLow),
+        labelStyle: bodyMediumStyle.copyWith(color: textMedium),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: buttonRadius,
+          borderSide: BorderSide(color: borderSubtle),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: buttonRadius,
+          borderSide: BorderSide(color: accentBrand.withValues(alpha: 0.60)),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: buttonRadius,
+          borderSide: BorderSide(color: borderSubtle),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: surface2,
+        contentTextStyle: bodyMediumStyle.copyWith(color: textHigh),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: buttonRadius),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: surface1,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+      chipTheme: base.chipTheme.copyWith(
+        backgroundColor: surface2,
+        shape: RoundedRectangleBorder(
+          borderRadius: buttonRadius,
+          side: BorderSide(color: borderSubtle),
+        ),
+        labelStyle: bodyMediumStyle.copyWith(
+          color: textMedium,
+        ),
+      ),
+      splashColor: accentBrand.withValues(alpha: 0.10),
+      highlightColor: accentBrand.withValues(alpha: 0.08),
     );
   }
 }

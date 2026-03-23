@@ -121,10 +121,10 @@ class FatigueCalculator {
 
   /// 컨디션 레벨 텍스트 반환
   static String getFatigueLevel(double fatigue) {
-    if (fatigue < 1.1) return '회복 완료';
-    if (fatigue < 1.4) return '회복 중';
-    if (fatigue < 1.8) return '회복 지연';
-    return '회복 필요';
+    if (fatigue < 1.1) return '부하 안정';
+    if (fatigue < 1.4) return '휴식 권장';
+    if (fatigue < 1.8) return '강도 조절 필요';
+    return '강도 조절 필요';
   }
 
   /// 컨디션 레벨 색상 반환 (통일된 색상 사용)
@@ -132,7 +132,7 @@ class FatigueCalculator {
     if (fatigue < 1.1) return const Color(0xFF4CAF50); // 초록 (정상)
     if (fatigue < 1.4) return const Color(0xFFFFA726); // 주황 (회복 중)
     if (fatigue < 1.8) return const Color(0xFFFF7043); // 진한 주황 (회복 지연)
-    return const Color(0xFFE53935); // 빨강 (회복 필요)
+    return const Color(0xFFE53935); // 빨강 (강도 조절 필요)
   }
 
   /// 게이지 값 변환 (0-100%)
@@ -150,7 +150,7 @@ class FatigueCalculator {
     if (delta.abs() < 0.1) return '변화 없음';
     if (delta > 0.3) return '컨디션 급변';
     if (delta > 0.1) return '컨디션 하락';
-    if (delta < -0.1) return '회복 중';
+    if (delta < -0.1) return '부하 완화';
     return '유지';
   }
 

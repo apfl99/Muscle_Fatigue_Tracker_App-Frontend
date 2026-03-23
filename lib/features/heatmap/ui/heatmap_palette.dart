@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import '../model/heatmap_models.dart';
 
@@ -26,13 +27,13 @@ class HeatmapPalette {
   static String labelForStatus(HeatmapStatus status) {
     switch (status) {
       case HeatmapStatus.red:
-        return '회복 필요 (24시간 이내)';
+        return 'heatmap.palette.red'.tr();
       case HeatmapStatus.yellow:
-        return '회복 중 (24~48시간)';
+        return 'heatmap.palette.yellow'.tr();
       case HeatmapStatus.green:
-        return '회복 완료 (48시간+ 또는 기록 없음)';
+        return 'heatmap.palette.green'.tr();
       case HeatmapStatus.unknown:
-        return '데이터 수집 중';
+        return 'heatmap.palette.unknown'.tr();
     }
   }
 }
