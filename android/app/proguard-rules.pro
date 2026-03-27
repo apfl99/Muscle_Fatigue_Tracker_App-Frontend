@@ -13,7 +13,3 @@
 -keep class com.google.android.gms.ads.** { *; }
 -keep class com.google.android.gms.common.** { *; }
 -dontwarn com.google.android.gms.**
-
-# share_plus / FileProvider
--keep class dev.fluttercommunity.plus.share.** { *; }
--keep class androidx.core.content.FileProvider { *; }

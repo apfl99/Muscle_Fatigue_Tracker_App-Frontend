@@ -176,6 +176,14 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
+  String _resolvedTagline(BuildContext context) {
+    // Widget tests may render this screen without EasyLocalization.
+    if (EasyLocalization.of(context) == null) {
+      return 'Movement Pattern Recording';
+    }
+    return 'splash.tagline'.tr();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,7 +211,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'splash.tagline'.tr(),
+                _resolvedTagline(context),
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   color: AppTheme.textMedium,

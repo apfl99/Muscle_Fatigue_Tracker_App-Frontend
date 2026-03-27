@@ -91,7 +91,8 @@ def _material_name_for_muscle(muscle_code: str) -> str:
         "rectus_abdominis": "Material_Abs",
         "obliques": "Material_Obliques",
         "lateral_deltoid": "Material_Shoulders",
-        "biceps": "Material_UpperArms",
+        "upper_arm_region": "Material_UpperArms",
+        "forearm_region": "Material_Forearms",
         "trapezius": "Material_Neck",
     }.get(muscle_code, f"Material_{muscle_code}")
 
@@ -104,10 +105,12 @@ def _muscle_code_for_node_name(node_name: str) -> Optional[str]:
         return "quadriceps"
     if "butt" in n:
         return "glutes"
+    if "fore_arms" in n or "fore arms" in n or "forearm" in n:
+        return "forearm_region"
     if "leg" in n or "ankle" in n or "feet" in n:
         return "calves"
     if "upper_arms" in n or "upper arms" in n:
-        return "biceps"
+        return "upper_arm_region"
     if "shoulder" in n:
         return "lateral_deltoid"
     if "abdomen" in n:

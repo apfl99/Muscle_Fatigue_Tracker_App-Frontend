@@ -10,7 +10,6 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_disclaimer_footer.dart';
 import '../widgets/banner_ad_widget.dart';
-import '../widgets/heatmap_2d_viewer.dart';
 import '../widgets/interactive_muscle_3d_viewer.dart';
 import '../widgets/workout_log_bottom_sheet.dart';
 import 'heatmap_full_viewer_page.dart';
@@ -39,7 +38,6 @@ class _MainHomePageState extends State<MainHomePage>
   late final Animation<double> _pulseScale;
   late final Animation<double> _pulseOpacity;
   bool _isPulseRunning = false;
-  bool _use2DPreviewFallback = false;
   bool _homeOrbitIntroConsumed = false;
 
   @override
@@ -197,15 +195,6 @@ class _MainHomePageState extends State<MainHomePage>
         SnackBar(content: Text('home.logSaved'.tr())),
       );
     }
-  }
-
-  void _switchHomePreviewTo2D() {
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('viewer.interactive3d.optimizing'.tr())),
-    );
   }
 
   @override
@@ -437,24 +426,17 @@ class _MainHomePageState extends State<MainHomePage>
                             horizontal: 8,
                             vertical: 8,
                           ),
-                          child: _use2DPreviewFallback
-                              ? Heatmap2DViewer(
-                                  entries: provider.heatmapEntries,
-                                  borderRadius: 16,
-                                )
-                              : InteractiveMuscle3DViewer(
-                                  key: ValueKey(provider.hashCode.toString()),
-                                  entries: provider.heatmapEntries,
-                                  borderRadius: 16,
-                                  interactive: false,
-                                  autoRotate: false,
-                                  showHotspots: false,
-                                  recommendedMuscleCode: targetMuscleCode,
-                                  autoFocusTargetMuscleCode: targetMuscleCode,
-                                  enableAutoFocusIntro:
-                                      shouldPlayAutoFocusIntro,
-                                  onFallbackTo2D: _switchHomePreviewTo2D,
-                                ),
+                          child: InteractiveMuscle3DViewer(
+                            key: ValueKey(provider.hashCode.toString()),
+                            entries: provider.heatmapEntries,
+                            borderRadius: 16,
+                            interactive: false,
+                            autoRotate: false,
+                            showHotspots: false,
+                            recommendedMuscleCode: targetMuscleCode,
+                            autoFocusTargetMuscleCode: targetMuscleCode,
+                            enableAutoFocusIntro: shouldPlayAutoFocusIntro,
+                          ),
                         ),
                       ),
                       Positioned(

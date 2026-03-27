@@ -5,15 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
 import '../providers/heatmap_provider.dart';
-import '../services/heatmap_share_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_disclaimer_footer.dart';
 import '../widgets/banner_ad_widget.dart';
-import '../widgets/heatmap_2d_viewer.dart';
 import '../widgets/interactive_muscle_3d_viewer.dart';
 import 'sensor_analysis_page.dart';
 
@@ -26,19 +23,8 @@ class HeatmapFullViewerPage extends StatefulWidget {
 
 class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   String? _selectedMuscleCode;
-  bool _use2DFallback = false;
-  bool _fallbackSnackbarShown = false;
   bool _isMuscleSheetOpen = false;
-  bool _isSharing = false;
   bool _autoFocusIntroConsumed = false;
-  final InteractiveMuscle3DController _viewerController =
-      InteractiveMuscle3DController();
-
-  @override
-  void dispose() {
-    _viewerController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,32 +79,20 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                           fit: StackFit.expand,
                           children: [
                             Positioned.fill(
-                              child: _use2DFallback
-                                  ? Heatmap2DViewer(
-                                      entries: provider.heatmapEntries,
-                                      exposeTestKey: true,
-                                      onMuscleTap: (muscleCode) =>
-                                          _onMuscleTapped(provider, muscleCode),
-                                    )
-                                  : InteractiveMuscle3DViewer(
-                                      key: ValueKey(
-                                        provider.hashCode.toString(),
-                                      ),
-                                      entries: provider.heatmapEntries,
-                                      controller: _viewerController,
-                                      exposeBackgroundKey: true,
-                                      showHotspots: false,
-                                      highlightedMuscleCode:
-                                          _selectedMuscleCode,
-                                      recommendedMuscleCode: targetMuscleCode,
-                                      autoFocusTargetMuscleCode:
-                                          targetMuscleCode,
-                                      enableAutoFocusIntro:
-                                          shouldPlayAutoFocusIntro,
-                                      onMuscleTap: (muscleCode) =>
-                                          _onMuscleTapped(provider, muscleCode),
-                                      onFallbackTo2D: _switchTo2DViewer,
-                                    ),
+                              child: InteractiveMuscle3DViewer(
+                                key: ValueKey(
+                                  provider.hashCode.toString(),
+                                ),
+                                entries: provider.heatmapEntries,
+                                exposeBackgroundKey: true,
+                                showHotspots: false,
+                                highlightedMuscleCode: _selectedMuscleCode,
+                                recommendedMuscleCode: targetMuscleCode,
+                                autoFocusTargetMuscleCode: targetMuscleCode,
+                                enableAutoFocusIntro: shouldPlayAutoFocusIntro,
+                                onMuscleTap: (muscleCode) =>
+                                    _onMuscleTapped(provider, muscleCode),
+                              ),
                             ),
                             Positioned(
                               left: 14,
@@ -182,29 +156,6 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      key: const Key('heatmap_share_button'),
-                      onPressed: _isSharing
-                          ? null
-                          : () => _shareCurrent3DMap(provider),
-                      icon: _isSharing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.ios_share_rounded),
-                      label: Text('heatmap.share.cta'.tr()),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        backgroundColor: const Color(0xFF13314B),
-                        foregroundColor: AppTheme.textHigh,
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 12),
                   Container(
                     decoration: AppTheme.cardDecoration(
@@ -228,19 +179,6 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
           ),
         );
       },
-    );
-  }
-
-  void _switchTo2DViewer() {
-    if (!mounted) {
-      return;
-    }
-    if (_fallbackSnackbarShown) {
-      return;
-    }
-    _fallbackSnackbarShown = true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('viewer.interactive3d.optimizing'.tr())),
     );
   }
 
@@ -569,93 +507,6 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     );
   }
 
-  Future<void> _shareCurrent3DMap(HeatmapProvider provider) async {
-    if (_isSharing) {
-      return;
-    }
-    setState(() {
-      _isSharing = true;
-    });
-
-    try {
-      final framePng =
-          await _viewerController.capturePngBytes(pixelRatio: 1.28);
-      if (framePng == null || framePng.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('heatmap.share.captureUnavailable'.tr())),
-          );
-        }
-        return;
-      }
-
-      final suggestion = provider.nextWorkoutSuggestion;
-      final targetCode = _normalizeMuscleCode(suggestion.targetMuscleCode);
-      final targetName = _displayNameForCode(targetCode);
-      final overloaded = suggestion.overloadedMuscleCodes
-          .take(2)
-          .map(_displayNameForCode)
-          .join(', ');
-      final shareSubline = overloaded.isEmpty
-          ? 'heatmap.share.sublineFallback'.tr(
-              namedArgs: {'target': targetName},
-            )
-          : 'heatmap.share.subline'.tr(
-              namedArgs: {
-                'overloaded': overloaded,
-                'target': targetName,
-              },
-            );
-      final shareImageFile = await HeatmapShareService.buildShareableImage(
-        modelPngBytes: framePng,
-        performanceScore: provider.performanceScore,
-        workoutVolume: provider.todayWorkoutVolume,
-        performanceLabel: 'heatmap.share.metricPerformance'.tr(),
-        volumeLabel: 'heatmap.share.metricVolume'.tr(),
-        headline: 'heatmap.share.headline'.tr(
-          namedArgs: {'target': targetName},
-        ),
-        subline: shareSubline,
-        watermark: 'heatmap.share.watermark'.tr(),
-      );
-      final shareText = 'heatmap.share.message'.tr(
-        namedArgs: {
-          'target': targetName,
-          'score': provider.performanceScore.toString(),
-          'volume': provider.todayWorkoutVolume.toString(),
-        },
-      );
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile(
-              shareImageFile.path,
-              mimeType: 'image/png',
-              name: 'musclecare_map.png',
-            ),
-          ],
-          subject: 'heatmap.share.subject'.tr(),
-          text: shareText,
-        ),
-      );
-    } catch (error, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('[HeatmapFullViewerPage] share failed: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('heatmap.share.failed'.tr())),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSharing = false;
-        });
-      }
-    }
-  }
 
   String _statusLabel(double peakScore) {
     if (peakScore >= 2.6) {

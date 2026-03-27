@@ -135,7 +135,6 @@ void main() {
         find.byKey(const Key('next_workout_suggestion_card')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('heatmap_share_button')), findsOneWidget);
       expect(
         find.byKey(const Key('next_workout_target_badge')),
         findsOneWidget,
