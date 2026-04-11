@@ -174,7 +174,7 @@ class _WorkoutLogBottomSheetState extends State<WorkoutLogBottomSheet> {
                           )
                         : Text(
                             'workoutLog.save'.tr(),
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                   ),
                 ),

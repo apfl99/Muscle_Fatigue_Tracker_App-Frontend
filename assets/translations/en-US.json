@@ -267,18 +267,9 @@
       "copyFallback": "Today, we recommend a balanced recovery session centered on {target}.",
       "confidence": "Confidence {value}%"
     },
-    "share": {
-      "cta": "Share 3D Map",
-      "metricPerformance": "Performance",
-      "metricVolume": "Volume",
-      "captureUnavailable": "Preparing 3D capture. Please try again in a moment.",
-      "failed": "Failed to generate a share image.",
-      "headline": "Today Target: {target}",
-      "subline": "Yesterday's {overloaded} load peaked · Today focus on {target}",
-      "sublineFallback": "Today we recommend a recovery-focused routine on {target}.",
-      "subject": "MuscleCare 3D Performance Map",
-      "watermark": "Analyzed by MuscleCare",
-      "message": "My 3D performance map today. Target: {target} · Score {score} · Volume {volume}\n#MuscleCare #3DWorkout"
+    "metrics": {
+      "performance": "Performance",
+      "volume": "Volume"
     }
   },
   "workoutLog": {

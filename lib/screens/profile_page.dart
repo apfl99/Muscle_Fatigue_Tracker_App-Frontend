@@ -299,7 +299,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                   value: _hasBaseline
                       ? 'profile.global.baseline.vibrationValue'.tr(
                           namedArgs: {
-                            'value': _currentFreqBase?.toStringAsFixed(1) ?? '--',
+                            'value':
+                                _currentFreqBase?.toStringAsFixed(1) ?? '--',
                           },
                         )
                       : '--',
@@ -409,9 +410,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           Container(
             width: Responsive.isSmallScreen(context) ? 70 : 80,
             height: Responsive.isSmallScreen(context) ? 70 : 80,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [Color(0xFF00E676), Color(0xFF4CAF50)],
               ),
             ),
@@ -524,12 +525,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.access_time,
                       color: Colors.blue,
                       size: 20,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         '하루 1~2회 모션 기록으로\n개인화 향상',
@@ -542,16 +543,16 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.repeat,
                       color: Colors.blue,
                       size: 20,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         '같은 시간대에 기록하면\n개인화 예측이 더 안정적으로 동작합니다',

@@ -267,18 +267,9 @@
       "copyFallback": "오늘은 {target} 중심의 균형 회복 세션을 권장합니다.",
       "confidence": "신뢰도 {value}%"
     },
-    "share": {
-      "cta": "3D 맵 공유",
-      "metricPerformance": "퍼포먼스 점수",
-      "metricVolume": "운동 볼륨",
-      "captureUnavailable": "3D 화면 캡처를 준비 중입니다. 잠시 후 다시 시도해주세요.",
-      "failed": "공유 이미지를 만드는 중 오류가 발생했습니다.",
-      "headline": "오늘 타겟: {target}",
-      "subline": "어제 {overloaded} 부하가 높았습니다 · 오늘은 {target} 중심",
-      "sublineFallback": "오늘은 {target} 중심 회복 루틴을 추천합니다.",
-      "subject": "MuscleCare 3D 퍼포먼스 맵",
-      "watermark": "MuscleCare 분석 리포트",
-      "message": "오늘의 3D 퍼포먼스 맵입니다. 타겟: {target} · 점수 {score} · 볼륨 {volume}\n#MuscleCare #3DWorkout"
+    "metrics": {
+      "performance": "퍼포먼스 점수",
+      "volume": "운동 볼륨"
     }
   },
   "workoutLog": {

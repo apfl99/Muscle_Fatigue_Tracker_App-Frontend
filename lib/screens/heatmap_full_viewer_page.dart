@@ -456,13 +456,13 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
             children: [
               _buildMetricPill(
                 icon: Icons.bolt_rounded,
-                label: 'heatmap.share.metricPerformance'.tr(),
+                label: 'heatmap.metrics.performance'.tr(),
                 value: provider.performanceScore.toString(),
               ),
               const SizedBox(width: 8),
               _buildMetricPill(
                 icon: Icons.fitness_center_rounded,
-                label: 'heatmap.share.metricVolume'.tr(),
+                label: 'heatmap.metrics.volume'.tr(),
                 value: provider.todayWorkoutVolume.toString(),
               ),
             ],
@@ -506,7 +506,6 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
       ),
     );
   }
-
 
   String _statusLabel(double peakScore) {
     if (peakScore >= 2.6) {
@@ -968,7 +967,9 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                   ),
                   child: Text(
                     'heatmap.recoveryPrediction.estimatedHours'.tr(
-                      namedArgs: {'hours': recoveryHours.clamp(0, 72).toString()},
+                      namedArgs: {
+                        'hours': recoveryHours.clamp(0, 72).toString(),
+                      },
                     ),
                     style: TextStyle(
                       color: AppTheme.textHigh,

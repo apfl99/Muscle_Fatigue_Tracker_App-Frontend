@@ -505,17 +505,17 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
       groupValue: _timelineFilter,
       children: <_TimelineFilter, Widget>{
         _TimelineFilter.manual: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Text(
             'history.timelineType.manual'.tr(),
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
         _TimelineFilter.analysis: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Text(
             'history.timelineType.analysis'.tr(),
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
       },
@@ -773,7 +773,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             },
             child: Text(
               'history.calendar.filterToday'.tr(),
-              style: TextStyle(color: AppTheme.primaryGreen),
+              style: const TextStyle(color: AppTheme.primaryGreen),
             ),
           ),
         ),

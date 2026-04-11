@@ -27,7 +27,7 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
 
     return Container(
       decoration: AppTheme.cardDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
             AppTheme.surface2,
             AppTheme.surface1,
@@ -118,7 +118,7 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
                   backgroundColor: AppTheme.primaryGreen,
                   foregroundColor: AppTheme.ctaOnBrand,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppTheme.buttonRadius,
                   ),
                 ),
@@ -140,7 +140,7 @@ class HeatmapBridgeCtaCard extends StatelessWidget {
                     color: AppTheme.borderSubtle,
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: AppTheme.buttonRadius,
                   ),
                 ),

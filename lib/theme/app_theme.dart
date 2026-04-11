@@ -186,7 +186,7 @@ class AppTheme {
     foregroundColor: ctaOnBrand,
     elevation: 0,
     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-    shape: RoundedRectangleBorder(
+    shape: const RoundedRectangleBorder(
       borderRadius: buttonRadius,
     ),
     textStyle: bodyLargeStyle.copyWith(fontWeight: FontWeight.w700),
@@ -196,7 +196,7 @@ class AppTheme {
     foregroundColor: textHigh,
     side: BorderSide(color: borderSubtle, width: 1),
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-    shape: RoundedRectangleBorder(
+    shape: const RoundedRectangleBorder(
       borderRadius: buttonRadius,
     ),
     textStyle: bodyLargeStyle.copyWith(fontWeight: FontWeight.w600),
@@ -276,7 +276,7 @@ class AppTheme {
           backgroundColor: surface2,
           foregroundColor: textHigh,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: buttonRadius),
+          shape: const RoundedRectangleBorder(borderRadius: buttonRadius),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -303,7 +303,7 @@ class AppTheme {
         backgroundColor: surface2,
         contentTextStyle: bodyMediumStyle.copyWith(color: textHigh),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: buttonRadius),
+        shape: const RoundedRectangleBorder(borderRadius: buttonRadius),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: surface1,
