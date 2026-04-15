@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,28 +85,37 @@ class InteractiveMuscle3DViewer extends StatefulWidget {
       _InteractiveMuscle3DViewerState();
 }
 
-class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
-  // Full-body high-resolution open-source anatomy model.
-  static const String _myologyModelSrc =
-      'https://raw.githubusercontent.com/shaikhmohammadtalha/android-anatomy-insight/main/app/src/main/assets/models/Myology.glb';
-  static const String _fallbackBodyModelSrc =
-      'https://raw.githubusercontent.com/hpfrei/body-anatomy-3d-viewer/main/public/body.glb';
+class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
+    with WidgetsBindingObserver {
+  static const String _localSegmentedModelSrc =
+      'assets/models/human_muscular_system_segmented.glb';
   static const String _viewerId = 'musclecare-anatomy-viewer';
-  static const String _defaultOrbit = '0deg 88deg 128%';
+  static const String _defaultOrbit = '0deg 90deg 112%';
+  static const Duration _modelLoadTimeout = Duration(milliseconds: 10000);
+  static const String _timeoutFallbackMessage =
+      '네트워크 문제로 로딩이 지연되고 있습니다. 다시 시도해주세요';
+  static const String _genericLoadFailureMessage =
+      '3D 모델 로딩에 실패했습니다. 다시 시도해주세요';
 
   WebViewController? _webViewController;
   Timer? _runtimeSyncTimer;
   Timer? _autoFocusResetTimer;
+  Timer? _modelLoadTimeoutTimer;
+  Timer? _webViewReadyProbeTimer;
+  bool _webViewReadyProbeBusy = false;
+  int _webViewReadyProbeAttempt = 0;
+  DateTime? _loadSessionStartedAt;
+  DateTime? _lifecyclePausedAt;
   bool _modelReady = false;
   int _runtimeAttempt = 0;
   int _modelSourceIndex = 0;
   int _reloadNonce = 0;
   String? _lastAppliedPayloadJson;
+  String? _blockingErrorMessage;
   String _cameraOrbit = _defaultOrbit;
 
   List<String> get _modelSourceCandidates => const [
-        _myologyModelSrc,
-        _fallbackBodyModelSrc,
+        _localSegmentedModelSrc,
       ];
 
   String get _activeModelSrc => _modelSourceCandidates[_modelSourceIndex];
@@ -113,9 +123,11 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.controller?.addListener(_handleExternalControllerChanged);
     widget.controller?.bindCameraOrbit(_setCameraOrbitFromController);
     _applyInitialAutoFocus();
+    _startModelLoadTimeoutWatchdog();
   }
 
   @override
@@ -148,9 +160,50 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   void dispose() {
     _runtimeSyncTimer?.cancel();
     _autoFocusResetTimer?.cancel();
+    _modelLoadTimeoutTimer?.cancel();
+    _webViewReadyProbeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller?.removeListener(_handleExternalControllerChanged);
     widget.controller?.unbindCameraOrbit(_setCameraOrbitFromController);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) {
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[3DViewer] lifecycle=$state ready=$_modelReady source=$_activeModelSrc',
+      );
+    }
+    if (state == AppLifecycleState.resumed) {
+      final pausedAt = _lifecyclePausedAt;
+      if (pausedAt != null && _loadSessionStartedAt != null) {
+        final pausedFor = DateTime.now().difference(pausedAt);
+        _loadSessionStartedAt = _loadSessionStartedAt!.add(pausedFor);
+      }
+      _lifecyclePausedAt = null;
+      if (_modelReady) {
+        _queueRuntimeSync(force: true);
+      } else if (_blockingErrorMessage == null) {
+        _startModelLoadTimeoutWatchdog(preserveTimeoutWindow: true);
+        _scheduleWebViewReadyProbe(resetAttempt: false);
+      }
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _lifecyclePausedAt ??= DateTime.now();
+      _modelLoadTimeoutTimer?.cancel();
+      _modelLoadTimeoutTimer = null;
+      _webViewReadyProbeTimer?.cancel();
+      _webViewReadyProbeTimer = null;
+      _webViewReadyProbeBusy = false;
+    }
   }
 
   void _handleExternalControllerChanged() {
@@ -168,6 +221,27 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     setState(() {
       _cameraOrbit = orbit;
     });
+  }
+
+  void _handleWebViewCreated(WebViewController controller) {
+    final hadController = _webViewController != null;
+    _webViewController = controller;
+    if (!mounted) {
+      return;
+    }
+    if (hadController || _modelReady || _blockingErrorMessage != null) {
+      setState(() {
+        _modelReady = false;
+        _runtimeAttempt = 0;
+        _blockingErrorMessage = null;
+        _lastAppliedPayloadJson = null;
+      });
+    }
+    if (_lifecyclePausedAt != null) {
+      return;
+    }
+    _startModelLoadTimeoutWatchdog();
+    _scheduleWebViewReadyProbe();
   }
 
   void _applyInitialAutoFocus() {
@@ -193,6 +267,170 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     });
   }
 
+  void _startModelLoadTimeoutWatchdog({bool preserveTimeoutWindow = false}) {
+    _modelLoadTimeoutTimer?.cancel();
+    final now = DateTime.now();
+    if (!preserveTimeoutWindow || _loadSessionStartedAt == null) {
+      _loadSessionStartedAt = now;
+    }
+    final elapsed = now.difference(_loadSessionStartedAt!);
+    final remaining = _modelLoadTimeout - elapsed;
+    if (remaining <= Duration.zero) {
+      _setBlockingErrorMessage(_timeoutFallbackMessage);
+      return;
+    }
+    _modelLoadTimeoutTimer = Timer(remaining, () {
+      if (!mounted ||
+          _modelReady ||
+          _blockingErrorMessage != null ||
+          _lifecyclePausedAt != null) {
+        return;
+      }
+      if (kDebugMode) {
+        debugPrint(
+          '[3DViewer] timeout source=$_activeModelSrc index=$_modelSourceIndex',
+        );
+      }
+      setState(() {
+        _runtimeAttempt = (_runtimeAttempt + 1).clamp(1, 999);
+        _blockingErrorMessage = _timeoutFallbackMessage;
+      });
+    });
+  }
+
+  void _clearModelLoadTimeoutWatchdog({bool resetSessionWindow = false}) {
+    _modelLoadTimeoutTimer?.cancel();
+    _modelLoadTimeoutTimer = null;
+    if (resetSessionWindow) {
+      _loadSessionStartedAt = null;
+    }
+  }
+
+  void _setBlockingErrorMessage(String message) {
+    _clearModelLoadTimeoutWatchdog();
+    _cancelWebViewReadyProbe();
+    if (!mounted) {
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[3DViewer] blocking_error="$message" source=$_activeModelSrc index=$_modelSourceIndex',
+      );
+    }
+    setState(() {
+      _runtimeAttempt = (_runtimeAttempt + 1).clamp(1, 999);
+      _blockingErrorMessage = message;
+    });
+  }
+
+  void _cancelWebViewReadyProbe() {
+    _webViewReadyProbeTimer?.cancel();
+    _webViewReadyProbeTimer = null;
+    _webViewReadyProbeBusy = false;
+    _webViewReadyProbeAttempt = 0;
+  }
+
+  void _scheduleWebViewReadyProbe({bool resetAttempt = true}) {
+    _webViewReadyProbeTimer?.cancel();
+    if (resetAttempt) {
+      _webViewReadyProbeAttempt = 0;
+    }
+    _webViewReadyProbeBusy = false;
+    _webViewReadyProbeTimer = Timer.periodic(
+      const Duration(milliseconds: 850),
+      (timer) async {
+        if (!mounted || _modelReady || _blockingErrorMessage != null) {
+          _cancelWebViewReadyProbe();
+          return;
+        }
+        if (_lifecyclePausedAt != null) {
+          return;
+        }
+        final controller = _webViewController;
+        if (controller == null || _webViewReadyProbeBusy) {
+          return;
+        }
+        _webViewReadyProbeBusy = true;
+        _webViewReadyProbeAttempt += 1;
+        try {
+          final result = await controller.runJavaScriptReturningResult(
+            '''(() => {
+const findViewer = () => {
+  const direct = document.querySelector('#$_viewerId') || document.querySelector('model-viewer');
+  if (direct) return direct;
+  const frames = Array.from(document.querySelectorAll('iframe'));
+  for (const frame of frames) {
+    try {
+      const doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+      if (!doc) continue;
+      const nested = doc.querySelector('#$_viewerId') || doc.querySelector('model-viewer');
+      if (nested) return nested;
+    } catch (_) {}
+  }
+  return null;
+};
+const viewer = findViewer();
+if (!viewer) return 'missing';
+const loaded = Boolean(viewer.loaded) || Boolean(viewer.model);
+if (loaded) return 'ready';
+const progress = Number(viewer.loadedProgress || 0);
+if (progress >= 0.98) return 'ready';
+if (progress > 0.0) return 'progress:' + progress.toFixed(2);
+return 'present';
+})();''',
+          );
+          final probe = result
+              .toString()
+              .replaceAll('"', '')
+              .replaceAll("'", '')
+              .trim()
+              .toLowerCase();
+          if (kDebugMode && _webViewReadyProbeAttempt <= 4) {
+            debugPrint(
+              '[3DViewerProbe] attempt=$_webViewReadyProbeAttempt result=$probe source=$_activeModelSrc',
+            );
+          }
+          final shouldFailOpen =
+              _webViewReadyProbeAttempt >= 6 &&
+              (probe == 'present' ||
+                  probe == 'missing' ||
+                  probe.startsWith('progress:'));
+          if (probe == 'ready' || shouldFailOpen) {
+            if (kDebugMode && shouldFailOpen) {
+              debugPrint(
+                '[3DViewerProbe] fail-open ready after attempt=$_webViewReadyProbeAttempt result=$probe',
+              );
+            }
+            _cancelWebViewReadyProbe();
+            _handleModelReadyMessage('ready');
+            return;
+          }
+        } catch (_) {
+          // Swallow transient WebView evaluation errors during startup.
+        } finally {
+          _webViewReadyProbeBusy = false;
+        }
+        if (_webViewReadyProbeAttempt >= 12) {
+          _cancelWebViewReadyProbe();
+        }
+      },
+    );
+  }
+
+  String _resolveLoadFailureMessage(String reason) {
+    final normalized = reason.toLowerCase();
+    if (normalized.contains('oom') ||
+        normalized.contains('out_of_memory') ||
+        normalized.contains('webgl_context_lost') ||
+        normalized.contains('context_lost')) {
+      return 'WebGL 메모리 부족으로 3D 렌더링에 실패했습니다. 다시 시도해주세요';
+    }
+    if (normalized.contains('scene_graph')) {
+      return '3D 장면 초기화에 실패했습니다. 다시 시도해주세요';
+    }
+    return _genericLoadFailureMessage;
+  }
+
   void _queueRuntimeSync({String? forcedPayloadJson, bool force = false}) {
     _runtimeSyncTimer?.cancel();
     _runtimeSyncTimer = Timer(const Duration(milliseconds: 72), () async {
@@ -215,21 +453,28 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         if (!mounted) {
           return;
         }
-        setState(() {
-          _modelReady = false;
-        });
+        _setBlockingErrorMessage(_genericLoadFailureMessage);
       }
     });
   }
 
-  void _retryModelLoad({bool advanceSource = false, bool resetAttempt = true}) {
+  void _retryModelLoad({
+    bool advanceSource = false,
+    bool resetAttempt = true,
+    bool preserveTimeoutWindow = false,
+  }) {
     _runtimeSyncTimer?.cancel();
     _autoFocusResetTimer?.cancel();
+    _cancelWebViewReadyProbe();
+    _clearModelLoadTimeoutWatchdog(
+      resetSessionWindow: !preserveTimeoutWindow,
+    );
     if (!mounted) {
       return;
     }
     setState(() {
       _modelReady = false;
+      _blockingErrorMessage = null;
       if (resetAttempt) {
         _runtimeAttempt = 0;
       }
@@ -241,6 +486,9 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       _reloadNonce += 1;
     });
     _applyInitialAutoFocus();
+    _startModelLoadTimeoutWatchdog(
+      preserveTimeoutWindow: preserveTimeoutWindow,
+    );
   }
 
   String _buildRuntimePayloadJson({InteractiveMuscle3DViewer? fromWidget}) {
@@ -330,34 +578,43 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
     if (!mounted) {
       return;
     }
+    if (kDebugMode) {
+      debugPrint(
+        '[3DViewerBridge] message=$message source=$_activeModelSrc index=$_modelSourceIndex',
+      );
+    }
     if (message == 'ready') {
+      _clearModelLoadTimeoutWatchdog(resetSessionWindow: true);
+      _cancelWebViewReadyProbe();
       setState(() {
         _modelReady = true;
         _runtimeAttempt = 0;
+        _blockingErrorMessage = null;
       });
       _queueRuntimeSync(force: true);
       return;
     }
     if (message.startsWith('retry:')) {
       final retryCount = int.tryParse(message.split(':').last) ?? 0;
+      if (_runtimeAttempt == retryCount) {
+        return;
+      }
       setState(() {
         _runtimeAttempt = retryCount;
       });
       return;
     }
     if (message.startsWith('error:')) {
+      final reason = message.substring('error:'.length);
       if (_modelSourceIndex < _modelSourceCandidates.length - 1) {
-        _retryModelLoad(advanceSource: true);
+        _retryModelLoad(
+          advanceSource: true,
+          resetAttempt: false,
+          preserveTimeoutWindow: true,
+        );
         return;
       }
-      setState(() {
-        _runtimeAttempt = (_runtimeAttempt + 1).clamp(1, 999);
-        // Keep the viewer usable even if scene-graph API material pass fails.
-        _modelReady = _runtimeAttempt >= 2;
-      });
-      if (!_modelReady) {
-        _retryModelLoad(resetAttempt: false);
-      }
+      _setBlockingErrorMessage(_resolveLoadFailureMessage(reason));
     }
   }
 
@@ -399,7 +656,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       key: ValueKey(
         'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
       ),
-      src: _activeModelSrc,
+      src: 'assets/models/human_muscular_system_segmented.glb',
       id: _viewerId,
       backgroundColor: Colors.transparent,
       cameraControls: widget.interactive,
@@ -411,13 +668,13 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       autoRotateDelay: 1400,
       rotationPerSecond: '20deg',
       cameraOrbit: _cameraOrbit,
-      cameraTarget: '0m 0.84m 0m',
+      cameraTarget: 'auto auto auto',
       fieldOfView: '28deg',
-      minCameraOrbit: 'auto 70deg 112%',
-      maxCameraOrbit: 'auto 110deg 152%',
+      minCameraOrbit: '-180deg 90deg 106%',
+      maxCameraOrbit: '180deg 90deg 122%',
       interpolationDecay: 180,
       environmentImage: 'neutral',
-      exposure: 1.5,
+      exposure: 1.2,
       shadowSoftness: 1.0,
       loading: Loading.eager,
       reveal: Reveal.auto,
@@ -437,7 +694,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         ),
       },
       onWebViewCreated: (controller) {
-        _webViewController = controller;
+        _handleWebViewCreated(controller);
       },
     );
 
@@ -459,7 +716,9 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
       fit: StackFit.expand,
       children: [
         viewerWidget,
-        if (!_modelReady) _buildLoadingOverlay(context),
+        if (!_modelReady && _blockingErrorMessage == null)
+          _buildLoadingOverlay(context),
+        if (_blockingErrorMessage != null) _buildLoadFailureOverlay(context),
       ],
     );
   }
@@ -471,61 +730,131 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         color: Colors.black.withValues(alpha: 0.20),
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.surface1.withValues(alpha: 0.86),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppTheme.surface1.withValues(alpha: 0.86),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: AppTheme.primaryGreen,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'viewer.interactive3d.loading'.tr(),
+                        textAlign: TextAlign.center,
+                        style: AppTheme.bodyMediumStyle.copyWith(
+                          color: AppTheme.textHigh,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _runtimeAttempt > 0
+                            ? 'viewer.interactive3d.retrying'
+                                .tr(namedArgs: {'count': '$_runtimeAttempt'})
+                            : 'viewer.interactive3d.optimizing'.tr(),
+                        textAlign: TextAlign.center,
+                        style: AppTheme.labelSmallStyle.copyWith(
+                          color: AppTheme.textLow,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _retryModelLoad(
+                            advanceSource:
+                                _modelSourceIndex <
+                                _modelSourceCandidates.length - 1,
+                          );
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: Text('viewer.interactive3d.retry'.tr()),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        color: AppTheme.primaryGreen,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadFailureOverlay(BuildContext context) {
+    final canUseNextSource =
+        _modelSourceIndex < _modelSourceCandidates.length - 1;
+    return IgnorePointer(
+      ignoring: false,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.32),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppTheme.surface1.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.wifi_tethering_error_rounded,
+                        color: Color(0xFFFF8A80),
+                        size: 30,
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'heatmap.interactive3d.loading'.tr(),
-                      textAlign: TextAlign.center,
-                      style: AppTheme.bodyMediumStyle.copyWith(
-                        color: AppTheme.textHigh,
+                      const SizedBox(height: 12),
+                      Text(
+                        _blockingErrorMessage ?? _genericLoadFailureMessage,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.bodyMediumStyle.copyWith(
+                          color: AppTheme.textHigh,
+                          height: 1.45,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _runtimeAttempt > 0
-                          ? 'heatmap.interactive3d.retrying'
-                              .tr(namedArgs: {'count': '$_runtimeAttempt'})
-                          : 'heatmap.interactive3d.optimizing'.tr(),
-                      textAlign: TextAlign.center,
-                      style: AppTheme.labelSmallStyle.copyWith(
-                        color: AppTheme.textLow,
-                        height: 1.45,
+                      const SizedBox(height: 8),
+                      Text(
+                        canUseNextSource
+                            ? '다른 모델 소스로 전환해 다시 시도할 수 있습니다'
+                            : '현재 소스에서 로딩이 실패했습니다. 네트워크 상태를 확인해주세요',
+                        textAlign: TextAlign.center,
+                        style: AppTheme.labelSmallStyle.copyWith(
+                          color: AppTheme.textLow,
+                          height: 1.4,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _modelReady = false;
-                          _runtimeAttempt = 0;
-                          _lastAppliedPayloadJson = null;
-                        });
-                        _queueRuntimeSync(force: true);
-                      },
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: Text('heatmap.interactive3d.retry'.tr()),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => _retryModelLoad(
+                          advanceSource: canUseNextSource,
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: Text('viewer.interactive3d.retry'.tr()),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -709,22 +1038,24 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
   }
 
   String _buildViewerJs() {
-    final muscleNodeMapJson = jsonEncode(_muscleMeshNodeMap);
+    final muscleNodeMapJson = jsonEncode(_segmentedMuscleMeshNodeMap);
     final initialPayloadJson = _buildRuntimePayloadJson();
     return '''
       (() => {
-        const viewer = document.querySelector('#$_viewerId');
-        if (!viewer) {
-          return;
-        }
-
         const muscleNodeMap = $muscleNodeMapJson;
-        const runtimeState = {
-          payload: $initialPayloadJson,
-          materialToMuscle: new Map(),
-          nodeToMuscle: new Map(),
-          dominantMuscle: null,
-        };
+        const initialPayload = $initialPayloadJson;
+        const mountViewer = (viewer) => {
+          if (!viewer || viewer.__musclecareMounted) {
+            return;
+          }
+          viewer.__musclecareMounted = true;
+
+          const runtimeState = {
+            payload: initialPayload,
+            materialToMuscle: new Map(),
+            nodeToMuscle: new Map(),
+            dominantMuscle: null,
+          };
 
         const normalize = (value) => {
           let text = String(value || '').toLowerCase();
@@ -802,12 +1133,12 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           viewer.setAttribute('disable-pan', '');
           viewer.setAttribute('shadow-intensity', '3.0');
           viewer.setAttribute('shadow-softness', '1.0');
-          viewer.setAttribute('exposure', '1.5');
+          viewer.setAttribute('exposure', '1.2');
           viewer.setAttribute('environment-image', 'neutral');
         };
 
         const colors = {
-          neutral: [0.15, 0.18, 0.23],
+          neutral: [0.24, 0.26, 0.31],
           green: [0.20, 0.98, 0.56],
           yellow: [1.00, 0.78, 0.28],
           red: [1.00, 0.32, 0.46],
@@ -891,8 +1222,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
 
           material.pbrMetallicRoughness.setBaseColorFactor(finalColor);
           // Mandatory premium PBR injection.
-          material.pbrMetallicRoughness.setRoughnessFactor(0.3);
-          material.pbrMetallicRoughness.setMetallicFactor(0.6);
+          material.pbrMetallicRoughness.setRoughnessFactor(0.42);
+          material.pbrMetallicRoughness.setMetallicFactor(0.2);
           if (material.setEmissiveFactor) {
             material.setEmissiveFactor(emissive);
           }
@@ -905,8 +1236,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
             colors.neutral[2],
             1.0,
           ]);
-          material.pbrMetallicRoughness.setRoughnessFactor(0.74);
-          material.pbrMetallicRoughness.setMetallicFactor(0.12);
+          material.pbrMetallicRoughness.setRoughnessFactor(0.84);
+          material.pbrMetallicRoughness.setMetallicFactor(0.05);
           if (material.setEmissiveFactor) {
             material.setEmissiveFactor([0.0, 0.0, 0.0]);
           }
@@ -1046,35 +1377,90 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
         };
 
         let readyPosted = false;
+        let errorPosted = false;
+        let probeActive = false;
         const notifyReadyOnce = () => {
           if (readyPosted) {
             return;
           }
           readyPosted = true;
+          probeActive = false;
           ModelReady.postMessage('ready');
         };
 
+        const notifyErrorOnce = (code) => {
+          if (readyPosted || errorPosted) {
+            return;
+          }
+          errorPosted = true;
+          probeActive = false;
+          ModelReady.postMessage('error:' + code);
+        };
+
+        const stringifyError = (value) => {
+          try {
+            if (value == null) {
+              return '';
+            }
+            if (typeof value === 'string') {
+              return value.toLowerCase();
+            }
+            if (typeof value.message === 'string') {
+              return String(value.message).toLowerCase();
+            }
+            return JSON.stringify(value).toLowerCase();
+          } catch (_) {
+            return '';
+          }
+        };
+
+        const isOomLikeError = (text) => {
+          if (!text) {
+            return false;
+          }
+          return (
+            text.includes('out of memory') ||
+            text.includes('webglcontextlost') ||
+            text.includes('context lost') ||
+            text.includes('context_lost') ||
+            text.includes('oom')
+          );
+        };
+
+        const postRetryProgress = (attempt) => {
+          if (attempt === 1 || attempt % 4 === 0) {
+            ModelReady.postMessage('retry:' + attempt);
+          }
+        };
+
         const scheduleReadyProbe = (attempt = 0) => {
+          if (attempt === 0) {
+            if (probeActive) {
+              return;
+            }
+            probeActive = true;
+          }
           try {
             enforceViewerConstraints();
             const applied = applyAllMaterials();
             if (applied) {
+              probeActive = false;
               return;
             }
             const nextAttempt = attempt + 1;
-            ModelReady.postMessage('retry:' + nextAttempt);
-            if (nextAttempt < 320) {
-              window.setTimeout(() => scheduleReadyProbe(nextAttempt), 260);
+            postRetryProgress(nextAttempt);
+            if (nextAttempt < 180) {
+              window.setTimeout(() => scheduleReadyProbe(nextAttempt), 180);
             } else {
-              ModelReady.postMessage('error:scene_graph_unavailable');
+              notifyErrorOnce('scene_graph_unavailable');
             }
           } catch (_) {
             const nextAttempt = attempt + 1;
-            ModelReady.postMessage('retry:' + nextAttempt);
-            if (nextAttempt < 320) {
-              window.setTimeout(() => scheduleReadyProbe(nextAttempt), 320);
+            postRetryProgress(nextAttempt);
+            if (nextAttempt < 180) {
+              window.setTimeout(() => scheduleReadyProbe(nextAttempt), 220);
             } else {
-              ModelReady.postMessage('error:scene_graph_runtime_exception');
+              notifyErrorOnce('scene_graph_runtime_exception');
             }
           }
         };
@@ -1097,8 +1483,47 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           scheduleReadyProbe(0);
         });
 
-        viewer.addEventListener('error', () => {
-          ModelReady.postMessage('error:model_load_failed');
+        viewer.addEventListener('error', (event) => {
+          const rawDetail = event && event.detail ? event.detail : event;
+          const detailText = stringifyError(rawDetail);
+          if (isOomLikeError(detailText)) {
+            notifyErrorOnce('model_load_failed_oom');
+            return;
+          }
+          notifyErrorOnce('model_load_failed');
+        });
+
+        viewer.addEventListener('webglcontextlost', (event) => {
+          if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+          }
+          notifyErrorOnce('model_load_failed_oom');
+        });
+
+        window.addEventListener('error', (event) => {
+          const text = stringifyError(
+            event && event.message ? event.message : event,
+          );
+          if (!text) {
+            return;
+          }
+          if (!text.includes('webgl') && !isOomLikeError(text)) {
+            return;
+          }
+          notifyErrorOnce(isOomLikeError(text) ? 'model_load_failed_oom' : 'model_load_failed');
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+          const text = stringifyError(
+            event && event.reason ? event.reason : event,
+          );
+          if (!text) {
+            return;
+          }
+          if (!text.includes('webgl') && !isOomLikeError(text)) {
+            return;
+          }
+          notifyErrorOnce(isOomLikeError(text) ? 'model_load_failed_oom' : 'model_load_failed');
         });
 
         viewer.addEventListener('click', (event) => {
@@ -1108,9 +1533,48 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer> {
           }
         });
 
-        enforceViewerConstraints();
-        window.setTimeout(() => notifyReadyOnce(), 4000);
-        scheduleReadyProbe(0);
+          enforceViewerConstraints();
+        };
+
+        const findViewer = () => {
+          const direct =
+            document.querySelector('#$_viewerId') ||
+            document.querySelector('model-viewer');
+          if (direct) {
+            return direct;
+          }
+          const frames = Array.from(document.querySelectorAll('iframe'));
+          for (const frame of frames) {
+            try {
+              const doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+              if (!doc) {
+                continue;
+              }
+              const nested =
+                doc.querySelector('#$_viewerId') ||
+                doc.querySelector('model-viewer');
+              if (nested) {
+                return nested;
+              }
+            } catch (_) {}
+          }
+          return null;
+        };
+
+        const resolveViewer = (attempt = 0) => {
+          const viewer = findViewer();
+          if (viewer) {
+            mountViewer(viewer);
+            return;
+          }
+          if (attempt >= 80) {
+            ModelReady.postMessage('error:viewer_not_found');
+            return;
+          }
+          window.setTimeout(() => resolveViewer(attempt + 1), 120);
+        };
+
+        resolveViewer(0);
       })();
     ''';
   }
@@ -1800,3 +2264,58 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'spinalis_capitis_muscle',
   ],
 };
+
+final Map<String, List<String>> _segmentedMuscleMeshNodeMap =
+    _buildSegmentedMuscleMeshNodeMap();
+
+Map<String, List<String>> _buildSegmentedMuscleMeshNodeMap() {
+  final aliasesByTarget = <String, Set<String>>{};
+  for (final entry in _muscleAliases.entries) {
+    aliasesByTarget.putIfAbsent(entry.value, () => <String>{}).add(entry.key);
+  }
+
+  final enriched = <String, List<String>>{};
+  for (final entry in _muscleMeshNodeMap.entries) {
+    final muscleCode = entry.key;
+    final signatures = <String>{
+      ...entry.value,
+      muscleCode,
+      'node_$muscleCode',
+      'mesh_$muscleCode',
+      'material_$muscleCode',
+      '${muscleCode}_muscle',
+    };
+
+    final aliases = aliasesByTarget[muscleCode];
+    if (aliases != null) {
+      for (final alias in aliases) {
+        signatures
+          ..add(alias)
+          ..add('node_$alias')
+          ..add('mesh_$alias')
+          ..add('material_$alias');
+      }
+    }
+
+    final withSideVariants = <String>{};
+    for (final signature in signatures) {
+      final normalized = signature.trim();
+      if (normalized.isEmpty) {
+        continue;
+      }
+      withSideVariants
+        ..add(normalized)
+        ..add('left_$normalized')
+        ..add('right_$normalized')
+        ..add('l_$normalized')
+        ..add('r_$normalized')
+        ..add('${normalized}_left')
+        ..add('${normalized}_right');
+    }
+
+    final sortedSignatures = withSideVariants.toList()..sort();
+    enriched[muscleCode] = List.unmodifiable(sortedSignatures);
+  }
+
+  return Map.unmodifiable(enriched);
+}

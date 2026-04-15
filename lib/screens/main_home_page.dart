@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -213,11 +214,45 @@ class _MainHomePageState extends State<MainHomePage>
           appBar: AppBar(
             backgroundColor: AppTheme.darkBackground,
             foregroundColor: AppTheme.textHigh,
-            title: Text('home.title'.tr()),
+            titleSpacing: 8,
+            title: LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = MediaQuery.sizeOf(context).width < 360;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        'assets/images/icon.png',
+                        width: isSmall ? 26 : 32,
+                        height: isSmall ? 26 : 32,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    SizedBox(width: isSmall ? 6 : 10),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          isSmall ? 'M Care' : 'Muscle Care',
+                          style: GoogleFonts.poppins(
+                            fontSize: isSmall ? 16 : 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textHigh,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
             actions: [
-              IconButton(
+              _buildAppBarIcon(
+                icon: Icons.analytics_outlined,
                 tooltip: 'home.tooltips.analysis'.tr(),
-                icon: const Icon(Icons.analytics_outlined),
                 onPressed: () {
                   HapticFeedback.lightImpact();
                   Navigator.of(context).push(
@@ -227,9 +262,10 @@ class _MainHomePageState extends State<MainHomePage>
                   );
                 },
               ),
-              IconButton(
+              const SizedBox(width: 4),
+              _buildAppBarIcon(
+                icon: Icons.history,
                 tooltip: 'home.tooltips.history'.tr(),
-                icon: const Icon(Icons.history),
                 onPressed: () {
                   HapticFeedback.lightImpact();
                   Navigator.of(context).push(
@@ -239,6 +275,7 @@ class _MainHomePageState extends State<MainHomePage>
                   );
                 },
               ),
+              const SizedBox(width: 8),
             ],
           ),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -430,8 +467,8 @@ class _MainHomePageState extends State<MainHomePage>
                             key: ValueKey(provider.hashCode.toString()),
                             entries: provider.heatmapEntries,
                             borderRadius: 16,
-                            interactive: false,
-                            autoRotate: false,
+                            interactive: true,
+                            autoRotate: true,
                             showHotspots: false,
                             recommendedMuscleCode: targetMuscleCode,
                             autoFocusTargetMuscleCode: targetMuscleCode,
@@ -736,6 +773,22 @@ class _MainHomePageState extends State<MainHomePage>
             .skip(1)
             .map((token) => '${token[0].toUpperCase()}${token.substring(1)}')
             .join();
+  }
+
+  Widget _buildAppBarIcon({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: AppTheme.iconButtonDecoration(),
+        child: Icon(icon, color: AppTheme.primaryGreen, size: 20),
+      ),
+    );
   }
 }
 

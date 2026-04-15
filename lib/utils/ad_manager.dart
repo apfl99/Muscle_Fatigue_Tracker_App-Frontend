@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'const.dart';
+import '../services/supabase_runtime_state.dart';
 
 class AdManager {
   static final AdManager instance = AdManager._internal();
@@ -29,6 +30,12 @@ class AdManager {
 
   Future<void> initialize() async {
     if (_initialized || _isInitializing) {
+      return;
+    }
+    if (SupabaseRuntimeState.isTemporarilySuspended) {
+      if (kDebugMode) {
+        debugPrint('MobileAds init skipped: network suspension active');
+      }
       return;
     }
 

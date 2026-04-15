@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../services/supabase_runtime_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/ad_manager.dart';
 
@@ -36,6 +37,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
   int _loadToken = 0;
   Duration _retryDelay = const Duration(seconds: 8);
   static DateTime? _lastNetworkBannerErrorAt;
+  static DateTime? _bannerRetryCooldownUntil;
+  int _retryCount = 0;
+  static const int _maxRetryCount = 1;
 
   @override
   void initState() {
@@ -61,6 +65,10 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
   }
 
   Future<void> _loadBannerAd() async {
+    final cooldownUntil = _bannerRetryCooldownUntil;
+    if (cooldownUntil != null && DateTime.now().isBefore(cooldownUntil)) {
+      return;
+    }
     _retryTimer?.cancel();
     _bannerAd?.dispose();
     _bannerAd = null;
@@ -75,6 +83,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
     // Flutter tester/macOS/web 환경에서는 네이티브 광고 플러그인이 없으므로
     // placeholder만 표시하고 광고 로딩을 생략한다.
     if (!AdManager.instance.isSupportedPlatform) {
+      return;
+    }
+    if (SupabaseRuntimeState.isTemporarilySuspended) {
       return;
     }
 
@@ -97,6 +108,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
             _isLoaded = true;
           });
           _retryDelay = const Duration(seconds: 8);
+          _retryCount = 0;
         },
         onAdFailedToLoad: (failedAd, error) {
           failedAd.dispose();
@@ -110,11 +122,19 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
             _bannerAd = null;
             _isLoaded = false;
           });
-          _retryTimer = Timer(_retryDelay, () {
-            unawaited(_loadBannerAd());
-          });
-          final nextSeconds = (_retryDelay.inSeconds * 2).clamp(8, 120);
-          _retryDelay = Duration(seconds: nextSeconds.toInt());
+          _retryCount += 1;
+          final shouldRetry = _retryCount <= _maxRetryCount;
+          if (shouldRetry) {
+            _retryTimer = Timer(_retryDelay, () {
+              unawaited(_loadBannerAd());
+            });
+            final nextSeconds = (_retryDelay.inSeconds * 2).clamp(8, 120);
+            _retryDelay = Duration(seconds: nextSeconds.toInt());
+          } else {
+            _bannerRetryCooldownUntil = DateTime.now().add(
+              const Duration(minutes: 10),
+            );
+          }
         },
       ),
     );

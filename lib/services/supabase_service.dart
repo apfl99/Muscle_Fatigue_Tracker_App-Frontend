@@ -1,7 +1,9 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
 
 import '../features/heatmap/model/heatmap_models.dart';
 import '../models/exercise.dart';
+import '../utils/user_identity.dart';
+import 'supabase_runtime_state.dart';
 
 class WorkoutLogRecord {
   const WorkoutLogRecord({
@@ -246,18 +248,39 @@ class SupabaseService {
   Future<T> _runWithSessionRetry<T>(
     Future<T> Function(User user) action,
   ) async {
+    if (SupabaseRuntimeState.isTemporarilySuspended) {
+      throw const AuthException('Supabase 연결이 일시 중지되었습니다.');
+    }
     var user = await _requireAuthenticatedUser();
     try {
-      return await action(user);
+      final result = await action(user);
+      SupabaseRuntimeState.clearSuspension();
+      return result;
     } on PostgrestException catch (error) {
       if (_isUnauthorized(error)) {
         user = await _refreshAnonymousSession();
-        return await action(user);
+        final result = await action(user);
+        SupabaseRuntimeState.clearSuspension();
+        return result;
       }
       rethrow;
     } on AuthException {
       user = await _refreshAnonymousSession();
-      return await action(user);
+      final result = await action(user);
+      SupabaseRuntimeState.clearSuspension();
+      return result;
+    } catch (error) {
+      final raw = error.toString().toLowerCase();
+      if (raw.contains('failed host lookup') ||
+          raw.contains('socketexception') ||
+          raw.contains('handshake') ||
+          raw.contains('timed out')) {
+        SupabaseRuntimeState.suspendFor(
+          const Duration(minutes: 3),
+          reason: 'network_unreachable',
+        );
+      }
+      rethrow;
     }
   }
 
@@ -292,7 +315,10 @@ class SupabaseService {
   }
 
   Future<User> _signInAnonymously() async {
-    final response = await _client.auth.signInAnonymously();
+    final deviceUserId = await UserIdentity.instance.userId;
+    final response = await _client.auth.signInAnonymously(
+      data: {'device_user_id': deviceUserId},
+    );
     final user = response.user;
     if (user == null) {
       throw const AuthException('익명 세션 생성에 실패했습니다.');

@@ -53,4 +53,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/icon.png
+    - assets/models/
     - assets/translations/

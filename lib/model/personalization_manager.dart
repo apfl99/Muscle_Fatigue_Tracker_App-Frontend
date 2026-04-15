@@ -33,7 +33,12 @@ class PersonalizationManager {
   Future<void> initialize() async {
     if (_initialized) return;
     print('🤖 PersonalizationManager 초기화 시작');
-    await ModelDownloader.instance.downloadLatest();
+    try {
+      await ModelDownloader.instance.downloadLatest();
+    } catch (error, stackTrace) {
+      print('⚠️ Personalization 모델 다운로드 건너뜀: $error');
+      print(stackTrace);
+    }
     _cachedWeights = await PersonalWeightsStorage.load();
     _lastTrainingTime = _cachedWeights?.lastUpdate;
     _initialized = true;

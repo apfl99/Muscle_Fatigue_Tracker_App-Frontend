@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,6 +13,27 @@ import 'ml.dart';
 
 void print(Object? message) => appLog(message);
 
+class ModelDownloadException implements Exception {
+  const ModelDownloadException(
+    this.message, {
+    this.uri,
+    this.statusCode,
+    this.retryable = true,
+  });
+
+  final String message;
+  final Uri? uri;
+  final int? statusCode;
+  final bool retryable;
+
+  @override
+  String toString() {
+    final uriText = uri == null ? '' : ' uri=$uri';
+    final codeText = statusCode == null ? '' : ' status=$statusCode';
+    return 'ModelDownloadException($message$codeText$uriText, retryable=$retryable)';
+  }
+}
+
 class ModelDownloader {
   ModelDownloader._internal();
 
@@ -25,6 +47,20 @@ class ModelDownloader {
     int? versionOverride,
     String? filenameOverride,
   }) async {
+    final db = DatabaseHelper.instance;
+    final localInfo = await db.getModelVersion(_modelType);
+    final localVersion = localInfo?['version'] as String? ?? '0';
+    final localPath = localInfo?['path'] as String?;
+    final localFileExists = localPath != null && await File(localPath).exists();
+
+    if (!force && localFileExists) {
+      print(
+        'ℹ️ [ModelDownloader] 로컬 모델 유지 '
+        '(version=$localVersion, path=$localPath) - 원격 호출 생략',
+      );
+      return;
+    }
+
     final config = await getServerConfig();
     final baseUri = Uri.parse(config.getModelUrl('/model'));
     final query = <String, String>{};
@@ -39,13 +75,68 @@ class ModelDownloader {
         query.isEmpty ? baseUri : baseUri.replace(queryParameters: query);
     print('🌐 [ModelDownloader] 요청 → $uri (force=$force)');
 
-    final response = await http.get(uri);
+    late final http.Response response;
+    try {
+      response = await http
+          .get(uri)
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] 요청 시간 초과 - '
+          '로컬 모델(version=$localVersion)을 유지합니다',
+        );
+        return;
+      }
+      throw ModelDownloadException(
+        '모델 다운로드 실패: 요청 시간 초과',
+        uri: uri,
+        retryable: true,
+      );
+    } on SocketException catch (error) {
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] 네트워크 오류($error) - '
+          '로컬 모델(version=$localVersion)을 유지합니다',
+        );
+        return;
+      }
+      throw ModelDownloadException(
+        '모델 다운로드 실패: 네트워크 오류($error)',
+        uri: uri,
+        retryable: true,
+      );
+    } catch (error) {
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] 원격 모델 요청 실패($error) - '
+          '로컬 모델(version=$localVersion)을 유지합니다',
+        );
+        return;
+      }
+      throw ModelDownloadException(
+        '모델 다운로드 실패: $error',
+        uri: uri,
+        retryable: true,
+      );
+    }
+
     if (response.statusCode != 200) {
-      final errorBody = _safeDecode(response.bodyBytes);
-      throw HttpException(
+      final errorBody = _summarizeErrorBody(response.bodyBytes);
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] HTTP ${response.statusCode} '
+          '${response.reasonPhrase ?? ''} - '
+          '로컬 모델(version=$localVersion)을 유지합니다: $errorBody',
+        );
+        return;
+      }
+      throw ModelDownloadException(
         '모델 다운로드 실패: HTTP ${response.statusCode} '
         '${response.reasonPhrase ?? ''} $errorBody',
         uri: uri,
+        statusCode: response.statusCode,
+        retryable: _isRetryableStatus(response.statusCode),
       );
     }
 
@@ -53,14 +144,30 @@ class ModelDownloader {
     final headerFilename = response.headers['x-model-filename'];
     if ((headerVersion == null || headerVersion.isEmpty) &&
         versionOverride == null) {
-      throw const HttpException(
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] X-Model-Version 헤더 누락 - '
+          '로컬 모델(version=$localVersion)을 유지합니다',
+        );
+        return;
+      }
+      throw const ModelDownloadException(
         '모델 다운로드 실패: X-Model-Version 헤더가 존재하지 않습니다',
+        retryable: false,
       );
     }
     if ((headerFilename == null || headerFilename.isEmpty) &&
         (filenameOverride == null || filenameOverride.isEmpty)) {
-      throw const HttpException(
+      if (localFileExists) {
+        print(
+          '⚠️ [ModelDownloader] X-Model-Filename 헤더 누락 - '
+          '로컬 모델(version=$localVersion)을 유지합니다',
+        );
+        return;
+      }
+      throw const ModelDownloadException(
         '모델 다운로드 실패: X-Model-Filename 헤더가 존재하지 않습니다',
+        retryable: false,
       );
     }
 
@@ -71,13 +178,6 @@ class ModelDownloader {
       '📥 [ModelDownloader] 수신 완료 version=$remoteVersion file=$remoteFilename '
       'size=${response.bodyBytes.length} bytes',
     );
-
-    final db = DatabaseHelper.instance;
-    final localInfo = await db.getModelVersion(_modelType);
-    final localVersion = localInfo?['version'] as String? ?? '0';
-    final localPath = localInfo?['path'] as String?;
-
-    final localFileExists = localPath != null && await File(localPath).exists();
 
     if (!force &&
         !_isRemoteNewer(remoteVersion, localVersion) &&
@@ -111,6 +211,10 @@ class ModelDownloader {
       print('⚠️ [ModelDownloader] MLManager 리로드 실패: $e');
       print(stackTrace);
     }
+  }
+
+  bool _isRetryableStatus(int statusCode) {
+    return statusCode >= 500 || statusCode == 429;
   }
 
   bool _isRemoteNewer(String remote, String local) {
@@ -165,5 +269,16 @@ class ModelDownloader {
     } catch (_) {
       return bytes.toString();
     }
+  }
+
+  String _summarizeErrorBody(List<int>? bytes) {
+    final decoded = _safeDecode(bytes).replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (decoded.isEmpty) {
+      return '';
+    }
+    if (decoded.length <= 220) {
+      return decoded;
+    }
+    return '${decoded.substring(0, 220)}...';
   }
 }

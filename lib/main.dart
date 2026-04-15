@@ -28,6 +28,7 @@ import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 import 'worker/model_update_scheduler.dart';
 import 'model/personalization_manager.dart';
 import 'utils/user_identity.dart';
+import 'services/supabase_runtime_state.dart';
 import 'features/heatmap/model/heatmap_models.dart';
 import 'features/heatmap/data/heatmap_api_config.dart';
 import 'features/heatmap/ui/heatmap_bridge_cta_card.dart';
@@ -43,9 +44,8 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
-  await _initializeSupabaseClient();
-
   await UserIdentity.instance.ensureInitialized();
+  await _initializeSupabaseClient();
   final migratedFrom = UserIdentity.instance.lastMigratedFrom;
   if (migratedFrom != null) {
     final newId = await UserIdentity.instance.userId;
@@ -124,6 +124,14 @@ void main() async {
 }
 
 Future<void> _initializeSupabaseClient() async {
+  if (SupabaseRuntimeState.isTemporarilySuspended) {
+    if (kDebugMode) {
+      print(
+        '⚠️ Supabase 초기화 일시중지 상태: ${SupabaseRuntimeState.lastReason ?? 'unknown'}',
+      );
+    }
+    return;
+  }
   final config = HeatmapApiConfig.fromEnvironment();
 
   if (!config.isConfigured) {
@@ -138,22 +146,31 @@ Future<void> _initializeSupabaseClient() async {
       url: config.supabaseUrl,
       anonKey: config.publishableKey,
     );
-    await _ensureAnonymousSupabaseSession(config.supabaseUrl);
+    final sessionReady = await _ensureAnonymousSupabaseSession(
+      config.supabaseUrl,
+    );
+    if (sessionReady) {
+      SupabaseRuntimeState.clearSuspension();
+    }
   } catch (error) {
+    SupabaseRuntimeState.suspendFor(
+      const Duration(minutes: 3),
+      reason: 'init_failed',
+    );
     if (kDebugMode) {
       print('⚠️ Supabase 초기화 실패: $error');
     }
   }
 }
 
-Future<void> _ensureAnonymousSupabaseSession(String supabaseUrl) async {
+Future<bool> _ensureAnonymousSupabaseSession(String supabaseUrl) async {
   final client = Supabase.instance.client;
   // 1) 기존 세션이 유효하면 그대로 사용
   try {
     final currentUser = client.auth.currentUser;
     if (currentUser != null) {
       await _verifySupabaseUrlCall(client, supabaseUrl);
-      return;
+      return true;
     }
   } catch (_) {
     // 기존 세션이 유효하지 않으면 익명 세션 재생성으로 복구
@@ -161,15 +178,25 @@ Future<void> _ensureAnonymousSupabaseSession(String supabaseUrl) async {
 
   // 2) 세션이 없거나 만료되면 익명 로그인 시도
   try {
-    final authResponse = await client.auth.signInAnonymously();
+    final deviceUserId = await UserIdentity.instance.userId;
+    final authResponse = await client.auth.signInAnonymously(
+      data: {'device_user_id': deviceUserId},
+    );
     if (authResponse.user == null) {
       throw const AuthException('익명 세션 생성에 실패했습니다.');
     }
     await _verifySupabaseUrlCall(client, supabaseUrl);
+    SupabaseRuntimeState.clearSuspension();
+    return true;
   } catch (error) {
+    SupabaseRuntimeState.suspendFor(
+      const Duration(minutes: 3),
+      reason: 'anonymous_session_failed',
+    );
     if (kDebugMode) {
       print('⚠️ Supabase 익명 세션 확보 실패: $error');
     }
+    return false;
   }
 }
 

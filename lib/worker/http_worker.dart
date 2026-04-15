@@ -431,6 +431,24 @@ class HttpWorker {
         result: {'success': true},
       );
       print('✅ 모델 다운로드 작업 완료: ${task.taskId}');
+    } on ModelDownloadException catch (error) {
+      if (!error.retryable) {
+        await _queueManager.completeTask(
+          task.taskId,
+          result: {
+            'success': false,
+            'skipped': true,
+            'reason': error.message,
+          },
+        );
+        print(
+          '⚠️ 모델 다운로드 비재시도 종료: ${task.taskId} '
+          '(reason=${error.message})',
+        );
+        return;
+      }
+      print('❌ 모델 다운로드 작업 실패: ${task.taskId} - $error');
+      await _queueManager.failTask(task.taskId, error.toString());
     } catch (e) {
       print('❌ 모델 다운로드 작업 실패: ${task.taskId} - $e');
       await _queueManager.failTask(task.taskId, e.toString());

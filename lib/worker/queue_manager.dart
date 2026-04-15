@@ -18,8 +18,6 @@ class QueueManager {
   final List<MeasurementTask> _completedTasks = [];
   final List<MeasurementTask> _failedTasks = [];
 
-  final int _maxRetries = 5;
-
   // 동시성 제어를 위한 락
   bool _isProcessing = false;
 
@@ -99,12 +97,12 @@ class QueueManager {
 
     final task = _processingTasks.removeAt(taskIndex);
 
-    if (task.retryCount < _maxRetries) {
+    if (task.retryCount < task.maxRetries) {
       // 재시도 - 큐에 다시 추가
       final retryTask = task.copyWithRetry();
       _pendingTasks.add(retryTask);
       print(
-        '🔄 작업 재시도: $taskId (${task.retryCount + 1}/$_maxRetries) - 에러: $errorMessage',
+        '🔄 작업 재시도: $taskId (${task.retryCount + 1}/${task.maxRetries}) - 에러: $errorMessage',
       );
     } else {
       // 최대 재시도 초과 - 실패 목록에 추가
@@ -305,6 +303,7 @@ class QueueManager {
         if (version != null) 'version': version,
       },
       priority: priority,
+      maxRetries: 2,
     );
 
     await addTask(task);

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/baseline.dart';
 import '../model/config.dart';
 import '../model/database_helper.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/user_identity.dart';
 import '../widgets/banner_ad_widget.dart';
 
 void print(Object? message) => appLog(message);
@@ -31,6 +33,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
   // 통계
   Map<String, dynamic> _statistics = {};
+  String _deviceUserId = '-';
+  String _supabaseUserId = '-';
 
   @override
   void initState() {
@@ -56,8 +60,25 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   Future<void> _loadData() async {
     // DB와 Baseline 카운트 동기화
     await BaselineManager.instance.syncWithDatabase();
+    await _loadIdentityStatus();
     await _loadBaseline();
     await _loadStatistics();
+  }
+
+  Future<void> _loadIdentityStatus() async {
+    try {
+      final deviceId = await UserIdentity.instance.userId;
+      final supabaseUser = Supabase.instance.client.auth.currentUser;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _deviceUserId = deviceId;
+        _supabaseUserId = supabaseUser?.id ?? '-';
+      });
+    } catch (e) {
+      print('⚠️ 사용자 식별자 로드 실패: $e');
+    }
   }
 
   Future<void> _loadBaseline() async {
@@ -192,6 +213,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     // 사용자 기록 요약
                     _buildProfileSummary(),
                     const SizedBox(height: 16),
+                    _buildIdentityCard(),
+                    const SizedBox(height: 16),
                     _buildBannerSlot(key: const ValueKey('profile_banner_top')),
                     const SizedBox(height: 16),
 
@@ -206,9 +229,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     // 지수 통계
                     _buildStatisticsCard(),
                     const SizedBox(height: 16),
-                    _buildBannerSlot(key: const ValueKey('profile_banner_mid')),
-                    const SizedBox(height: 16),
-
                     // 기록 권장사항
                     _buildMeasurementTipsCard(),
                   ],
@@ -233,6 +253,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildBannerSlot(key: const ValueKey('profile_banner_global_top')),
+          const SizedBox(height: 16),
+          _buildIdentityCard(),
           const SizedBox(height: 16),
           Container(
             padding: Responsive.cardPadding(context),
@@ -341,6 +363,44 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 16),
           _buildWellnessDisclaimer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdentityCard() {
+    return Container(
+      padding: Responsive.cardPadding(context),
+      decoration: AppTheme.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '사용자 식별 정보',
+            style: TextStyle(
+              color: AppTheme.textHigh,
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '디바이스 ID: $_deviceUserId',
+            style: TextStyle(
+              color: AppTheme.textMedium,
+              fontSize: 13,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Supabase 익명 UID: $_supabaseUserId',
+            style: TextStyle(
+              color: AppTheme.textLow,
+              fontSize: 12,
+              fontFamily: 'monospace',
+            ),
+          ),
         ],
       ),
     );
