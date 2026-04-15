@@ -1146,6 +1146,8 @@ return 'present';
           recommend: [0.24, 0.92, 1.00],
         };
 
+        const highDefinitionTargets = new Set(Object.keys(muscleNodeMap));
+
         const resolveMaterialState = (muscleCode) => {
           const payload = runtimeState.payload || {};
           const muscles = payload.muscles || {};
@@ -1186,8 +1188,29 @@ return 'present';
           return bestCode;
         };
 
+        const resolveDefinitionProfile = (muscleCode, state) => {
+          const isTarget = highDefinitionTargets.has(muscleCode);
+          const clampedIntensity = Math.min(Math.max(Number(state.intensity || 0.0), 0.0), 1.0);
+          if (!isTarget) {
+            return {
+              mixBoost: 0.0,
+              roughness: 0.42,
+              metallic: 0.2,
+              emissiveMultiplier: state.focused ? 0.44 : state.recommended ? 0.22 : 0.0,
+            };
+          }
+          return {
+            // 매핑된 전 근육에 고선명 분리 프로파일 적용.
+            mixBoost: 0.10 + (clampedIntensity * 0.08),
+            roughness: 0.34,
+            metallic: 0.14,
+            emissiveMultiplier: state.focused ? 0.54 : state.recommended ? 0.28 : 0.06,
+          };
+        };
+
         const applyAppearance = (material, muscleCode) => {
           const state = resolveMaterialState(muscleCode);
+          const profile = resolveDefinitionProfile(muscleCode, state);
           let base = colors.neutral;
           if (state.status === 'green') {
             base = colors.green;
@@ -1197,7 +1220,10 @@ return 'present';
             base = colors.red;
           }
 
-          let mix = 0.20 + Math.min(Math.max(state.intensity, 0.0), 1.0) * 0.48;
+          let mix =
+            0.20 +
+            Math.min(Math.max(state.intensity, 0.0), 1.0) * 0.48 +
+            profile.mixBoost;
           if (state.focused) {
             base = colors.focus;
             mix += 0.22;
@@ -1214,16 +1240,17 @@ return 'present';
             neutral[2] + (base[2] - neutral[2]) * mix,
             1.0,
           ];
-          const emissive = state.focused
-            ? [base[0] * 0.44, base[1] * 0.44, base[2] * 0.44]
-            : state.recommended
-              ? [base[0] * 0.22, base[1] * 0.22, base[2] * 0.22]
-              : [0.0, 0.0, 0.0];
+          const emissive = profile.emissiveMultiplier > 0.0
+            ? [
+                base[0] * profile.emissiveMultiplier,
+                base[1] * profile.emissiveMultiplier,
+                base[2] * profile.emissiveMultiplier,
+              ]
+            : [0.0, 0.0, 0.0];
 
           material.pbrMetallicRoughness.setBaseColorFactor(finalColor);
-          // Mandatory premium PBR injection.
-          material.pbrMetallicRoughness.setRoughnessFactor(0.42);
-          material.pbrMetallicRoughness.setMetallicFactor(0.2);
+          material.pbrMetallicRoughness.setRoughnessFactor(profile.roughness);
+          material.pbrMetallicRoughness.setMetallicFactor(profile.metallic);
           if (material.setEmissiveFactor) {
             material.setEmissiveFactor(emissive);
           }
