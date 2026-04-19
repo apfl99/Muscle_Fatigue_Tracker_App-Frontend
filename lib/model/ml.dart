@@ -541,11 +541,38 @@ class MLManager {
   Future<void> _loadE2EMetadata({required File modelFile}) async {
     try {
       final dir = modelFile.parent;
-      final metadataFile =
-          File(p.join(dir.path, 'cnn_gru_fatigue_metadata.json'));
-      if (!await metadataFile.exists()) {
-        appLog('⚠️ E2E 메타데이터가 없어 기본 설정을 사용합니다');
-        _e2eMetadata = _E2EMetadata.defaultColumns(_defaultFeatureColumns, 12);
+      final modelStem = p.basenameWithoutExtension(modelFile.path);
+      final candidates = <String>[
+        '${modelStem}_metadata.json',
+        'cnn_gru_fatigue_metadata.json',
+      ];
+      File? metadataFile;
+      for (final name in candidates) {
+        final file = File(p.join(dir.path, name));
+        if (await file.exists()) {
+          metadataFile = file;
+          break;
+        }
+      }
+      if (metadataFile == null) {
+        final fallback =
+            _E2EMetadata.defaultColumns(_defaultFeatureColumns, 12);
+        final fallbackFile =
+            File(p.join(dir.path, 'cnn_gru_fatigue_metadata.json'));
+        await fallbackFile.writeAsString(
+          jsonEncode(<String, dynamic>{
+            'feature_columns': fallback.featureColumns,
+            'embedding_dim': fallback.embeddingDim,
+            'input_dim': fallback.inputDim,
+            'scaler': <String, dynamic>{
+              'mean': fallback.scalerMean,
+              'scale': fallback.scalerScale,
+            },
+          }),
+          flush: true,
+        );
+        _e2eMetadata = fallback;
+        appLog('ℹ️ E2E 메타데이터 파일을 생성하여 적용했습니다');
         return;
       }
 

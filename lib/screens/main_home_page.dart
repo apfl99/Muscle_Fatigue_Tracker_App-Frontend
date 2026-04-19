@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,8 +7,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
+import '../features/heatmap/utils/muscle_label_localizer.dart';
 import '../providers/heatmap_provider.dart';
-import '../services/supabase_service.dart';
+import '../services/supabase_service.dart' show WorkoutLogRecord;
 import '../theme/app_theme.dart';
 import '../widgets/app_disclaimer_footer.dart';
 import '../widgets/banner_ad_widget.dart';
@@ -175,7 +177,9 @@ class _MainHomePageState extends State<MainHomePage>
     if (!mounted) {
       return;
     }
-    debugPrint('[funnel] on_fab_clicked {"source":"main_home_fab"}');
+    if (kDebugMode) {
+      debugPrint('[funnel] on_fab_clicked {"source":"main_home_fab"}');
+    }
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -200,135 +204,149 @@ class _MainHomePageState extends State<MainHomePage>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<HeatmapProvider>(
-      builder: (context, provider, _) {
-        final pagePadding = AppTheme.resolvedPagePadding(context);
-        final timelineItems = _buildTimelineItems(
-          workoutLogs: provider.workoutLogs,
-        );
-        final showPulseGuide = timelineItems.isEmpty;
-        _syncPulseAnimation(showPulseGuide);
+    final pagePadding = AppTheme.resolvedPagePadding(context);
+    final streakDays = context.select<HeatmapProvider, int>(
+      (provider) => provider.streakDays,
+    );
+    final workoutLogs = context.select<HeatmapProvider, List<WorkoutLogRecord>>(
+      (provider) => provider.workoutLogs,
+    );
+    final isLoading = context.select<HeatmapProvider, bool>(
+      (provider) => provider.isLoading,
+    );
+    final errorMessage = context.select<HeatmapProvider, String?>(
+      (provider) => provider.errorMessage,
+    );
+    final heatmapEntries =
+        context.select<HeatmapProvider, List<MuscleHeatmapEntry>>(
+      (provider) => provider.heatmapEntries,
+    );
+    final targetMuscleCode = context.select<HeatmapProvider, String>(
+      (provider) => provider.nextWorkoutSuggestion.targetMuscleCode,
+    );
 
-        return Scaffold(
-          backgroundColor: AppTheme.darkBackground,
-          appBar: AppBar(
-            backgroundColor: AppTheme.darkBackground,
-            foregroundColor: AppTheme.textHigh,
-            titleSpacing: 8,
-            title: LayoutBuilder(
-              builder: (context, constraints) {
-                final isSmall = MediaQuery.sizeOf(context).width < 360;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        'assets/images/icon.png',
-                        width: isSmall ? 26 : 32,
-                        height: isSmall ? 26 : 32,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    SizedBox(width: isSmall ? 6 : 10),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          isSmall ? 'M Care' : 'Muscle Care',
-                          style: GoogleFonts.poppins(
-                            fontSize: isSmall ? 16 : 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textHigh,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            actions: [
-              _buildAppBarIcon(
-                icon: Icons.analytics_outlined,
-                tooltip: 'home.tooltips.analysis'.tr(),
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const SensorAnalysisPage(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 4),
-              _buildAppBarIcon(
-                icon: Icons.history,
-                tooltip: 'home.tooltips.history'.tr(),
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const MeasurementHistoryPage(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-            ],
-          ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-          floatingActionButton: FloatingActionButton.extended(
-            key: const Key('main_home_fab'),
-            onPressed: () => _openWorkoutLogSheet(),
-            backgroundColor: AppTheme.primaryGreen,
-            foregroundColor: AppTheme.ctaOnBrand,
-            icon: const Icon(Icons.add),
-            label: Text(
-              'home.fab.label'.tr(),
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-          body: SafeArea(
-            child: Stack(
+    final timelineItems = _buildTimelineItems(workoutLogs: workoutLogs);
+    final showPulseGuide = timelineItems.isEmpty;
+    _syncPulseAnimation(showPulseGuide);
+
+    return Scaffold(
+      backgroundColor: AppTheme.darkBackground,
+      appBar: AppBar(
+        backgroundColor: AppTheme.darkBackground,
+        foregroundColor: AppTheme.textHigh,
+        titleSpacing: 8,
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = MediaQuery.sizeOf(context).width < 360;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                RefreshIndicator(
-                  color: AppTheme.primaryGreen,
-                  onRefresh: () async {
-                    await provider.refreshAll();
-                  },
-                  child: ListView(
-                    physics: const ClampingScrollPhysics(),
-                    padding: pagePadding.copyWith(top: 8, bottom: 120),
-                    children: [
-                      _buildStreakCard(provider.streakDays),
-                      AppTheme.gap16,
-                      _buildHeroCard(
-                        provider: provider,
-                      ),
-                      AppTheme.gap16,
-                      _buildTimelineCard(
-                        timelineItems: timelineItems,
-                        isLoading: provider.isLoading,
-                      ),
-                      if (provider.errorMessage != null) ...[
-                        const SizedBox(height: 10),
-                        _buildFallbackCard(provider.errorMessage!),
-                      ],
-                      const SizedBox(height: 12),
-                      _buildNaturalBannerSlot(),
-                      const SizedBox(height: 12),
-                      const AppDisclaimerFooter(compact: true),
-                    ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/images/icon.png',
+                    width: isSmall ? 26 : 32,
+                    height: isSmall ? 26 : 32,
+                    fit: BoxFit.cover,
                   ),
                 ),
-                if (showPulseGuide) _buildPulseFabGuide(),
+                SizedBox(width: isSmall ? 6 : 10),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      isSmall ? 'M Care' : 'Muscle Care',
+                      style: GoogleFonts.poppins(
+                        fontSize: isSmall ? 16 : 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textHigh,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
               ],
-            ),
+            );
+          },
+        ),
+        actions: [
+          _buildAppBarIcon(
+            icon: Icons.analytics_outlined,
+            tooltip: 'home.tooltips.analysis'.tr(),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SensorAnalysisPage(),
+                ),
+              );
+            },
           ),
-        );
-      },
+          const SizedBox(width: 4),
+          _buildAppBarIcon(
+            icon: Icons.history,
+            tooltip: 'home.tooltips.history'.tr(),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MeasurementHistoryPage(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: FloatingActionButton.extended(
+        key: const Key('main_home_fab'),
+        onPressed: () => _openWorkoutLogSheet(),
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.ctaOnBrand,
+        icon: const Icon(Icons.add),
+        label: Text(
+          'home.fab.label'.tr(),
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              color: AppTheme.primaryGreen,
+              onRefresh: () => context.read<HeatmapProvider>().refreshAll(),
+              child: ListView(
+                physics: const ClampingScrollPhysics(),
+                padding: pagePadding.copyWith(top: 8, bottom: 120),
+                children: [
+                  _buildStreakCard(streakDays),
+                  AppTheme.gap16,
+                  _buildHeroCard(
+                    heatmapEntries: heatmapEntries,
+                    isLoading: isLoading,
+                    targetMuscleCode: targetMuscleCode,
+                  ),
+                  AppTheme.gap16,
+                  _buildTimelineCard(
+                    timelineItems: timelineItems,
+                    isLoading: isLoading,
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    _buildFallbackCard(errorMessage),
+                  ],
+                  const SizedBox(height: 12),
+                  _buildNaturalBannerSlot(),
+                  const SizedBox(height: 12),
+                  const AppDisclaimerFooter(compact: true),
+                ],
+              ),
+            ),
+            if (showPulseGuide) _buildPulseFabGuide(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -379,10 +397,10 @@ class _MainHomePageState extends State<MainHomePage>
   }
 
   Widget _buildHeroCard({
-    required HeatmapProvider provider,
+    required List<MuscleHeatmapEntry> heatmapEntries,
+    required bool isLoading,
+    required String targetMuscleCode,
   }) {
-    final suggestion = provider.nextWorkoutSuggestion;
-    final targetMuscleCode = suggestion.targetMuscleCode;
     final targetDisplayName = _displayMuscleName(targetMuscleCode);
     final shouldPlayAutoFocusIntro =
         !_homeOrbitIntroConsumed && targetMuscleCode.trim().isNotEmpty;
@@ -391,9 +409,7 @@ class _MainHomePageState extends State<MainHomePage>
         if (!mounted || _homeOrbitIntroConsumed) {
           return;
         }
-        setState(() {
-          _homeOrbitIntroConsumed = true;
-        });
+        _homeOrbitIntroConsumed = true;
       });
     }
     return Container(
@@ -464,8 +480,7 @@ class _MainHomePageState extends State<MainHomePage>
                             vertical: 8,
                           ),
                           child: InteractiveMuscle3DViewer(
-                            key: ValueKey(provider.hashCode.toString()),
-                            entries: provider.heatmapEntries,
+                            entries: heatmapEntries,
                             borderRadius: 16,
                             interactive: true,
                             autoRotate: true,
@@ -498,7 +513,7 @@ class _MainHomePageState extends State<MainHomePage>
                           ),
                         ),
                       ),
-                      if (provider.isLoading)
+                      if (isLoading)
                         const Center(
                           child: CircularProgressIndicator(
                             color: AppTheme.primaryGreen,
@@ -736,43 +751,7 @@ class _MainHomePageState extends State<MainHomePage>
   }
 
   String _displayMuscleName(String muscleCode) {
-    final normalized = _normalizeHomeHeroMuscleCode(muscleCode);
-    if (normalized.isEmpty) {
-      return 'muscle.fullBody'.tr();
-    }
-
-    final mappedKey = _homeHeroMuscleNameByCode[normalized];
-    if (mappedKey != null) {
-      return mappedKey.tr();
-    }
-
-    final dynamicKey = 'muscle.${_snakeToCamelCase(normalized)}';
-    final dynamicTranslated = dynamicKey.tr();
-    if (dynamicTranslated != dynamicKey) {
-      return dynamicTranslated;
-    }
-
-    return 'muscle.unknown'.tr();
-  }
-
-  String _normalizeHomeHeroMuscleCode(String muscleCode) {
-    final normalized = muscleCode.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return normalized;
-    }
-    return _homeHeroMuscleAliases[normalized] ?? normalized;
-  }
-
-  String _snakeToCamelCase(String value) {
-    final tokens = value.split('_').where((token) => token.isNotEmpty).toList();
-    if (tokens.isEmpty) {
-      return value;
-    }
-    return tokens.first +
-        tokens
-            .skip(1)
-            .map((token) => '${token[0].toUpperCase()}${token.substring(1)}')
-            .join();
+    return MuscleLabelLocalizer.homeHeroDisplayName(muscleCode);
   }
 
   Widget _buildAppBarIcon({
@@ -807,46 +786,3 @@ class _TimelineItem {
   final IconData icon;
   final Color color;
 }
-
-const Map<String, String> _homeHeroMuscleNameByCode = {
-  'chest': 'muscle.chest',
-  'pectoralis_major': 'muscle.chest',
-  'front_deltoid': 'muscle.frontDeltoid',
-  'lateral_deltoid': 'muscle.lateralDeltoid',
-  'rear_deltoid': 'muscle.rearDeltoid',
-  'biceps': 'muscle.biceps',
-  'triceps': 'muscle.triceps',
-  'forearms': 'muscle.forearms',
-  'forearm_flexor': 'muscle.forearmFlexor',
-  'forearm_extensor': 'muscle.forearmExtensor',
-  'latissimus': 'muscle.latissimus',
-  'trapezius': 'muscle.trapezius',
-  'quadriceps': 'muscle.quadriceps',
-  'hamstrings': 'muscle.hamstrings',
-  'glutes': 'muscle.glutes',
-  'calves': 'muscle.calves',
-  'rectus_abdominis': 'muscle.rectusAbdominis',
-  'obliques': 'muscle.obliques',
-};
-
-const Map<String, String> _homeHeroMuscleAliases = {
-  'pecs': 'chest',
-  'pectoralis_minor': 'chest',
-  'anterior_deltoid': 'front_deltoid',
-  'front_delts': 'front_deltoid',
-  'lateral_delts': 'lateral_deltoid',
-  'side_deltoid': 'lateral_deltoid',
-  'posterior_deltoid': 'rear_deltoid',
-  'rear_delts': 'rear_deltoid',
-  'biceps_brachii': 'biceps',
-  'triceps_brachii': 'triceps',
-  'forearm': 'forearms',
-  'fore_arm': 'forearms',
-  'wrist_flexor': 'forearm_flexor',
-  'wrist_extensor': 'forearm_extensor',
-  'latissimus_dorsi': 'latissimus',
-  'lats': 'latissimus',
-  'quads': 'quadriceps',
-  'abs': 'rectus_abdominis',
-  'abdominals': 'rectus_abdominis',
-};

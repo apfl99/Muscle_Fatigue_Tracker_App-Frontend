@@ -39,6 +39,20 @@ class ModelDownloader {
 
   static const String _modelType = 'E2E';
   static const String _defaultFilename = 'cnn_gru_fatigue.tflite';
+  static const String _defaultMetadataFilename =
+      'cnn_gru_fatigue_metadata.json';
+  static const List<String> _defaultFeatureColumns = [
+    'rms_acc',
+    'rms_gyro',
+    'mean_freq_acc',
+    'mean_freq_gyro',
+    'entropy_acc',
+    'entropy_gyro',
+    'jerk_mean',
+    'jerk_std',
+    'stability_index',
+    'fatigue_prev',
+  ];
 
   Future<void> downloadLatest({
     bool force = false,
@@ -189,6 +203,12 @@ class ModelDownloader {
       filename: remoteFilename,
       version: remoteVersion,
     );
+    await _ensureMetadataFile(
+      config: config,
+      remoteVersion: remoteVersion,
+      remoteModelFilename: remoteFilename,
+      modelPath: modelPath,
+    );
 
     await db.updateModelVersion(
       modelType: _modelType,
@@ -256,6 +276,92 @@ class ModelDownloader {
 
     appLog('💾 [ModelDownloader] 파일 저장 완료 → $filePath');
     return filePath;
+  }
+
+  Future<void> _ensureMetadataFile({
+    required ServerConfig config,
+    required String remoteVersion,
+    required String remoteModelFilename,
+    required String modelPath,
+  }) async {
+    final modelFile = File(modelPath);
+    final modelDir = modelFile.parent;
+    final metadataFilename = _resolveMetadataFilename(remoteModelFilename);
+    final metadataFile = File(p.join(modelDir.path, metadataFilename));
+
+    final metadataBytes = await _downloadMetadataBytes(
+      config: config,
+      version: remoteVersion,
+      filename: metadataFilename,
+    );
+    if (metadataBytes != null && metadataBytes.isNotEmpty) {
+      await metadataFile.writeAsBytes(metadataBytes, flush: true);
+      appLog(
+        '💾 [ModelDownloader] 메타데이터 저장 완료 → ${metadataFile.path}',
+      );
+      return;
+    }
+
+    final fallback = _buildFallbackMetadataJson();
+    await metadataFile.writeAsString(
+      jsonEncode(fallback),
+      flush: true,
+    );
+    appLog(
+      'ℹ️ [ModelDownloader] 원격 메타데이터 미수신 → 기본 메타데이터 생성 '
+      '(${metadataFile.path})',
+    );
+  }
+
+  Future<List<int>?> _downloadMetadataBytes({
+    required ServerConfig config,
+    required String version,
+    required String filename,
+  }) async {
+    final uri = Uri.parse(config.getModelUrl('/model')).replace(
+      queryParameters: <String, String>{
+        'version': version,
+        'filename': filename,
+      },
+    );
+    try {
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200) {
+        appLog(
+          '📥 [ModelDownloader] 메타데이터 수신 완료 '
+          'version=$version file=$filename size=${response.bodyBytes.length} bytes',
+        );
+        return response.bodyBytes;
+      }
+      appLog(
+        '⚠️ [ModelDownloader] 메타데이터 요청 실패 '
+        'status=${response.statusCode} file=$filename',
+      );
+      return null;
+    } catch (error) {
+      appLog('⚠️ [ModelDownloader] 메타데이터 다운로드 오류($error)');
+      return null;
+    }
+  }
+
+  String _resolveMetadataFilename(String modelFilename) {
+    final base = p.basenameWithoutExtension(modelFilename).trim();
+    if (base.isEmpty) {
+      return _defaultMetadataFilename;
+    }
+    return '${base}_metadata.json';
+  }
+
+  Map<String, dynamic> _buildFallbackMetadataJson() {
+    return <String, dynamic>{
+      'feature_columns': _defaultFeatureColumns,
+      'embedding_dim': 12,
+      'input_dim': _defaultFeatureColumns.length + 12,
+      'scaler': <String, dynamic>{
+        'mean': List<double>.filled(_defaultFeatureColumns.length, 0.0),
+        'scale': List<double>.filled(_defaultFeatureColumns.length, 1.0),
+      },
+    };
   }
 
   String _safeDecode(List<int>? bytes) {

@@ -632,6 +632,16 @@ class DatabaseHelper {
     );
   }
 
+  /// 세션 ID(int) 기반 측정 기록 삭제
+  Future<int> deleteMeasurementSession(int id) async {
+    return deleteFatigueLog(id.toString());
+  }
+
+  /// 세션 키(String) 기반 측정 기록 삭제
+  Future<int> deleteMeasurementSessionBySessionId(String sessionId) async {
+    return deleteFatigueLog(sessionId);
+  }
+
   Future<int> deleteAllFatigueLogs({String userId = defaultUserId}) async {
     userId = await resolveUserId(userId);
     final db = await database;
@@ -977,7 +987,8 @@ class DatabaseHelper {
     );
 
     appLog(
-        '✅ baseline 재계산 완료: RMS=$rmsMean, Freq=$freqMean (N=${logs.length})');
+      '✅ baseline 재계산 완료: RMS=$rmsMean, Freq=$freqMean (N=${logs.length})',
+    );
   }
 
   /// User Embedding 계산 및 업데이트

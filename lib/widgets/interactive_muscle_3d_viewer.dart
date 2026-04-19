@@ -6,9 +6,10 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
+import '../features/heatmap/model/muscle_taxonomy.dart';
 import '../theme/app_theme.dart';
 
 class InteractiveMuscle3DController extends ChangeNotifier {
@@ -91,13 +92,14 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
   static const String _viewerId = 'musclecare-anatomy-viewer';
   static const String _defaultOrbit = '0deg 90deg 112%';
   static const Duration _modelLoadTimeout = Duration(milliseconds: 10000);
-  static const String _timeoutFallbackMessage =
-      '네트워크 문제로 로딩이 지연되고 있습니다. 다시 시도해주세요';
-  static const String _genericLoadFailureMessage =
-      '3D 모델 로딩에 실패했습니다. 다시 시도해주세요';
+  static const String _timeoutFallbackMessage = '3D 모델을 불러올 수 없습니다';
+  static const String _genericLoadFailureMessage = '3D 모델을 불러올 수 없습니다';
   static final Map<String, String> _offlineHtmlCache = <String, String>{};
+  static final Map<String, Future<String>> _modelDataUriCache =
+      <String, Future<String>>{};
+  static Future<String>? _modelViewerJsInlineCache;
 
-  WebViewController? _webViewController;
+  InAppWebViewController? _webViewController;
   Timer? _runtimeSyncTimer;
   Timer? _autoFocusResetTimer;
   Timer? _modelLoadTimeoutTimer;
@@ -128,7 +130,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     widget.controller?.bindCameraOrbit(_setCameraOrbitFromController);
     _applyInitialAutoFocus();
     _startModelLoadTimeoutWatchdog();
-    _setupOfflineWebView();
+    unawaited(_loadOfflineViewerHtml(forceRebuild: true));
   }
 
   @override
@@ -232,7 +234,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     unawaited(_syncCameraOrbitToViewer());
   }
 
-  void _handleWebViewCreated(WebViewController controller) {
+  void _handleWebViewCreated(InAppWebViewController controller) {
     final hadController = _webViewController != null;
     _webViewController = controller;
     if (!mounted) {
@@ -251,35 +253,6 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     }
     _startModelLoadTimeoutWatchdog();
     _scheduleWebViewReadyProbe();
-  }
-
-  Future<void> _setupOfflineWebView() async {
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.transparent)
-      ..addJavaScriptChannel(
-        'ModelReady',
-        onMessageReceived: (message) =>
-            _handleModelReadyMessage(message.message),
-      )
-      ..addJavaScriptChannel(
-        'TapChannel',
-        onMessageReceived: (message) => _handleTapMessage(message.message),
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            return _isOfflineSafeRequest(request.url)
-                ? NavigationDecision.navigate
-                : NavigationDecision.prevent;
-          },
-        ),
-      );
-    _handleWebViewCreated(controller);
-    if (!mounted) {
-      return;
-    }
-    await _loadOfflineViewerHtml(forceRebuild: true);
   }
 
   bool _isOfflineSafeRequest(String url) {
@@ -304,32 +277,64 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     final cacheKey = _activeModelSrc;
     final cachedHtml = !forceRebuild ? _offlineHtmlCache[cacheKey] : null;
     if (cachedHtml != null) {
-      await controller.loadHtmlString(cachedHtml);
+      await controller.loadData(
+        data: cachedHtml,
+        mimeType: 'text/html',
+        encoding: 'utf-8',
+        baseUrl: WebUri('about:blank'),
+        historyUrl: WebUri('about:blank'),
+      );
       return;
     }
     try {
+      final modelViewerJsContent = await _loadModelViewerJsInline();
+      final modelDataUri = await _loadModelDataUri(_activeModelSrc);
       final html = _buildOfflineViewerHtml(
-        modelAssetSrc: 'flutter-assets/$_activeModelSrc',
+        jsContent: modelViewerJsContent,
+        modelDataUri: modelDataUri,
       );
       _offlineHtmlCache[cacheKey] = html;
       if (!mounted) {
         return;
       }
-      await controller.loadHtmlString(html);
+      await controller.loadData(
+        data: html,
+        mimeType: 'text/html',
+        encoding: 'utf-8',
+        baseUrl: WebUri('about:blank'),
+        historyUrl: WebUri('about:blank'),
+      );
     } catch (_) {
       if (!mounted) {
         return;
       }
       _setBlockingErrorMessage(_genericLoadFailureMessage);
-    } finally {}
+    }
+  }
+
+  Future<String> _loadModelViewerJsInline() {
+    return _modelViewerJsInlineCache ??=
+        rootBundle.loadString(_localModelViewerJsSrc);
+  }
+
+  Future<String> _loadModelDataUri(String modelAssetPath) {
+    return _modelDataUriCache.putIfAbsent(modelAssetPath, () async {
+      final modelBytesData = await rootBundle.load(modelAssetPath);
+      final modelBytes = modelBytesData.buffer.asUint8List(
+        modelBytesData.offsetInBytes,
+        modelBytesData.lengthInBytes,
+      );
+      return 'data:model/gltf-binary;base64,${base64Encode(modelBytes)}';
+    });
   }
 
   String _buildOfflineViewerHtml({
-    required String modelAssetSrc,
+    required String jsContent,
+    required String modelDataUri,
   }) {
     const htmlEscape = HtmlEscape(HtmlEscapeMode.element);
     final escapedId = htmlEscape.convert(_viewerId);
-    final escapedModelAssetSrc = htmlEscape.convert(modelAssetSrc);
+    final escapedModelDataUri = htmlEscape.convert(modelDataUri);
     final escapedCameraOrbit = htmlEscape.convert(_cameraOrbit);
     final escapedRotation =
         htmlEscape.convert(widget.autoRotate ? '20deg' : '0deg');
@@ -348,7 +353,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: data: flutter-assets: file:; style-src 'unsafe-inline'; img-src data: blob: flutter-assets: file:; media-src data: blob: flutter-assets: file:; connect-src blob: data: flutter-assets: file:; worker-src blob: data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; script-src * data: blob: 'unsafe-inline' 'unsafe-eval'; style-src * data: blob: 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; media-src * data: blob: 'unsafe-inline'; connect-src * data: blob: 'unsafe-inline'; worker-src * data: blob: 'unsafe-inline'; font-src * data: blob: 'unsafe-inline';">
   <style>
     html, body {
       margin: 0;
@@ -360,24 +365,27 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     }
     $escapedCss
   </style>
-  <script type="module" src="flutter-assets/$_localModelViewerJsSrc"></script>
+  <script type="module">
+$jsContent
+  </script>
 </head>
 <body>
   <model-viewer
     id="$escapedId"
-    src="$escapedModelAssetSrc"
+    src="$escapedModelDataUri"
     background-color="transparent"
     camera-controls
     loading="eager"
     reveal="auto"
     interaction-prompt="none"
     camera-orbit="$escapedCameraOrbit"
-    camera-target="0m 0.9m 0m"
-    field-of-view="28deg"
-    min-camera-orbit="-360deg 55deg 102%"
-    max-camera-orbit="360deg 125deg 132%"
+    camera-target="auto auto auto"
+    field-of-view="auto"
+    min-camera-orbit="auto 5deg auto"
+    max-camera-orbit="auto 175deg auto"
+    orbit-sensitivity="1.5"
     rotation-per-second="$escapedRotation"
-    interpolation-decay="96"
+    interpolation-decay="20"
     exposure="1.2"
     shadow-intensity="4.4"
     shadow-softness="0.8"
@@ -400,8 +408,8 @@ $escapedRuntimeJs
     }
     final escapedOrbit = jsonEncode(_cameraOrbit);
     try {
-      await _webViewController!.runJavaScript(
-        '''(() => {
+      await _webViewController!.evaluateJavascript(
+        source: '''(() => {
   const viewer = document.querySelector('#$_viewerId') || document.querySelector('model-viewer');
   if (!viewer) return;
   viewer.cameraOrbit = JSON.parse($escapedOrbit);
@@ -520,8 +528,8 @@ $escapedRuntimeJs
         _webViewReadyProbeBusy = true;
         _webViewReadyProbeAttempt += 1;
         try {
-          final result = await controller.runJavaScriptReturningResult(
-            '''(() => {
+          final result = await controller.evaluateJavascript(
+            source: '''(() => {
 const findViewer = () => {
   const direct = document.querySelector('#$_viewerId') || document.querySelector('model-viewer');
   if (direct) return direct;
@@ -603,9 +611,9 @@ return 'present';
       widget.controller?.setRuntimePayloadJson(payloadJson);
       final escapedPayload = jsonEncode(payloadJson);
       try {
-        await _webViewController!.runJavaScript(
-          'window.applyMusclecareRuntime && '
-          'window.applyMusclecareRuntime(JSON.parse($escapedPayload));',
+        await _webViewController!.evaluateJavascript(
+          source: 'window.applyMusclecareRuntime && '
+              'window.applyMusclecareRuntime(JSON.parse($escapedPayload));',
         );
       } catch (_) {
         if (!mounted) {
@@ -681,7 +689,7 @@ return 'present';
   ) {
     final states = <String, _MuscleState>{};
 
-    for (final muscleCode in _muscleMeshNodeMap.keys) {
+    for (final muscleCode in canonicalDetailedMuscleCodes) {
       states[muscleCode] = _MuscleState.unknown();
     }
 
@@ -727,12 +735,8 @@ return 'present';
   }
 
   List<String> _expandMuscleCode(String canonicalCode) {
-    final resolved = _muscleAliases[canonicalCode] ?? canonicalCode;
-    final mapped = _entryToDetailedMuscles[resolved];
-    if (mapped != null && mapped.isNotEmpty) {
-      return mapped;
-    }
-    if (_muscleMeshNodeMap.containsKey(resolved)) {
+    final resolved = _ssotAliasToCanonicalCode[canonicalCode] ?? canonicalCode;
+    if (_ssotDetailedMeshSignatures.containsKey(resolved)) {
       return <String>[resolved];
     }
     return const <String>[];
@@ -743,7 +747,7 @@ return 'present';
     if (canonical == null || canonical.isEmpty) {
       return detailCode;
     }
-    return _tapOutputCodeByDetailed[canonical] ?? canonical;
+    return _ssotTapOutputByDetailedCode[canonical] ?? canonical;
   }
 
   void _handleModelReadyMessage(String message) {
@@ -825,17 +829,91 @@ return 'present';
   }
 
   Widget _buildLiveViewer(BuildContext context) {
-    final controller = _webViewController;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (controller != null)
-          WebViewWidget(
-            key: ValueKey(
-              'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
-            ),
-            controller: controller,
+        InAppWebView(
+          key: ValueKey(
+            'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
           ),
+          initialSettings: InAppWebViewSettings(
+            javaScriptEnabled: true,
+            transparentBackground: true,
+            mediaPlaybackRequiresUserGesture: false,
+            useShouldOverrideUrlLoading: true,
+            allowsInlineMediaPlayback: true,
+            supportZoom: false,
+            disableHorizontalScroll: true,
+            disableVerticalScroll: true,
+            isInspectable: kDebugMode,
+          ),
+          initialUrlRequest: URLRequest(url: WebUri('about:blank')),
+          onWebViewCreated: (controller) {
+            controller.addJavaScriptHandler(
+              handlerName: 'ModelReady',
+              callback: (arguments) {
+                if (arguments.isEmpty) {
+                  return null;
+                }
+                _handleModelReadyMessage(arguments.first.toString());
+                return null;
+              },
+            );
+            controller.addJavaScriptHandler(
+              handlerName: 'TapChannel',
+              callback: (arguments) {
+                if (arguments.isEmpty) {
+                  return null;
+                }
+                _handleTapMessage(arguments.first.toString());
+                return null;
+              },
+            );
+            _handleWebViewCreated(controller);
+            unawaited(_loadOfflineViewerHtml(forceRebuild: true));
+          },
+          onLoadStop: (controller, url) {
+            if (!mounted || _lifecyclePausedAt != null) {
+              return;
+            }
+            _startModelLoadTimeoutWatchdog(preserveTimeoutWindow: true);
+            _scheduleWebViewReadyProbe(resetAttempt: false);
+          },
+          onConsoleMessage: (_, consoleMessage) {
+            if (!kDebugMode) {
+              return;
+            }
+            debugPrint(
+              '[3DViewerConsole] ${consoleMessage.messageLevel}: ${consoleMessage.message}',
+            );
+          },
+          onReceivedError: (_, request, error) {
+            if (!kDebugMode) {
+              return;
+            }
+            debugPrint(
+              '[3DViewerWebResourceError] ${request.url} code=${error.type} message=${error.description}',
+            );
+          },
+          onReceivedHttpError: (_, request, response) {
+            if (!kDebugMode) {
+              return;
+            }
+            debugPrint(
+              '[3DViewerHttpError] ${request.url} status=${response.statusCode} reason=${response.reasonPhrase}',
+            );
+          },
+          shouldOverrideUrlLoading: (_, navigationAction) async {
+            final requestUrl = navigationAction.request.url?.toString() ?? '';
+            if (_isOfflineSafeRequest(requestUrl)) {
+              return NavigationActionPolicy.ALLOW;
+            }
+            if (kDebugMode) {
+              debugPrint('[3DViewerNavigationBlocked] $requestUrl');
+            }
+            return NavigationActionPolicy.CANCEL;
+          },
+        ),
         if (!_modelReady && _blockingErrorMessage == null)
           _buildLoadingOverlay(context),
         if (_blockingErrorMessage != null) _buildLoadFailureOverlay(context),
@@ -1125,13 +1203,13 @@ return 'present';
   }
 
   String _orbitForMuscle(String muscleCode) {
-    final direct = _orbitByMuscle[muscleCode];
+    final direct = _ssotOrbitByCode[muscleCode];
     if (direct != null) {
       return direct;
     }
-    final parent = _tapOutputCodeByDetailed[muscleCode];
-    if (parent != null && _orbitByMuscle[parent] != null) {
-      return _orbitByMuscle[parent]!;
+    final parent = _ssotTapOutputByDetailedCode[muscleCode];
+    if (parent != null && _ssotOrbitByCode[parent] != null) {
+      return _ssotOrbitByCode[parent]!;
     }
     return _defaultOrbit;
   }
@@ -1159,7 +1237,7 @@ return 'present';
   }
 
   String _buildViewerJs() {
-    final muscleNodeMapJson = jsonEncode(_segmentedMuscleMeshNodeMap);
+    final muscleNodeMapJson = jsonEncode(_ssotSegmentedMeshNodeMap);
     final initialPayloadJson = _buildRuntimePayloadJson();
     return '''
       (() => {
@@ -1255,7 +1333,12 @@ return 'present';
           }
           viewer.setAttribute('disable-zoom', '');
           viewer.setAttribute('disable-pan', '');
-          viewer.setAttribute('camera-target', '0m 0.9m 0m');
+          viewer.setAttribute('camera-target', 'auto auto auto');
+          viewer.setAttribute('min-camera-orbit', 'auto 5deg auto');
+          viewer.setAttribute('max-camera-orbit', 'auto 175deg auto');
+          viewer.setAttribute('orbit-sensitivity', '1.5');
+          viewer.setAttribute('interpolation-decay', '20');
+          viewer.setAttribute('field-of-view', 'auto');
           viewer.setAttribute('shadow-intensity', '4.4');
           viewer.setAttribute('shadow-softness', '0.8');
           viewer.setAttribute('exposure', '1.2');
@@ -1263,12 +1346,40 @@ return 'present';
         };
 
         const colors = {
-          neutral: [0.24, 0.26, 0.31],
-          green: [0.20, 0.98, 0.56],
-          yellow: [1.00, 0.78, 0.28],
-          red: [1.00, 0.32, 0.46],
+          neutral: [0.10, 0.16, 0.28],
           focus: [0.55, 1.00, 0.76],
           recommend: [0.24, 0.92, 1.00],
+        };
+
+        const fatigueStops = [
+          { t: 0.00, rgb: [0.00, 0.90, 0.46] }, // #00E676
+          { t: 0.20, rgb: [0.78, 1.00, 0.00] }, // #C6FF00
+          { t: 0.50, rgb: [1.00, 0.92, 0.00] }, // #FFEA00
+          { t: 0.75, rgb: [1.00, 0.57, 0.00] }, // #FF9100
+          { t: 0.90, rgb: [1.00, 0.09, 0.27] }, // #FF1744
+          { t: 0.98, rgb: [0.84, 0.00, 0.00] }, // #D50000
+          { t: 1.00, rgb: [0.53, 0.05, 0.31] }, // #880E4F
+        ];
+
+        const clamp01 = (value) => Math.min(Math.max(Number(value || 0), 0), 1);
+        const lerp = (a, b, t) => a + ((b - a) * t);
+        const lerpRgb = (a, b, t) => [
+          lerp(a[0], b[0], t),
+          lerp(a[1], b[1], t),
+          lerp(a[2], b[2], t),
+        ];
+        const sampleFatigueColor = (intensity) => {
+          const x = clamp01(intensity);
+          for (let i = 0; i < fatigueStops.length - 1; i += 1) {
+            const left = fatigueStops[i];
+            const right = fatigueStops[i + 1];
+            if (x >= left.t && x <= right.t) {
+              const width = Math.max(right.t - left.t, 0.0001);
+              const localT = clamp01((x - left.t) / width);
+              return lerpRgb(left.rgb, right.rgb, localT);
+            }
+          }
+          return fatigueStops[fatigueStops.length - 1].rgb;
         };
 
         const highDefinitionTargets = new Set(Object.keys(muscleNodeMap));
@@ -1315,7 +1426,7 @@ return 'present';
 
         const resolveDefinitionProfile = (muscleCode, state) => {
           const isTarget = highDefinitionTargets.has(muscleCode);
-          const clampedIntensity = Math.min(Math.max(Number(state.intensity || 0.0), 0.0), 1.0);
+          const clampedIntensity = clamp01(state.intensity);
           if (!isTarget) {
             return {
               mixBoost: 0.0,
@@ -1326,79 +1437,79 @@ return 'present';
           }
           return {
             // 매핑된 전 근육에 고선명 분리 프로파일 적용.
-            mixBoost: 0.10 + (clampedIntensity * 0.08),
-            roughness: 0.26 + (clampedIntensity * 0.10),
-            metallic: 0.06 + (clampedIntensity * 0.10),
-            emissiveMultiplier: state.focused ? 0.54 : state.recommended ? 0.28 : 0.06,
+            mixBoost: 0.18 + (clampedIntensity * 0.14),
+            roughness: 0.22 + (clampedIntensity * 0.08),
+            metallic: 0.10 + (clampedIntensity * 0.08),
+            emissiveMultiplier:
+              (0.08 + (Math.pow(clampedIntensity, 1.15) * 0.34)) +
+              (state.focused ? 0.18 : state.recommended ? 0.10 : 0.0),
           };
         };
 
         const applyAppearance = (material, muscleCode) => {
-          if (!material || !material.pbrMetallicRoughness) {
-            return;
-          }
-          const state = resolveMaterialState(muscleCode);
-          const profile = resolveDefinitionProfile(muscleCode, state);
-          let base = colors.neutral;
-          if (state.status === 'green') {
-            base = colors.green;
-          } else if (state.status === 'yellow') {
-            base = colors.yellow;
-          } else if (state.status === 'red') {
-            base = colors.red;
-          }
+          try {
+            if (!material || !material.pbrMetallicRoughness) {
+              return;
+            }
+            const state = resolveMaterialState(muscleCode);
+            const clampedIntensity = clamp01(state.intensity);
+            const profile = resolveDefinitionProfile(muscleCode, state);
+            let base = sampleFatigueColor(clampedIntensity);
 
-          let mix =
-            0.20 +
-            Math.min(Math.max(state.intensity, 0.0), 1.0) * 0.48 +
-            profile.mixBoost;
-          if (state.focused) {
-            base = colors.focus;
-            mix += 0.22;
-          } else if (state.recommended) {
-            base = colors.recommend;
-            mix += 0.14;
-          }
-          mix = Math.min(mix, 0.90);
+            let mix =
+              0.28 +
+              clampedIntensity * 0.52 +
+              profile.mixBoost;
+            if (state.focused) {
+              base = lerpRgb(base, colors.focus, 0.54);
+              mix += 0.22;
+            } else if (state.recommended) {
+              base = lerpRgb(base, colors.recommend, 0.38);
+              mix += 0.14;
+            }
+            mix = Math.min(mix, 0.90);
 
-          const neutral = colors.neutral;
-          const finalColor = [
-            neutral[0] + (base[0] - neutral[0]) * mix,
-            neutral[1] + (base[1] - neutral[1]) * mix,
-            neutral[2] + (base[2] - neutral[2]) * mix,
-            1.0,
-          ];
-          const emissive = profile.emissiveMultiplier > 0.0
-            ? [
-                base[0] * profile.emissiveMultiplier,
-                base[1] * profile.emissiveMultiplier,
-                base[2] * profile.emissiveMultiplier,
-              ]
-            : [0.0, 0.0, 0.0];
+            const neutral = colors.neutral;
+            const finalColor = [
+              neutral[0] + (base[0] - neutral[0]) * mix,
+              neutral[1] + (base[1] - neutral[1]) * mix,
+              neutral[2] + (base[2] - neutral[2]) * mix,
+              1.0,
+            ];
+            const emissive = profile.emissiveMultiplier > 0.0
+              ? [
+                  base[0] * profile.emissiveMultiplier,
+                  base[1] * profile.emissiveMultiplier,
+                  base[2] * profile.emissiveMultiplier,
+                ]
+              : [0.0, 0.0, 0.0];
 
-          material.pbrMetallicRoughness.setBaseColorFactor(finalColor);
-          material.pbrMetallicRoughness.setRoughnessFactor(profile.roughness);
-          material.pbrMetallicRoughness.setMetallicFactor(profile.metallic);
-          if (material.setEmissiveFactor) {
-            material.setEmissiveFactor(emissive);
-          }
+            material.pbrMetallicRoughness.setBaseColorFactor(finalColor);
+            material.pbrMetallicRoughness.setRoughnessFactor(profile.roughness);
+            material.pbrMetallicRoughness.setMetallicFactor(profile.metallic);
+            if (material.setEmissiveFactor) {
+              material.setEmissiveFactor(emissive);
+            }
+          } catch (_) {}
         };
 
         const applyNeutralAppearance = (material) => {
-          if (!material || !material.pbrMetallicRoughness) {
-            return;
-          }
-          material.pbrMetallicRoughness.setBaseColorFactor([
-            colors.neutral[0],
-            colors.neutral[1],
-            colors.neutral[2],
-            1.0,
-          ]);
-          material.pbrMetallicRoughness.setRoughnessFactor(0.58);
-          material.pbrMetallicRoughness.setMetallicFactor(0.12);
-          if (material.setEmissiveFactor) {
-            material.setEmissiveFactor([0.01, 0.01, 0.01]);
-          }
+          try {
+            if (!material || !material.pbrMetallicRoughness) {
+              return;
+            }
+            material.pbrMetallicRoughness.setBaseColorFactor([
+              colors.neutral[0],
+              colors.neutral[1],
+              colors.neutral[2],
+              1.0,
+            ]);
+            material.pbrMetallicRoughness.setRoughnessFactor(0.58);
+            material.pbrMetallicRoughness.setMetallicFactor(0.12);
+            if (material.setEmissiveFactor) {
+              material.setEmissiveFactor([0.01, 0.01, 0.01]);
+            }
+          } catch (_) {}
         };
 
         const rebuildNodeLookup = () => {
@@ -1430,6 +1541,9 @@ return 'present';
           const dominantMuscle = resolveDominantMuscle();
           let indexed = 0;
           for (const material of viewer.model.materials) {
+            if (!material) {
+              continue;
+            }
             const materialName = material && material.name ? material.name : '';
             const normalizedName = normalize(materialName);
             let muscleCode = resolveMuscleCode(materialName);
@@ -1452,7 +1566,6 @@ return 'present';
           if (!viewer.model || !Array.isArray(viewer.model.materials)) {
             return false;
           }
-          enforceViewerConstraints();
           rebuildNodeLookup();
           if (runtimeState.materialToMuscle.size === 0) {
             rebuildMaterialLookup();
@@ -1469,11 +1582,13 @@ return 'present';
               (normalizedName.includes('muscle') || normalizedName.includes('tendon'))
                 ? dominantMuscle
                 : null);
-            if (resolved) {
-              applyAppearance(material, resolved);
-            } else {
-              applyNeutralAppearance(material);
-            }
+            try {
+              if (resolved) {
+                applyAppearance(material, resolved);
+              } else {
+                applyNeutralAppearance(material);
+              }
+            } catch (_) {}
           }
           return true;
         };
@@ -1534,6 +1649,17 @@ return 'present';
           return runtimeState.dominantMuscle;
         };
 
+        const postToFlutter = (channel, payload) => {
+          try {
+            if (
+              window.flutter_inappwebview &&
+              typeof window.flutter_inappwebview.callHandler === 'function'
+            ) {
+              window.flutter_inappwebview.callHandler(channel, payload);
+            }
+          } catch (_) {}
+        };
+
         let readyPosted = false;
         let errorPosted = false;
         let probeActive = false;
@@ -1543,7 +1669,7 @@ return 'present';
           }
           readyPosted = true;
           probeActive = false;
-          ModelReady.postMessage('ready');
+          postToFlutter('ModelReady', 'ready');
         };
 
         const notifyErrorOnce = (code) => {
@@ -1552,7 +1678,7 @@ return 'present';
           }
           errorPosted = true;
           probeActive = false;
-          ModelReady.postMessage('error:' + code);
+          postToFlutter('ModelReady', 'error:' + code);
         };
 
         const stringifyError = (value) => {
@@ -1587,7 +1713,7 @@ return 'present';
 
         const postRetryProgress = (attempt) => {
           if (attempt === 1 || attempt % 4 === 0) {
-            ModelReady.postMessage('retry:' + attempt);
+            postToFlutter('ModelReady', 'retry:' + attempt);
           }
         };
 
@@ -1599,7 +1725,6 @@ return 'present';
             probeActive = true;
           }
           try {
-            enforceViewerConstraints();
             const applied = applyAllMaterials();
             if (applied) {
               probeActive = false;
@@ -1645,10 +1770,10 @@ return 'present';
           const rawDetail = event && event.detail ? event.detail : event;
           const detailText = stringifyError(rawDetail);
           if (isOomLikeError(detailText)) {
-            notifyErrorOnce('model_load_failed_oom');
+            notifyErrorOnce('model_load_failed_oom:' + detailText.slice(0, 120));
             return;
           }
-          notifyErrorOnce('model_load_failed');
+          notifyErrorOnce('model_load_failed:' + detailText.slice(0, 120));
         });
 
         viewer.addEventListener('webglcontextlost', (event) => {
@@ -1687,7 +1812,7 @@ return 'present';
         viewer.addEventListener('click', (event) => {
           const muscleCode = resolveTapMuscle(event);
           if (muscleCode) {
-            TapChannel.postMessage(muscleCode);
+            postToFlutter('TapChannel', muscleCode);
           }
         });
 
@@ -1726,7 +1851,7 @@ return 'present';
             return;
           }
           if (attempt >= 80) {
-            ModelReady.postMessage('error:viewer_not_found');
+            postToFlutter('ModelReady', 'error:viewer_not_found');
             return;
           }
           window.setTimeout(() => resolveViewer(attempt + 1), 120);
@@ -1843,940 +1968,360 @@ String? _canonicalizeMuscleCode(String? raw) {
   normalized = normalized.replaceAll(RegExp(r'plane\.\d+.*$'), '');
   normalized = normalized.replaceAll(RegExp(r'cube\.\d+.*$'), '');
   normalized = normalized.replaceAll('\'', '');
-  normalized = normalized.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-  normalized = normalized.replaceAll(RegExp(r'_+'), '_');
-  normalized = normalized.replaceAll(RegExp(r'^_+|_+$'), '');
-  if (normalized.isEmpty) {
+  final normalizedCode =
+      normalizeCanonicalMuscleCode(normalized, preferDetailed: false);
+  if (normalizedCode.isEmpty) {
     return null;
   }
-  final tokens = normalized
-      .split('_')
-      .where((token) => token.isNotEmpty)
-      .where((token) => !_sideTokens.contains(token))
-      .toList();
-  if (tokens.isNotEmpty && RegExp(r'^\d+$').hasMatch(tokens.last)) {
-    tokens.removeLast();
+  final aliased = _ssotAliasToCanonicalCode[normalizedCode] ?? normalizedCode;
+  if (canonicalDetailedMuscleCodes.contains(aliased)) {
+    return aliased;
   }
-  final compact = tokens.join('_');
-  if (compact.isEmpty) {
-    return null;
-  }
-  return _muscleAliases[compact] ?? compact;
+  return null;
 }
 
-const Set<String> _sideTokens = {
-  'left',
-  'right',
-  'l',
-  'r',
-  'lt',
-  'rt',
-  'lhs',
-  'rhs',
-};
-
-const Map<String, String> _muscleAliases = {
-  'pecs': 'chest',
-  'pectoralis_major': 'chest',
-  'pectoral': 'chest',
-  'pectorals': 'chest',
-  'pectoralis': 'chest',
-  'pectoralismajor': 'chest',
-  'abs': 'rectus_abdominis',
-  'abdominals': 'rectus_abdominis',
-  'core': 'rectus_abdominis',
-  'oblique': 'obliques',
-  'front_delts': 'front_deltoid',
-  'anterior_deltoid': 'front_deltoid',
-  'deltoid_anterior': 'front_deltoid',
-  'deltoid': 'lateral_deltoid',
-  'lateral_delts': 'lateral_deltoid',
-  'side_deltoid': 'lateral_deltoid',
-  'deltoid_lateral': 'lateral_deltoid',
-  'rear_delts': 'rear_deltoid',
-  'posterior_deltoid': 'rear_deltoid',
-  'deltoid_posterior': 'rear_deltoid',
-  'lats': 'latissimus',
-  'latissimus_dorsi': 'latissimus',
-  'latissimus_upper': 'latissimus',
-  'latissimus_lower': 'latissimus',
-  'traps': 'trapezius',
-  'upper_trap': 'trapezius',
-  'middle_trap': 'trapezius',
-  'lower_trap': 'trapezius',
-  'rhomboid': 'rhomboids',
-  'biceps_brachii': 'biceps',
-  'bicepsbrachii': 'biceps',
-  'triceps_brachii': 'triceps',
-  'tricepsbrachii': 'triceps',
-  'forearm': 'forearm_flexor',
-  'forearms': 'forearm_flexor',
-  'wrist_flexor': 'forearm_flexor',
-  'wrist_extensor': 'forearm_extensor',
-  'glutes': 'gluteus_maximus',
-  'glute_maximus': 'gluteus_maximus',
-  'glute_medius': 'gluteus_medius',
-  'glute_minimus': 'gluteus_minimus',
-  'quads': 'quadriceps',
-  'hamstring': 'hamstrings',
-  'adductor': 'adductors',
-  'abductor': 'abductors',
-  'calf': 'calves',
-  'gastrocnemius_medial': 'gastrocnemius',
-  'gastrocnemius_lateral': 'gastrocnemius',
-  'shin': 'tibialis_anterior',
-  'erectors': 'erector_spinae',
-  'spinal_erectors': 'erector_spinae',
-  'scapular_part_of_deltoid_uscle': 'deltoid_posterior',
-  'scapular_part_of_deltoid_muscle': 'deltoid_posterior',
-  'deep_head_of_prontaor_teres_muscle': 'pronator_teres_deep',
-  'internal_intercosatlis_muscles': 'internal_intercostals',
-};
-
-const Map<String, List<String>> _entryToDetailedMuscles = {
-  'chest': [
-    'pectoralis_major_clavicular',
-    'pectoralis_major_sternocostal',
-    'pectoralis_major_abdominal',
-    'pectoralis_minor',
-    'serratus_anterior',
-  ],
-  'front_deltoid': ['deltoid_anterior'],
-  'lateral_deltoid': ['deltoid_lateral'],
-  'rear_deltoid': ['deltoid_posterior'],
-  'deltoid': ['deltoid_anterior', 'deltoid_lateral', 'deltoid_posterior'],
-  'trapezius': [
-    'trapezius_descending',
-    'trapezius_transverse',
-    'trapezius_ascending',
-  ],
-  'rhomboids': ['rhomboid_major', 'rhomboid_minor'],
-  'latissimus': ['latissimus_dorsi'],
-  'biceps': ['biceps_brachii_long_head', 'biceps_brachii_short_head'],
-  'triceps': [
-    'triceps_brachii_long_head',
-    'triceps_brachii_lateral_head',
-    'triceps_brachii_medial_head',
-  ],
-  'forearm_flexor': [
-    'pronator_teres_superficial',
-    'pronator_teres_deep',
-    'flexor_carpi_radialis',
-    'flexor_carpi_ulnaris',
-    'palmaris_longus',
-  ],
-  'forearm_extensor': [
-    'supinator',
-    'extensor_carpi_radialis_longus',
-    'extensor_carpi_radialis_brevis',
-    'extensor_carpi_ulnaris',
-    'extensor_digitorum',
-    'extensor_digiti_minimi',
-    'brachioradialis',
-  ],
-  'rectus_abdominis': ['rectus_abdominis'],
-  'obliques': ['external_oblique', 'internal_oblique'],
-  'transverse_abdominis': ['transversus_abdominis'],
-  'erector_spinae': [
-    'iliocostalis_lumborum',
-    'iliocostalis_thoracis',
-    'iliocostalis_cervicis',
-    'longissimus_thoracis',
-    'spinalis_thoracis',
-    'multifidus',
-  ],
-  'lower_back': [
-    'quadratus_lumborum',
-    'multifidus',
-    'iliocostalis_lumborum',
-    'longissimus_thoracis',
-  ],
-  'gluteus_maximus': ['gluteus_maximus'],
-  'gluteus_medius': ['gluteus_medius'],
-  'gluteus_minimus': ['gluteus_minimus'],
-  'abductors': ['gluteus_medius', 'gluteus_minimus', 'piriformis'],
-  'adductors': [
-    'adductor_longus',
-    'adductor_brevis',
-    'adductor_magnus',
-    'adductor_minimus',
-    'gracilis',
-    'pectineus',
-  ],
-  'quadriceps': [
-    'rectus_femoris',
-    'vastus_lateralis',
-    'vastus_medialis',
-    'vastus_intermedius',
-  ],
-  'hamstrings': [
-    'biceps_femoris_long_head',
-    'biceps_femoris_short_head',
-    'semitendinosus',
-    'semimembranosus',
-  ],
-  'calves': [
-    'gastrocnemius_medial_head',
-    'gastrocnemius_lateral_head',
-    'soleus',
-    'plantaris',
-  ],
-  'gastrocnemius': ['gastrocnemius_medial_head', 'gastrocnemius_lateral_head'],
-  'tibialis_anterior': ['tibialis_anterior'],
-  'tibialis_posterior': ['tibialis_posterior'],
-  'neck': ['sternocleidomastoid', 'splenius_capitis', 'splenius_cervicis'],
-};
-
-const Map<String, String> _tapOutputCodeByDetailed = {
-  'pectoralis_major_clavicular': 'chest',
-  'pectoralis_major_sternocostal': 'chest',
-  'pectoralis_major_abdominal': 'chest',
-  'pectoralis_minor': 'chest',
-  'serratus_anterior': 'chest',
-  'deltoid_anterior': 'front_deltoid',
-  'deltoid_lateral': 'lateral_deltoid',
-  'deltoid_posterior': 'rear_deltoid',
-  'trapezius_descending': 'trapezius',
-  'trapezius_transverse': 'trapezius',
-  'trapezius_ascending': 'trapezius',
-  'rhomboid_major': 'rhomboids',
-  'rhomboid_minor': 'rhomboids',
-  'latissimus_dorsi': 'latissimus',
-  'biceps_brachii_long_head': 'biceps',
-  'biceps_brachii_short_head': 'biceps',
-  'triceps_brachii_long_head': 'triceps',
-  'triceps_brachii_lateral_head': 'triceps',
-  'triceps_brachii_medial_head': 'triceps',
-  'pronator_teres_superficial': 'forearm_flexor',
-  'pronator_teres_deep': 'forearm_flexor',
-  'flexor_carpi_radialis': 'forearm_flexor',
-  'flexor_carpi_ulnaris': 'forearm_flexor',
-  'palmaris_longus': 'forearm_flexor',
-  'extensor_carpi_radialis_longus': 'forearm_extensor',
-  'extensor_carpi_radialis_brevis': 'forearm_extensor',
-  'extensor_carpi_ulnaris': 'forearm_extensor',
-  'extensor_digitorum': 'forearm_extensor',
-  'extensor_digiti_minimi': 'forearm_extensor',
-  'supinator': 'forearm_extensor',
-  'brachioradialis': 'forearm_extensor',
-  'rectus_abdominis': 'rectus_abdominis',
-  'external_oblique': 'obliques',
-  'internal_oblique': 'obliques',
-  'transversus_abdominis': 'transverse_abdominis',
-  'iliocostalis_lumborum': 'erector_spinae',
-  'iliocostalis_thoracis': 'erector_spinae',
-  'iliocostalis_cervicis': 'erector_spinae',
-  'longissimus_thoracis': 'erector_spinae',
-  'spinalis_thoracis': 'erector_spinae',
-  'multifidus': 'erector_spinae',
-  'quadratus_lumborum': 'lower_back',
-  'gluteus_maximus': 'gluteus_maximus',
-  'gluteus_medius': 'gluteus_medius',
-  'gluteus_minimus': 'gluteus_minimus',
-  'piriformis': 'abductors',
-  'gemellus_superior': 'abductors',
-  'gemellus_inferior': 'abductors',
-  'quadratus_femoris': 'abductors',
-  'adductor_longus': 'adductors',
-  'adductor_brevis': 'adductors',
-  'adductor_magnus': 'adductors',
-  'adductor_minimus': 'adductors',
-  'gracilis': 'adductors',
-  'pectineus': 'adductors',
-  'rectus_femoris': 'quadriceps',
-  'vastus_lateralis': 'quadriceps',
-  'vastus_medialis': 'quadriceps',
-  'vastus_intermedius': 'quadriceps',
-  'biceps_femoris_long_head': 'hamstrings',
-  'biceps_femoris_short_head': 'hamstrings',
-  'semitendinosus': 'hamstrings',
-  'semimembranosus': 'hamstrings',
+const Map<String, String> _ssotAliasToCanonicalCode = {
+  'pectoralis_major_clavicular': 'pectoralis_major_upper',
+  'pectoralis_major_sternocostal': 'pectoralis_major_sternal',
+  'pectoralis_major_abdominal': 'pectoralis_major_lower',
+  'front_deltoid': 'deltoid_anterior',
+  'lateral_deltoid': 'deltoid_lateral',
+  'rear_deltoid': 'deltoid_posterior',
+  'trapezius_descending': 'trapezius_upper',
+  'trapezius_transverse': 'trapezius_middle',
+  'trapezius_ascending': 'trapezius_lower',
+  'biceps_brachii_long_head': 'biceps_long_head',
+  'biceps_brachii_short_head': 'biceps_short_head',
+  'triceps_brachii_long_head': 'triceps_long_head',
+  'triceps_brachii_lateral_head': 'triceps_lateral_head',
+  'triceps_brachii_medial_head': 'triceps_medial_head',
+  'forearm_flexor': 'forearm_flexors',
+  'forearm_extensor': 'forearm_extensors',
+  'external_oblique': 'external_obliques',
+  'biceps_femoris_long_head': 'biceps_femoris',
+  'biceps_femoris_short_head': 'biceps_femoris',
   'gastrocnemius_medial_head': 'gastrocnemius',
   'gastrocnemius_lateral_head': 'gastrocnemius',
-  'soleus': 'calves',
-  'plantaris': 'calves',
-  'tibialis_anterior': 'tibialis_anterior',
-  'tibialis_posterior': 'tibialis_posterior',
-  'sternocleidomastoid': 'neck',
-  'splenius_capitis': 'neck',
-  'splenius_cervicis': 'neck',
+  'latissimus': 'latissimus_dorsi',
 };
 
-const Map<String, String> _orbitByMuscle = {
-  'chest': '0deg 84deg 118%',
-  'rectus_abdominis': '0deg 92deg 124%',
-  'obliques': '24deg 90deg 126%',
-  'front_deltoid': '28deg 84deg 120%',
-  'lateral_deltoid': '62deg 86deg 124%',
-  'rear_deltoid': '212deg 86deg 124%',
-  'biceps': '52deg 84deg 124%',
-  'triceps': '232deg 84deg 126%',
-  'forearm_flexor': '66deg 92deg 132%',
-  'forearm_extensor': '248deg 92deg 132%',
-  'latissimus': '206deg 84deg 126%',
-  'trapezius': '182deg 74deg 122%',
-  'rhomboids': '186deg 80deg 126%',
-  'gluteus_maximus': '180deg 92deg 116%',
-  'quadriceps': '0deg 96deg 132%',
-  'hamstrings': '180deg 96deg 134%',
-  'calves': '180deg 104deg 142%',
-  'gastrocnemius': '180deg 104deg 140%',
-  'tibialis_anterior': '0deg 102deg 140%',
-  'neck': '0deg 76deg 116%',
-  'latissimus_dorsi': '206deg 84deg 126%',
+const Map<String, String> _ssotTapOutputByDetailedCode = {
+  'pectoralis_major_upper': 'pectoralis_major_upper',
+  'pectoralis_major_sternal': 'pectoralis_major_sternal',
+  'pectoralis_major_lower': 'pectoralis_major_lower',
+  'pectoralis_minor': 'pectoralis_minor',
+  'deltoid_anterior': 'deltoid_anterior',
+  'deltoid_lateral': 'deltoid_lateral',
+  'deltoid_posterior': 'deltoid_posterior',
+  'supraspinatus': 'rotator_cuff',
+  'infraspinatus': 'rotator_cuff',
+  'teres_minor': 'rotator_cuff',
+  'subscapularis': 'rotator_cuff',
+  'latissimus_dorsi': 'latissimus_dorsi',
+  'trapezius_upper': 'trapezius_upper',
+  'trapezius_middle': 'trapezius_middle',
+  'trapezius_lower': 'trapezius_lower',
+  'teres_major': 'teres_major',
+  'rhomboids': 'rhomboids',
+  'erector_spinae': 'erector_spinae',
+  'biceps_long_head': 'biceps_long_head',
+  'biceps_short_head': 'biceps_short_head',
+  'brachialis': 'brachialis',
+  'triceps_long_head': 'triceps_long_head',
+  'triceps_lateral_head': 'triceps_lateral_head',
+  'triceps_medial_head': 'triceps_medial_head',
+  'forearm_flexors': 'forearm_flexors',
+  'forearm_extensors': 'forearm_extensors',
+  'rectus_abdominis': 'rectus_abdominis',
+  'external_obliques': 'external_obliques',
+  'serratus_anterior': 'serratus_anterior',
+  'rectus_femoris': 'rectus_femoris',
+  'vastus_lateralis': 'vastus_lateralis',
+  'vastus_medialis': 'vastus_medialis',
+  'gluteus_maximus': 'gluteus_maximus',
+  'gluteus_medius': 'gluteus_medius',
+  'biceps_femoris': 'biceps_femoris',
+  'semitendinosus': 'semitendinosus',
+  'gastrocnemius': 'gastrocnemius',
+  'soleus': 'soleus',
+  'tibialis_anterior': 'tibialis_anterior',
+  'pectoralis_major_clavicular': 'pectoralis_major_upper',
+  'pectoralis_major_sternocostal': 'pectoralis_major_sternal',
+  'pectoralis_major_abdominal': 'pectoralis_major_lower',
+  'trapezius_descending': 'trapezius_upper',
+  'trapezius_transverse': 'trapezius_middle',
+  'trapezius_ascending': 'trapezius_lower',
+  'biceps_brachii_long_head': 'biceps_long_head',
+  'biceps_brachii_short_head': 'biceps_short_head',
+  'triceps_brachii_long_head': 'triceps_long_head',
+  'triceps_brachii_lateral_head': 'triceps_lateral_head',
+  'triceps_brachii_medial_head': 'triceps_medial_head',
+  'external_oblique': 'external_obliques',
+  'biceps_femoris_long_head': 'biceps_femoris',
+  'biceps_femoris_short_head': 'biceps_femoris',
+  'gastrocnemius_medial_head': 'gastrocnemius',
+  'gastrocnemius_lateral_head': 'gastrocnemius',
+};
+
+const Map<String, String> _ssotOrbitByCode = {
+  'pectoralis_major_upper': '0deg 82deg 118%',
+  'pectoralis_major_sternal': '0deg 84deg 118%',
+  'pectoralis_major_lower': '0deg 88deg 120%',
+  'pectoralis_minor': '4deg 88deg 120%',
   'deltoid_anterior': '28deg 84deg 120%',
   'deltoid_lateral': '62deg 86deg 124%',
   'deltoid_posterior': '212deg 86deg 124%',
-  'gluteus_medius': '188deg 90deg 120%',
-  'gluteus_minimus': '188deg 90deg 120%',
+  'rotator_cuff': '206deg 86deg 126%',
+  'latissimus_dorsi': '206deg 84deg 126%',
+  'trapezius_upper': '182deg 72deg 122%',
+  'trapezius_middle': '182deg 82deg 124%',
+  'trapezius_lower': '182deg 92deg 126%',
+  'teres_major': '204deg 88deg 126%',
+  'rhomboids': '186deg 80deg 126%',
+  'erector_spinae': '182deg 98deg 128%',
+  'biceps_long_head': '52deg 84deg 124%',
+  'biceps_short_head': '48deg 84deg 124%',
+  'brachialis': '56deg 86deg 124%',
+  'triceps_long_head': '232deg 84deg 126%',
+  'triceps_lateral_head': '228deg 84deg 126%',
+  'triceps_medial_head': '236deg 84deg 126%',
+  'forearm_flexors': '66deg 92deg 132%',
+  'forearm_extensors': '248deg 92deg 132%',
+  'rectus_abdominis': '0deg 92deg 124%',
+  'external_obliques': '24deg 90deg 126%',
+  'serratus_anterior': '18deg 88deg 124%',
   'rectus_femoris': '0deg 96deg 132%',
   'vastus_lateralis': '8deg 96deg 132%',
   'vastus_medialis': '-8deg 96deg 132%',
-  'vastus_intermedius': '0deg 96deg 132%',
-  'biceps_femoris_long_head': '184deg 98deg 134%',
-  'biceps_femoris_short_head': '184deg 98deg 134%',
+  'gluteus_maximus': '180deg 92deg 116%',
+  'gluteus_medius': '188deg 90deg 120%',
+  'biceps_femoris': '184deg 98deg 134%',
   'semitendinosus': '176deg 98deg 134%',
-  'semimembranosus': '176deg 98deg 134%',
-  'gastrocnemius_medial_head': '176deg 104deg 142%',
-  'gastrocnemius_lateral_head': '186deg 104deg 142%',
+  'gastrocnemius': '180deg 104deg 140%',
+  'soleus': '180deg 106deg 142%',
+  'tibialis_anterior': '0deg 102deg 140%',
 };
 
-const Map<String, List<String>> _muscleMeshNodeMap = {
-  'pectoralis_major_clavicular': [
-    // GLB node/material (human_muscular_system_segmented.glb): 05_Chest, Material_Chest
+const Map<String, List<String>> _ssotDetailedMeshSignatures = {
+  'pectoralis_major_upper': [
     '05_chest',
     'material_chest',
-    'chest',
     'clavicular_head_of_pectoralis_major_muscle',
-    'clavicular_head_of_pectoralis_major',
-    'pectoralis_major_clavicular',
-    'pectoralis_major_clavicular_head',
     'pectoralis_major_clavicular',
     'chest_upper',
   ],
-  'pectoralis_major_sternocostal': [
+  'pectoralis_major_sternal': [
     '05_chest',
     'material_chest',
-    'chest',
     'sternocostal_head_of_pectoralis_major_muscle',
-    'sternocostal_head_of_pectoralis_major',
     'pectoralis_major_sternocostal',
     'pectoralis_major_sternal',
-    'pectoralis_major',
-    'pectoralis_major_muscle',
     'chest_middle',
   ],
-  'pectoralis_major_abdominal': [
+  'pectoralis_major_lower': [
     '05_chest',
     'material_chest',
-    'chest',
     'abdominal_part_of_pectoralis_major_muscle',
-    'abdominal_part_of_pectoralis_major',
     'pectoralis_major_abdominal',
-    'pectoralis_major_lower',
     'chest_lower',
   ],
-  'pectoralis_minor': [
-    '05_chest',
-    'material_chest',
-    'chest',
-    'pectoralis_minor_muscle',
-    'pectoralis_minor',
-  ],
-  'serratus_anterior': [
-    '05_chest',
-    'material_chest',
-    '06_abdomen',
-    '07_lower_abdomen',
-    'serratus_anterior_muscle',
-  ],
-  'serratus_posterior_superior': [
-    'serratus_posterior_superior_muscle',
-  ],
-  'serratus_posterior_inferior': [
-    'serratus_posterior_inferior_muscle',
-  ],
-  'subclavius': [
-    'subclavius_muscle',
-  ],
+  'pectoralis_minor': ['05_chest', 'material_chest', 'pectoralis_minor_muscle'],
   'deltoid_anterior': [
-    // GLB node/material: 04_Shoulders, 10_Upper_arms, Material_Shoulders, Material_UpperArms
     '04_shoulders',
     '10_upper_arms',
     'material_shoulders',
-    'material_upperarms',
-    'shoulders',
-    'upper_arms',
-    'clavicular_part_of_deltoid_muscle',
     'anterior_deltoid',
-    'deltoid_anterior',
     'deltoid_front',
   ],
   'deltoid_lateral': [
     '04_shoulders',
     '10_upper_arms',
     'material_shoulders',
-    'material_upperarms',
-    'shoulders',
-    'upper_arms',
-    'acromial_part_of_deltoid_muscle',
     'middle_deltoid',
-    'lateral_deltoid',
     'deltoid_lateral',
-    'deltoid_side',
-    'deltoid',
   ],
   'deltoid_posterior': [
     '04_shoulders',
     '10_upper_arms',
-    '20_back',
     'material_shoulders',
-    'material_upperarms',
-    'material_lats',
-    'shoulders',
-    'upper_arms',
-    'back',
-    'scapular_part_of_deltoid_uscle',
-    'scapular_part_of_deltoid_muscle',
     'posterior_deltoid',
-    'rear_deltoid',
     'deltoid_posterior',
   ],
-  'trapezius_descending': [
-    // GLB node/material: 03_Neck, 20_Back, Material_Neck, Material_Lats
-    '03_neck',
-    '20_back',
-    'material_neck',
-    'material_lats',
-    'neck',
-    'back',
-    'descending_part_of_trapezius_muscle',
-  ],
-  'trapezius_transverse': [
-    '03_neck',
-    '20_back',
-    'material_neck',
-    'material_lats',
-    'neck',
-    'back',
-    'transverse_part_of_trapezius_muscle',
-  ],
-  'trapezius_ascending': [
-    '03_neck',
-    '20_back',
-    'material_neck',
-    'material_lats',
-    'neck',
-    'back',
-    'ascending_part_of_trapezius_muscle',
-  ],
-  'rhomboid_major': [
-    '20_back',
-    'material_lats',
-    'back',
-    'rhomboid_major_muscle',
-  ],
-  'rhomboid_minor': [
-    '20_back',
-    'material_lats',
-    'back',
-    'rhomboid_minor_muscle',
+  'rotator_cuff': [
+    'supraspinatus_muscle',
+    'infraspinatus_muscle',
+    'teres_minor_muscle',
+    'subscapular_muscle',
   ],
   'latissimus_dorsi': [
-    // GLB node/material: 20_Back, 21_Lower_back, Material_Lats, Material_LowerBack
     '20_back',
     '21_lower_back',
     'material_lats',
-    'material_lowerback',
-    'back',
-    'lower_back',
     'latissimus_dorsi_muscle',
-    'latissimus_dorsi',
-    'latissimus',
-    'lats',
   ],
-  'teres_major': [
-    'teres_major_muscle',
+  'trapezius_upper': [
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'descending_part_of_trapezius_muscle',
   ],
-  'teres_minor': [
-    'teres_minor_muscle',
+  'trapezius_middle': [
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'transverse_part_of_trapezius_muscle',
   ],
-  'supraspinatus': [
-    'supraspinatus_muscle',
+  'trapezius_lower': [
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'ascending_part_of_trapezius_muscle',
   ],
-  'infraspinatus': [
-    'infraspinatus_muscle',
+  'teres_major': ['teres_major_muscle'],
+  'rhomboids': ['rhomboid_major_muscle', 'rhomboid_minor_muscle'],
+  'erector_spinae': [
+    '21_lower_back',
+    'material_lowerback',
+    'quadratus_lumborum_muscle',
+    'multifidus_lumborum',
+    'iliocostalis_lumborum_muscle',
+    'longissimus_thoracis_muscle',
   ],
-  'subscapularis': [
-    'subscapular_muscle',
-  ],
-  'levator_scapulae': [
-    'levator_scapulae_muscle',
-  ],
-  'biceps_brachii_long_head': [
-    // GLB node/material: 10_Upper_arms, 11_Elbows, Material_UpperArms
+  'biceps_long_head': [
     '10_upper_arms',
-    '11_elbows',
     'material_upperarms',
-    'upper_arms',
-    'elbows',
-    'long_head_of_biceps_brachii_muscle',
-    'long_head_of_biceps_brachii',
     'biceps_brachii_long_head',
     'biceps_long_head',
-    'biceps_brachii',
-    'biceps',
   ],
-  'biceps_brachii_short_head': [
+  'biceps_short_head': [
     '10_upper_arms',
-    '11_elbows',
     'material_upperarms',
-    'upper_arms',
-    'elbows',
-    'short_head_of_biceps_brachii',
-    'short_head_of_biceps_brachii_muscle',
     'biceps_brachii_short_head',
     'biceps_short_head',
   ],
-  'brachialis': [
+  'brachialis': ['10_upper_arms', 'material_upperarms', 'brachialis_muscle'],
+  'triceps_long_head': [
     '10_upper_arms',
-    '11_elbows',
     'material_upperarms',
-    'brachialis_muscle',
-  ],
-  'brachioradialis': [
-    // GLB node/material: 12_Fore_arms, Material_Forearms
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'brachioradialis_muscle',
-  ],
-  'coracobrachialis': [
-    'coracobrachialis_muscle',
-  ],
-  'triceps_brachii_long_head': [
-    '10_upper_arms',
-    '11_elbows',
-    'material_upperarms',
-    'upper_arms',
-    'elbows',
-    'long_head_of_triceps_brachii_muscle',
-    'triceps_long_head',
-    'long_head_of_triceps_brachii',
     'triceps_brachii_long_head',
-    'triceps',
+    'triceps_long_head',
   ],
-  'triceps_brachii_lateral_head': [
+  'triceps_lateral_head': [
     '10_upper_arms',
-    '11_elbows',
     'material_upperarms',
-    'upper_arms',
-    'elbows',
-    'lateral_head_of_triceps_brachii_muscle',
-    'triceps_lateral_head',
-    'lateral_head_of_triceps_brachii',
     'triceps_brachii_lateral_head',
+    'triceps_lateral_head',
   ],
-  'triceps_brachii_medial_head': [
+  'triceps_medial_head': [
     '10_upper_arms',
-    '11_elbows',
     'material_upperarms',
-    'upper_arms',
-    'elbows',
-    'medial_head_of_triceps_brachii_muscle',
-    'medial_head_of_triceps_brachii',
     'triceps_brachii_medial_head',
-    'medial_head_of_biceps_brachii_muscle',
+    'triceps_medial_head',
   ],
-  'anconeus': [
-    'anconeus_muscle',
-  ],
-  'pronator_teres_superficial': [
+  'forearm_flexors': [
     '12_fore_arms',
     'material_forearms',
-    'fore_arms',
-    'superficial_head_of_pronator_teres_muscle',
-  ],
-  'pronator_teres_deep': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'deep_head_of_pronator_teres_muscle',
-    'deep_head_of_prontaor_teres_muscle',
-  ],
-  'supinator': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'supinator_muscle',
-  ],
-  'flexor_carpi_radialis': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
+    'pronator_teres_superficial',
     'flexor_carpi_radialis_muscle',
-  ],
-  'flexor_carpi_ulnaris': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'flexor_carpi_ulnaris_muscle',
-  ],
-  'palmaris_longus': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
     'palmaris_longus_muscle',
   ],
-  'extensor_carpi_radialis_longus': [
+  'forearm_extensors': [
     '12_fore_arms',
     'material_forearms',
-    'fore_arms',
-    'extensor_carpi_radialis_longus_muscle',
-  ],
-  'extensor_carpi_radialis_brevis': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'extensor_carpi_radialis_brevis_muscle',
-  ],
-  'extensor_carpi_ulnaris': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
+    'supinator_muscle',
     'extensor_carpi_ulnaris_muscle',
-  ],
-  'extensor_digitorum': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'extensor_digitorum_muscle',
-  ],
-  'extensor_digiti_minimi': [
-    '12_fore_arms',
-    'material_forearms',
-    'fore_arms',
-    'extensor_digiti_minimi_muscle',
+    'brachioradialis_muscle',
   ],
   'rectus_abdominis': [
-    // GLB node/material: 06_Abdomen, 07_Lower_abdomen, Material_Abs
     '06_abdomen',
     '07_lower_abdomen',
     'material_abs',
-    'abdomen',
-    'lower_abdomen',
     'rectus_abdominis_muscle',
   ],
-  'external_oblique': [
+  'external_obliques': [
     '06_abdomen',
     '07_lower_abdomen',
     'material_abs',
-    'external_abdominal_oblique',
     'external_oblique_muscle',
   ],
-  'internal_oblique': [
-    '06_abdomen',
-    '07_lower_abdomen',
-    'material_abs',
-    'internal_abdominal_oblique',
-    'internal_oblique_muscle',
+  'serratus_anterior': [
+    '05_chest',
+    'material_chest',
+    'serratus_anterior_muscle',
   ],
-  'transversus_abdominis': [
-    '06_abdomen',
-    '07_lower_abdomen',
-    'material_abs',
-    'transversus_abdominis_muscle',
-  ],
-  'psoas_major': [
-    'psoas_major_muscle',
-    'psoas_muscle',
-  ],
-  'iliacus': [
-    'iliacus_muscle',
-  ],
-  'quadratus_lumborum': [
-    '21_lower_back',
-    'material_lowerback',
-    'lower_back',
-    'quadratus_lumborum_muscle',
-  ],
-  'multifidus': [
-    '21_lower_back',
-    '20_back',
-    'material_lowerback',
-    'material_lats',
-    'lower_back',
-    'back',
-    'multifidus_lumborum',
-    'multifidus_thoracis',
-    'multifidus_colli_muscle',
-  ],
-  'iliocostalis_lumborum': [
-    '21_lower_back',
-    'material_lowerback',
-    'lower_back',
-    'iliocostalis_lumborum_muscle',
-  ],
-  'iliocostalis_thoracis': [
-    '20_back',
-    'material_lats',
-    'back',
-    'iliocostalis_thoracis_muscle',
-  ],
-  'iliocostalis_cervicis': [
-    'iliocostalis_colli_muscle',
-    'iliocostalis_cervicis_muscle',
-  ],
-  'longissimus_thoracis': [
-    '20_back',
-    'material_lats',
-    'back',
-    'longissimus_thoracis_muscle',
-  ],
-  'spinalis_thoracis': [
-    '20_back',
-    'material_lats',
-    'back',
-    'spinalis_thoracis_muscle',
-  ],
-  'gluteus_maximus': [
-    '22_buttocks',
-    'material_glutes',
-    'glutes',
-    'buttocks',
-    'gluteus_maximus_muscle',
-  ],
-  'gluteus_medius': [
-    '22_buttocks',
-    'material_glutes',
-    'glutes',
-    'buttocks',
-    'gluteus_medius_muscle',
-  ],
-  'gluteus_minimus': [
-    '22_buttocks',
-    'material_glutes',
-    'glutes',
-    'buttocks',
-    'gluteus_minimus_muscle',
-  ],
-  'piriformis': [
-    'piriformis_muscle',
-  ],
-  'gemellus_superior': [
-    'superior_gemellus_muscle',
-  ],
-  'gemellus_inferior': [
-    'inferior_gemellus_muscle',
-  ],
-  'quadratus_femoris': [
-    'quadratus_femoris_muscle',
-  ],
-  'sartorius': [
-    'sartorius_muscle',
-  ],
-  'pectineus': [
-    'pectineus_muscle',
-  ],
-  'adductor_longus': [
-    'adductor_longus',
-  ],
-  'adductor_brevis': [
-    'adductor_brevis',
-  ],
-  'adductor_magnus': [
-    'adductor_magnus',
-  ],
-  'adductor_minimus': [
-    'adductor_minimus',
-  ],
-  'gracilis': [
-    'gracilis_muscle',
-  ],
-  'rectus_femoris': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
-    'quads',
-    'rectus_femoris_muscle',
-  ],
+  'rectus_femoris': ['15_thighs', 'material_quads', 'rectus_femoris_muscle'],
   'vastus_lateralis': [
     '15_thighs',
     'material_quads',
-    'thighs',
-    'quads',
     'vastus_lateralis_muscle',
   ],
-  'vastus_medialis': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
-    'quads',
-    'vastus_medialis_muscle',
+  'vastus_medialis': ['15_thighs', 'material_quads', 'vastus_medialis_muscle'],
+  'gluteus_maximus': [
+    '22_buttocks',
+    'material_glutes',
+    'gluteus_maximus_muscle',
   ],
-  'vastus_intermedius': [
+  'gluteus_medius': ['22_buttocks', 'material_glutes', 'gluteus_medius_muscle'],
+  'biceps_femoris': [
     '15_thighs',
     'material_quads',
-    'thighs',
-    'quads',
-    'vastus_intermedius_muscle',
-  ],
-  'biceps_femoris_long_head': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
     'long_head_of_biceps_femoris_muscle',
-  ],
-  'biceps_femoris_short_head': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
     'short_head_of_biceps_femoris_muscle',
   ],
-  'semitendinosus': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
-    'semitendinosus_muscle',
-  ],
-  'semimembranosus': [
-    '15_thighs',
-    'material_quads',
-    'thighs',
-    'semimembranosus_muscle',
-  ],
-  'tibialis_anterior': [
+  'semitendinosus': ['15_thighs', 'material_quads', 'semitendinosus_muscle'],
+  'gastrocnemius': [
     '17_legs',
-    'legs',
-    '16_knees',
-    'tibialis_anterior_muscle',
-  ],
-  'tibialis_posterior': [
-    '17_legs',
-    'legs',
-    '16_knees',
-    'tibialis_posterior_muscle',
-  ],
-  'gastrocnemius_lateral_head': [
     '18_ankles',
-    '17_legs',
     'material_calves',
-    'ankles',
-    'legs',
-    'calves',
+    'medial_head_of_gastrocnemius',
     'lateral_head_of_gastrocnemius',
   ],
-  'gastrocnemius_medial_head': [
-    '18_ankles',
-    '17_legs',
-    'material_calves',
-    'ankles',
-    'legs',
-    'calves',
-    'medial_head_of_gastrocnemius',
-  ],
-  'soleus': [
-    '18_ankles',
-    '17_legs',
-    'material_calves',
-    'ankles',
-    'legs',
-    'calves',
-    'soleus_muscle',
-  ],
-  'plantaris': [
-    '18_ankles',
-    '17_legs',
-    'material_calves',
-    'ankles',
-    'legs',
-    'calves',
-    'plantaris_muscle',
-  ],
-  'sternocleidomastoid': [
-    '03_neck',
-    'material_neck',
-    'neck',
-    'sternocleidomastoid_muscle',
-  ],
-  'splenius_capitis': [
-    '03_neck',
-    'material_neck',
-    'neck',
-    'splenius_capitis_muscle',
-  ],
-  'splenius_cervicis': [
-    '03_neck',
-    'material_neck',
-    'neck',
-    'splenius_colli_muscle',
-    'splenius_cervicis_muscle',
-  ],
-  'semispinalis_cervicis': [
-    'semispinalis_colli_muscle',
-  ],
-  'semispinalis_thoracis': [
-    'semispinalis_thoracis',
-  ],
-  'spinalis_cervicis': [
-    'spinalis_colli_muscle',
-  ],
-  'spinalis_capitis': [
-    'spinalis_capitis_muscle',
-  ],
+  'soleus': ['17_legs', '18_ankles', 'material_calves', 'soleus_muscle'],
+  'tibialis_anterior': ['17_legs', '16_knees', 'tibialis_anterior_muscle'],
 };
 
-final Map<String, List<String>> _segmentedMuscleMeshNodeMap =
-    _buildSegmentedMuscleMeshNodeMap();
+final Map<String, List<String>> _ssotSegmentedMeshNodeMap =
+    _buildSsotSegmentedMeshNodeMap();
 
-Map<String, List<String>> _buildSegmentedMuscleMeshNodeMap() {
-  final aliasesByTarget = <String, Set<String>>{};
-  for (final entry in _muscleAliases.entries) {
-    aliasesByTarget.putIfAbsent(entry.value, () => <String>{}).add(entry.key);
-  }
-
+Map<String, List<String>> _buildSsotSegmentedMeshNodeMap() {
   final enriched = <String, List<String>>{};
-  for (final entry in _muscleMeshNodeMap.entries) {
-    final muscleCode = entry.key;
+  for (final entry in _ssotDetailedMeshSignatures.entries) {
+    final canonicalCode = entry.key;
     final signatures = <String>{
+      canonicalCode,
+      'node_$canonicalCode',
+      'mesh_$canonicalCode',
+      'material_$canonicalCode',
+      '${canonicalCode}_muscle',
       ...entry.value,
-      muscleCode,
-      'node_$muscleCode',
-      'mesh_$muscleCode',
-      'material_$muscleCode',
-      '${muscleCode}_muscle',
     };
-
-    final aliases = aliasesByTarget[muscleCode];
-    if (aliases != null) {
-      for (final alias in aliases) {
-        signatures
-          ..add(alias)
-          ..add('node_$alias')
-          ..add('mesh_$alias')
-          ..add('material_$alias');
-      }
+    final aliases = _ssotAliasToCanonicalCode.entries
+        .where((alias) => alias.value == canonicalCode)
+        .map((alias) => alias.key);
+    for (final alias in aliases) {
+      signatures
+        ..add(alias)
+        ..add('node_$alias')
+        ..add('mesh_$alias')
+        ..add('material_$alias');
     }
-
     final withSideVariants = <String>{};
     for (final signature in signatures) {
-      final normalized = signature.trim();
-      if (normalized.isEmpty) {
+      final trimmed = signature.trim();
+      if (trimmed.isEmpty) {
         continue;
       }
       withSideVariants
-        ..add(normalized)
-        ..add('left_$normalized')
-        ..add('right_$normalized')
-        ..add('l_$normalized')
-        ..add('r_$normalized')
-        ..add('${normalized}_left')
-        ..add('${normalized}_right');
+        ..add(trimmed)
+        ..add('left_$trimmed')
+        ..add('right_$trimmed')
+        ..add('l_$trimmed')
+        ..add('r_$trimmed')
+        ..add('${trimmed}_left')
+        ..add('${trimmed}_right');
     }
-
-    final sortedSignatures = withSideVariants.toList()..sort();
-    enriched[muscleCode] = List.unmodifiable(sortedSignatures);
+    final sorted = withSideVariants.toList()..sort();
+    enriched[canonicalCode] = List.unmodifiable(sorted);
   }
-
   return Map.unmodifiable(enriched);
 }

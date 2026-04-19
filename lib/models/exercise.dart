@@ -1,3 +1,5 @@
+import '../features/heatmap/model/muscle_taxonomy.dart';
+
 class ExerciseModel {
   const ExerciseModel({
     required this.id,
@@ -36,7 +38,7 @@ class ExerciseModel {
 
     final values = <String>[];
     for (final entry in raw) {
-      final normalized = '$entry'.trim().toLowerCase();
+      final normalized = normalizeCanonicalMuscleCode('$entry');
       if (normalized.isEmpty) {
         continue;
       }

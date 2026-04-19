@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
+import '../features/heatmap/model/muscle_taxonomy.dart';
 import '../services/offline_sync_cache_service.dart';
 import '../services/supabase_service.dart';
 
@@ -18,7 +19,7 @@ class NextWorkoutSuggestion {
   });
 
   static const fallback = NextWorkoutSuggestion(
-    targetMuscleCode: 'latissimus',
+    targetMuscleCode: 'latissimus_dorsi',
     overloadedMuscleCodes: <String>[],
     strategy: 'balanced_recovery',
     confidence: 0.35,
@@ -171,9 +172,7 @@ class HeatmapProvider extends ChangeNotifier {
       _heatmapEntries = results[0] as List<MuscleHeatmapEntry>;
       _workoutLogs = results[1] as List<WorkoutLogRecord>;
       final snapshots = results[2] as List<MuscleRecoverySnapshot>;
-      _muscleRecoveryByCode = <String, MuscleRecoverySnapshot>{
-        for (final snapshot in snapshots) snapshot.muscleCode: snapshot,
-      };
+      _muscleRecoveryByCode = _normalizeRecoverySnapshotMap(snapshots);
       _lastSyncedAt = DateTime.now();
       await _offlineCacheService.saveSnapshot(
         heatmapEntries: _heatmapEntries,
@@ -345,7 +344,8 @@ class HeatmapProvider extends ChangeNotifier {
   }
 
   MuscleRecoverySnapshot? getRecoverySnapshot(String muscleCode) {
-    return _muscleRecoveryByCode[muscleCode.trim().toLowerCase()];
+    final normalizedCode = _normalizeMuscleCode(muscleCode);
+    return _muscleRecoveryByCode[normalizedCode];
   }
 
   int estimateRecoveryHours({
@@ -426,7 +426,9 @@ class HeatmapProvider extends ChangeNotifier {
     }
     _heatmapEntries = snapshot.heatmapEntries;
     _workoutLogs = snapshot.workoutLogs;
-    _muscleRecoveryByCode = snapshot.recoveryByCode;
+    _muscleRecoveryByCode = _normalizeRecoverySnapshotMap(
+      snapshot.recoveryByCode.values,
+    );
     _lastSyncedAt = snapshot.savedAt;
     _errorMessage = message;
     return true;
@@ -580,7 +582,12 @@ class HeatmapProvider extends ChangeNotifier {
   }
 
   String _resolveDominantGroup(String muscleCode) {
-    return _muscleGroupByCode[_normalizeMuscleCode(muscleCode)] ?? 'upper_push';
+    final normalized = _normalizeMuscleCode(muscleCode);
+    final direct = _muscleGroupByCode[normalized];
+    if (direct != null) {
+      return direct;
+    }
+    return 'upper_push';
   }
 
   String _strategyForGroup(String dominantGroup) {
@@ -595,11 +602,28 @@ class HeatmapProvider extends ChangeNotifier {
 
   List<String> _candidateTargetsForGroup(String dominantGroup) {
     return switch (dominantGroup) {
-      'upper_push' => const ['latissimus', 'trapezius', 'hamstrings', 'glutes'],
-      'upper_pull' => const ['quadriceps', 'glutes', 'calves'],
-      'lower' => const ['chest', 'front_deltoid', 'latissimus'],
-      'core' => const ['glutes', 'quadriceps', 'latissimus'],
-      _ => const ['latissimus', 'quadriceps', 'chest'],
+      'upper_push' => const [
+          'latissimus_dorsi',
+          'trapezius_upper',
+          'biceps_femoris',
+          'gluteus_maximus',
+        ],
+      'upper_pull' => const [
+          'rectus_femoris',
+          'gluteus_maximus',
+          'gastrocnemius',
+        ],
+      'lower' => const [
+          'pectoralis_major_sternal',
+          'deltoid_anterior',
+          'latissimus_dorsi',
+        ],
+      'core' => const ['gluteus_maximus', 'rectus_femoris', 'latissimus_dorsi'],
+      _ => const [
+          'latissimus_dorsi',
+          'rectus_femoris',
+          'pectoralis_major_sternal',
+        ],
     };
   }
 
@@ -627,7 +651,7 @@ class HeatmapProvider extends ChangeNotifier {
     if (candidates.isNotEmpty) {
       return _firstGreenMuscle() ?? candidates.first;
     }
-    return _firstGreenMuscle() ?? 'latissimus';
+    return _firstGreenMuscle() ?? 'latissimus_dorsi';
   }
 
   String? _firstGreenMuscle() {
@@ -657,53 +681,67 @@ class HeatmapProvider extends ChangeNotifier {
 
   static const Map<String, String> _muscleGroupByCode = {
     'chest': 'upper_push',
-    'pectoralis_major': 'upper_push',
-    'front_deltoid': 'upper_push',
-    'anterior_deltoid': 'upper_push',
-    'triceps': 'upper_push',
-    'biceps': 'upper_pull',
-    'forearms': 'upper_pull',
-    'forearm_flexor': 'upper_pull',
-    'forearm_extensor': 'upper_pull',
-    'brachioradialis': 'upper_pull',
-    'latissimus': 'upper_pull',
-    'latissimus_upper': 'upper_pull',
-    'latissimus_lower': 'upper_pull',
-    'trapezius': 'upper_pull',
-    'rear_deltoid': 'upper_pull',
+    'pectoralis_major_upper': 'upper_push',
+    'pectoralis_major_sternal': 'upper_push',
+    'pectoralis_major_lower': 'upper_push',
+    'pectoralis_minor': 'upper_push',
+    'serratus_anterior': 'upper_push',
+    'deltoid_anterior': 'upper_push',
+    'deltoid_lateral': 'upper_push',
+    'triceps_long_head': 'upper_push',
+    'triceps_lateral_head': 'upper_push',
+    'triceps_medial_head': 'upper_push',
+    'biceps_long_head': 'upper_pull',
+    'biceps_short_head': 'upper_pull',
+    'brachialis': 'upper_pull',
+    'forearm_flexors': 'upper_pull',
+    'forearm_extensors': 'upper_pull',
+    'latissimus_dorsi': 'upper_pull',
+    'trapezius_upper': 'upper_pull',
+    'trapezius_middle': 'upper_pull',
+    'trapezius_lower': 'upper_pull',
+    'teres_major': 'upper_pull',
+    'rhomboids': 'upper_pull',
+    'deltoid_posterior': 'upper_pull',
     'erector_spinae': 'upper_pull',
-    'lower_back': 'upper_pull',
-    'quadriceps': 'lower',
-    'hamstrings': 'lower',
-    'glutes': 'lower',
-    'calves': 'lower',
+    'rectus_femoris': 'lower',
+    'vastus_lateralis': 'lower',
+    'vastus_medialis': 'lower',
+    'gluteus_maximus': 'lower',
+    'gluteus_medius': 'lower',
+    'biceps_femoris': 'lower',
+    'semitendinosus': 'lower',
+    'gastrocnemius': 'lower',
+    'soleus': 'lower',
+    'tibialis_anterior': 'lower',
     'rectus_abdominis': 'core',
-    'obliques': 'core',
+    'external_obliques': 'core',
   };
 
   String _normalizeMuscleCode(String code) {
-    final normalized = code.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return normalized;
+    return normalizeCanonicalMuscleCode(code);
+  }
+
+  Map<String, MuscleRecoverySnapshot> _normalizeRecoverySnapshotMap(
+    Iterable<MuscleRecoverySnapshot> snapshots,
+  ) {
+    final normalized = <String, MuscleRecoverySnapshot>{};
+    for (final snapshot in snapshots) {
+      final normalizedCode = _normalizeMuscleCode(snapshot.muscleCode);
+      if (normalizedCode.isEmpty) {
+        continue;
+      }
+      final existing = normalized[normalizedCode];
+      if (existing == null ||
+          snapshot.lastWorkedAt.isAfter(existing.lastWorkedAt)) {
+        normalized[normalizedCode] = MuscleRecoverySnapshot(
+          muscleCode: normalizedCode,
+          displayName: snapshot.displayName,
+          muscleSize: snapshot.muscleSize,
+          lastWorkedAt: snapshot.lastWorkedAt,
+        );
+      }
     }
-    return switch (normalized) {
-      'front_delts' || 'anterior_deltoid' => 'front_deltoid',
-      'lateral_delts' || 'side_deltoid' => 'lateral_deltoid',
-      'rear_delts' || 'posterior_deltoid' => 'rear_deltoid',
-      'quads' => 'quadriceps',
-      'lats' || 'latissimus_dorsi' => 'latissimus',
-      'abs' || 'abdominals' => 'rectus_abdominis',
-      'pecs' || 'pectoralis_major' => 'chest',
-      'gastrocnemius_medial' || 'gastrocnemius_lateral' => 'gastrocnemius',
-      'spinal_erectors' || 'erectors' => 'erector_spinae',
-      'lumbar' => 'lower_back',
-      'wrist_flexor' => 'forearms',
-      'wrist_extensor' => 'forearms',
-      'forearm' || 'forearms' => 'forearms',
-      'forearm_flexor' || 'forearm_extensor' => 'forearms',
-      'brachioradialis' => 'forearms',
-      'biceps_brachii' => 'biceps',
-      _ => normalized,
-    };
+    return normalized;
   }
 }

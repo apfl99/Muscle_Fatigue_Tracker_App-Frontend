@@ -509,6 +509,26 @@
     "supraspinatus": "극상근",
     "subscapularis": "견갑하근",
     "erectorSpinae": "척추기립근",
-    "lowerBack": "요부 척추기립근"
+    "lowerBack": "요부 척추기립근",
+    "pectoralisMajorUpper": "대흉근 상부",
+    "pectoralisMajorSternal": "대흉근 중부",
+    "pectoralisMajorLower": "대흉근 하부",
+    "deltoidAnterior": "전면 삼각근",
+    "deltoidLateral": "측면 삼각근",
+    "deltoidPosterior": "후면 삼각근",
+    "latissimusDorsi": "광배근",
+    "rotatorCuff": "회전근개",
+    "trapeziusUpper": "승모근 상부",
+    "trapeziusMiddle": "승모근 중부",
+    "trapeziusLower": "승모근 하부",
+    "bicepsLongHead": "상완이두근 장두",
+    "bicepsShortHead": "상완이두근 단두",
+    "tricepsLongHead": "상완삼두근 장두",
+    "tricepsLateralHead": "상완삼두근 외측두",
+    "tricepsMedialHead": "상완삼두근 내측두",
+    "forearmFlexors": "전완 굴근군",
+    "forearmExtensors": "전완 신근군",
+    "externalObliques": "외복사근",
+    "bicepsFemoris": "대퇴이두근"
   }
 }

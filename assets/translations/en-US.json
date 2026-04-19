@@ -509,6 +509,26 @@
     "supraspinatus": "Supraspinatus",
     "subscapularis": "Subscapularis",
     "erectorSpinae": "Erector Spinae",
-    "lowerBack": "Lumbar Erector Spinae"
+    "lowerBack": "Lumbar Erector Spinae",
+    "pectoralisMajorUpper": "Pectoralis Major Upper",
+    "pectoralisMajorSternal": "Pectoralis Major Sternal",
+    "pectoralisMajorLower": "Pectoralis Major Lower",
+    "deltoidAnterior": "Anterior Deltoid",
+    "deltoidLateral": "Lateral Deltoid",
+    "deltoidPosterior": "Posterior Deltoid",
+    "latissimusDorsi": "Latissimus Dorsi",
+    "rotatorCuff": "Rotator Cuff",
+    "trapeziusUpper": "Upper Trapezius",
+    "trapeziusMiddle": "Middle Trapezius",
+    "trapeziusLower": "Lower Trapezius",
+    "bicepsLongHead": "Biceps Long Head",
+    "bicepsShortHead": "Biceps Short Head",
+    "tricepsLongHead": "Triceps Long Head",
+    "tricepsLateralHead": "Triceps Lateral Head",
+    "tricepsMedialHead": "Triceps Medial Head",
+    "forearmFlexors": "Forearm Flexors",
+    "forearmExtensors": "Forearm Extensors",
+    "externalObliques": "External Obliques",
+    "bicepsFemoris": "Biceps Femoris"
   }
 }

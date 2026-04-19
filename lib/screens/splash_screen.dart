@@ -97,14 +97,21 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     final adInitFuture = adController.initialize();
+    final adDeadline = DateTime.now().add(widget.adLoadTimeout);
     await Future<void>.delayed(widget.minimumSplashDuration);
-    await adInitFuture.timeout(widget.adLoadTimeout, onTimeout: () {});
+    final initRemaining = adDeadline.difference(DateTime.now());
+    if (initRemaining > Duration.zero) {
+      await adInitFuture.timeout(initRemaining, onTimeout: () {});
+    }
 
     if (!mounted || _navigated) {
       return;
     }
 
-    await _waitUntilInterstitialReady(adController: adController);
+    await _waitUntilInterstitialReady(
+      adController: adController,
+      deadline: adDeadline,
+    );
     final didShowAd = await _showInterstitialAndWaitClose(adController);
     if (didShowAd) {
       await adCooldownStore.markShownNow();
@@ -118,13 +125,11 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _waitUntilInterstitialReady({
     required SplashAdController adController,
+    required DateTime deadline,
   }) async {
-    await adController.initialize();
     if (adController.isInterstitialReady) {
       return;
     }
-
-    final deadline = DateTime.now().add(widget.adLoadTimeout);
     while (mounted &&
         !adController.isInterstitialReady &&
         DateTime.now().isBefore(deadline)) {

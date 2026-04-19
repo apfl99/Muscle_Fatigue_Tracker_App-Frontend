@@ -211,6 +211,7 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
           '$modeLabel · $localizedLevel (${session.fatigue.toStringAsFixed(2)})',
       icon: Icons.graphic_eq_rounded,
       color: _analysisModeColor(session.mode),
+      sessionId: '${session.id}',
     );
   }
 
@@ -370,9 +371,36 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final entry = _filteredTimeline[index];
-                          return Padding(
+                          final card = Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: _buildTimelineCard(entry),
+                          );
+                          if (entry.type != _TimelineEntryType.analysis ||
+                              entry.sessionId == null ||
+                              entry.sessionId!.isEmpty) {
+                            return card;
+                          }
+                          return Dismissible(
+                            key: ValueKey(
+                              'analysis_${entry.sessionId}_${entry.occurredAt.millisecondsSinceEpoch}',
+                            ),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 20),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.88),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(
+                                Icons.delete_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                            confirmDismiss: (_) => _confirmDeleteEntry(entry),
+                            onDismissed: (_) => _deleteAnalysisEntry(entry),
+                            child: card,
                           );
                         },
                         childCount: _visibleCount,
@@ -809,28 +837,105 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
             fontSize: 12,
           ),
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              entry.type == _TimelineEntryType.manual
-                  ? 'history.timelineType.manual'.tr()
-                  : 'history.timelineType.analysis'.tr(),
-              style: TextStyle(
-                color: entry.color,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  entry.type == _TimelineEntryType.manual
+                      ? 'history.timelineType.manual'.tr()
+                      : 'history.timelineType.analysis'.tr(),
+                  style: TextStyle(
+                    color: entry.color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _formatDateTime(entry.occurredAt),
+                  style: TextStyle(color: AppTheme.textLow, fontSize: 11),
+                ),
+              ],
+            ),
+            if (entry.type == _TimelineEntryType.analysis &&
+                entry.sessionId != null &&
+                entry.sessionId!.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: '삭제',
+                onPressed: () async {
+                  final confirmed = await _confirmDeleteEntry(entry);
+                  if (!confirmed) {
+                    return;
+                  }
+                  await _deleteAnalysisEntry(entry);
+                },
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                  color: Colors.redAccent,
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              _formatDateTime(entry.occurredAt),
-              style: TextStyle(color: AppTheme.textLow, fontSize: 11),
-            ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Future<bool> _confirmDeleteEntry(_TimelineEntry entry) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surface1,
+          title: const Text('기록 삭제'),
+          content: const Text('정말 삭제하시겠습니까?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text(
+                '삭제',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  Future<void> _deleteAnalysisEntry(_TimelineEntry entry) async {
+    final sessionId = entry.sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return;
+    }
+    final removed = await DatabaseHelper.instance
+        .deleteMeasurementSessionBySessionId(sessionId);
+    if (!mounted) {
+      return;
+    }
+    if (removed <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제할 기록을 찾지 못했습니다.')),
+      );
+      return;
+    }
+    _analysisReports = _analysisReports
+        .where((session) => '${session.id}' != sessionId)
+        .toList(growable: false);
+    _recomputeTimeline(resetVisible: true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('측정 기록이 삭제되었습니다.')),
     );
   }
 
@@ -1032,6 +1137,7 @@ class _TimelineEntry {
     required this.subtitle,
     required this.icon,
     required this.color,
+    this.sessionId,
   });
 
   final _TimelineEntryType type;
@@ -1040,4 +1146,5 @@ class _TimelineEntry {
   final String subtitle;
   final IconData icon;
   final Color color;
+  final String? sessionId;
 }

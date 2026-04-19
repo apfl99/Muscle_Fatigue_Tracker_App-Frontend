@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
+import '../features/heatmap/model/muscle_taxonomy.dart';
 import '../providers/heatmap_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_disclaimer_footer.dart';
-import '../widgets/banner_ad_widget.dart';
 import '../widgets/interactive_muscle_3d_viewer.dart';
 import 'sensor_analysis_page.dart';
 
@@ -35,6 +35,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
         final targetMuscleCode = _normalizeMuscleCode(
           suggestion.targetMuscleCode,
         );
+        final ssotCompleteEntries = _buildSsotCompleteEntries(provider);
         final shouldPlayAutoFocusIntro =
             !_autoFocusIntroConsumed && targetMuscleCode.isNotEmpty;
         if (shouldPlayAutoFocusIntro) {
@@ -80,10 +81,10 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                           children: [
                             Positioned.fill(
                               child: InteractiveMuscle3DViewer(
-                                key: ValueKey(
-                                  provider.hashCode.toString(),
+                                key: const ValueKey(
+                                  'heatmap_full_interactive_muscle_3d_viewer',
                                 ),
-                                entries: provider.heatmapEntries,
+                                entries: ssotCompleteEntries,
                                 exposeBackgroundKey: true,
                                 showHotspots: false,
                                 highlightedMuscleCode: _selectedMuscleCode,
@@ -157,20 +158,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Container(
-                    decoration: AppTheme.cardDecoration(
-                      color: AppTheme.surface1,
-                      borderRadius: 20,
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: const BannerAdWidget(
-                      key: ValueKey('heatmap_full_viewer_banner'),
-                      placeholderText: 'ads.slot',
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildRecoveryInsightCard(provider),
+                  _buildRecoveryInsightCard(provider, ssotCompleteEntries),
                   const SizedBox(height: 12),
                   const AppDisclaimerFooter(compact: true),
                 ],
@@ -256,32 +244,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
   }
 
   String _normalizeMuscleCode(String code) {
-    var normalized = code.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return '';
-    }
-    normalized = normalized.replaceAll(RegExp(r'[\s\-./]+'), '_');
-    normalized = normalized.replaceAll(RegExp(r'_+'), '_');
-    normalized = normalized.replaceAll(RegExp(r'^_+|_+$'), '');
-    if (normalized.endsWith('_muscle')) {
-      normalized =
-          normalized.substring(0, normalized.length - '_muscle'.length);
-    }
-    final tokens = normalized
-        .split('_')
-        .where((token) => token.trim().isNotEmpty)
-        .toList();
-    if (tokens.length > 1 && _muscleSideTokens.contains(tokens.first)) {
-      tokens.removeAt(0);
-    }
-    if (tokens.length > 1 && _muscleSideTokens.contains(tokens.last)) {
-      tokens.removeLast();
-    }
-    final compact = tokens.join('_');
-    if (compact.isEmpty) {
-      return '';
-    }
-    return _muscleAliases[compact] ?? compact;
+    return normalizeCanonicalMuscleCode(code);
   }
 
   int _fallbackDisplayScore(HeatmapStatus? status) {
@@ -517,8 +480,10 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     return 'heatmap.status.recovered'.tr();
   }
 
-  Widget _buildRecoveryInsightCard(HeatmapProvider provider) {
-    final entries = provider.heatmapEntries;
+  Widget _buildRecoveryInsightCard(
+    HeatmapProvider provider,
+    List<MuscleHeatmapEntry> entries,
+  ) {
     if (entries.isEmpty) {
       return Container(
         width: double.infinity,
@@ -667,7 +632,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
       if (code.isEmpty) {
         continue;
       }
-      final renderCode = _renderGroupCodeFor(code);
+      final renderCode = _normalizeMuscleCode(code);
       final resolvedEntry = resolvedByCode[code] ?? entry;
       final snapshot = provider.getRecoverySnapshot(code);
       final status = resolvedEntry.status;
@@ -700,12 +665,9 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
 
     final rows = grouped.values.map(
       (group) {
-        final displayNameKey = _renderGroupDisplayName[group.renderCode];
         return _RecoveryBarRow(
           muscleCode: group.renderCode,
-          displayName: displayNameKey == null
-              ? _displayNameForCode(group.renderCode)
-              : displayNameKey.tr(),
+          displayName: _displayNameForCode(group.renderCode),
           relatedMuscles: _compactMuscleNames(group.relatedMuscles),
           status: group.status,
           color: _statusColor(group.status),
@@ -724,6 +686,25 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
       return b.progress.compareTo(a.progress);
     });
     return rows;
+  }
+
+  List<MuscleHeatmapEntry> _buildSsotCompleteEntries(HeatmapProvider provider) {
+    final byCode = provider.heatmapEntryByMuscleCode;
+    final complete = <MuscleHeatmapEntry>[];
+    for (final code in canonicalDetailedMuscleCodes) {
+      final existing = byCode[code];
+      if (existing != null) {
+        complete.add(existing);
+        continue;
+      }
+      complete.add(
+        MuscleHeatmapEntry(
+          muscleCode: code,
+          status: HeatmapStatus.unknown,
+        ),
+      );
+    }
+    return complete;
   }
 
   void _onRecoveryRowTapped(_RecoveryBarRow row) {
@@ -1000,11 +981,6 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
     return picked.join(', ');
   }
 
-  String _renderGroupCodeFor(String code) {
-    final normalized = _normalizeMuscleCode(code);
-    return _renderGroupByMuscleCode[normalized] ?? normalized;
-  }
-
   int _maxRecoveryHours(MuscleSize size) {
     switch (size) {
       case MuscleSize.large:
@@ -1034,7 +1010,7 @@ class _HeatmapFullViewerPageState extends State<HeatmapFullViewerPage> {
       case HeatmapStatus.green:
         return AppTheme.primaryGreen;
       case HeatmapStatus.unknown:
-        return const Color(0xFF60718F);
+        return const Color(0xFF42A5F5);
     }
   }
 
@@ -1244,232 +1220,79 @@ class _RecoveryGroupAccumulator {
   }
 }
 
-const Set<String> _muscleSideTokens = {
-  'left',
-  'right',
-  'l',
-  'r',
-  'lt',
-  'rt',
-  'lhs',
-  'rhs',
-};
-
-const Map<String, String> _muscleAliases = {
-  'abs': 'rectus_abdominis',
-  'abdominals': 'rectus_abdominis',
-  'upper_abs': 'rectus_abdominis',
-  'lower_abs': 'rectus_abdominis',
-  'core': 'rectus_abdominis',
-  'pectoralis_major': 'chest',
-  'pecs': 'chest',
-  'chest_major': 'chest',
-  'anterior_deltoid': 'front_deltoid',
-  'front_delts': 'front_deltoid',
-  'deltoid_anterior': 'front_deltoid',
-  'lateral_delts': 'lateral_deltoid',
-  'side_deltoid': 'lateral_deltoid',
-  'deltoid_lateral': 'lateral_deltoid',
-  'posterior_deltoid': 'rear_deltoid',
-  'rear_delts': 'rear_deltoid',
-  'deltoid_posterior': 'rear_deltoid',
-  'quads': 'quadriceps',
-  'rectus_femoris': 'rectus_femoris',
-  'vastus_lateralis': 'vastus_lateralis',
-  'vastus_medialis': 'vastus_medialis',
-  'vastus_intermedius': 'vastus_intermedius',
-  'hamstring': 'hamstrings',
-  'biceps_femoris': 'biceps_femoris',
-  'semitendinosus': 'semitendinosus',
-  'semimembranosus': 'semimembranosus',
-  'adductor': 'adductors',
-  'adductor_longus': 'adductor_longus',
-  'adductor_brevis': 'adductor_brevis',
-  'adductor_magnus': 'adductor_magnus',
-  'hip_adductors': 'adductors',
-  'hip_abductors': 'abductors',
-  'abductor': 'abductors',
-  'gluteus_maximus': 'gluteus_maximus',
-  'gluteus_medius': 'gluteus_medius',
-  'gluteus_minimus': 'gluteus_minimus',
-  'glute_maximus': 'gluteus_maximus',
-  'glute_medius': 'gluteus_medius',
-  'glute_minimus': 'gluteus_minimus',
-  'lats': 'latissimus',
-  'latissimus_dorsi': 'latissimus',
-  'latissimus_dorsi_lower': 'latissimus_lower',
-  'latissimus_dorsi_upper': 'latissimus_upper',
-  'latissimus_lower': 'latissimus_lower',
-  'latissimus_upper': 'latissimus_upper',
-  'spinal_erectors': 'erector_spinae',
-  'erectors': 'erector_spinae',
-  'lumbar': 'lower_back',
-  'biceps_brachii': 'biceps',
-  'triceps_brachii': 'triceps',
-  'triceps_surae': 'calves',
-  'wrist_flexor': 'forearm_flexor',
-  'wrist_extensor': 'forearm_extensor',
-  'forearm': 'forearms',
-  'forearms': 'forearms',
-  'gastrocnemius_medial': 'gastrocnemius',
-  'gastrocnemius_lateral': 'gastrocnemius',
-  'calf': 'calves',
-  'shin': 'tibialis_anterior',
-  'upper_trap': 'trapezius',
-  'middle_trap': 'trapezius',
-  'lower_trap': 'trapezius',
-  'cervical': 'neck',
-};
-
-const Map<String, String> _renderGroupByMuscleCode = {
-  'chest': 'chest',
-  'pectoralis_minor': 'chest',
-  'serratus_anterior': 'chest',
-  'front_deltoid': 'shoulders',
-  'lateral_deltoid': 'shoulders',
-  'rear_deltoid': 'shoulders',
-  'biceps': 'upper_arms',
-  'triceps': 'upper_arms',
-  'brachialis': 'upper_arms',
-  'brachioradialis': 'forearms',
-  'forearms': 'forearms',
-  'forearm_flexor': 'forearms',
-  'forearm_extensor': 'forearms',
-  'rectus_abdominis': 'abs',
-  'obliques': 'obliques',
-  'quadriceps': 'quads',
-  'rectus_femoris': 'quads',
-  'vastus_lateralis': 'quads',
-  'vastus_medialis': 'quads',
-  'vastus_intermedius': 'quads',
-  'adductors': 'quads',
-  'adductor_longus': 'quads',
-  'adductor_brevis': 'quads',
-  'adductor_magnus': 'quads',
-  'abductors': 'quads',
-  'hip_flexor': 'quads',
-  'hamstrings': 'posterior_chain',
-  'biceps_femoris': 'posterior_chain',
-  'semitendinosus': 'posterior_chain',
-  'semimembranosus': 'posterior_chain',
-  'glutes': 'posterior_chain',
-  'gluteus_maximus': 'posterior_chain',
-  'gluteus_medius': 'posterior_chain',
-  'gluteus_minimus': 'posterior_chain',
-  'calves': 'calves',
-  'gastrocnemius': 'calves',
-  'soleus': 'calves',
-  'tibialis_anterior': 'calves',
-  'latissimus': 'back',
-  'latissimus_lower': 'back',
-  'latissimus_upper': 'back',
-  'teres_major': 'back',
-  'infraspinatus': 'back',
-  'supraspinatus': 'back',
-  'teres_minor': 'back',
-  'subscapularis': 'back',
-  'erector_spinae': 'lower_posterior',
-  'lower_back': 'lower_posterior',
-  'trapezius': 'upper_posterior',
-  'neck': 'upper_posterior',
-};
-
-const Map<String, String> _renderGroupDisplayName = {
-  'chest': 'muscleGroup.chest',
-  'shoulders': 'muscleGroup.shoulders',
-  'upper_arms': 'muscleGroup.upperArms',
-  'abs': 'muscleGroup.abs',
-  'obliques': 'muscleGroup.obliques',
-  'quads': 'muscleGroup.quads',
-  'posterior_chain': 'muscleGroup.posteriorChain',
-  'calves': 'muscleGroup.calves',
-  'back': 'muscleGroup.back',
-  'lower_posterior': 'muscleGroup.lowerPosterior',
-  'upper_posterior': 'muscleGroup.upperPosterior',
-};
-
 const Set<String> _largeMuscleCodes = {
-  'chest',
-  'latissimus',
-  'latissimus_lower',
-  'latissimus_upper',
-  'trapezius',
-  'quadriceps',
+  'pectoralis_major_upper',
+  'pectoralis_major_sternal',
+  'pectoralis_major_lower',
+  'pectoralis_minor',
+  'deltoid_anterior',
+  'deltoid_lateral',
+  'deltoid_posterior',
+  'rotator_cuff',
+  'latissimus_dorsi',
+  'rhomboids',
+  'teres_major',
+  'trapezius_upper',
+  'trapezius_middle',
+  'trapezius_lower',
+  'biceps_long_head',
+  'biceps_short_head',
+  'brachialis',
+  'triceps_long_head',
+  'triceps_lateral_head',
+  'triceps_medial_head',
+  'forearm_flexors',
+  'forearm_extensors',
+  'rectus_abdominis',
+  'external_obliques',
+  'serratus_anterior',
   'rectus_femoris',
   'vastus_lateralis',
   'vastus_medialis',
-  'vastus_intermedius',
-  'hamstrings',
   'biceps_femoris',
   'semitendinosus',
-  'semimembranosus',
-  'glutes',
   'gluteus_maximus',
   'gluteus_medius',
-  'gluteus_minimus',
-  'calves',
   'gastrocnemius',
   'soleus',
   'erector_spinae',
-  'lower_back',
-  'adductors',
-  'adductor_longus',
-  'adductor_brevis',
-  'adductor_magnus',
-  'abductors',
-  'hip_flexor',
 };
 
 const Map<String, String> _muscleDisplayNameMap = {
-  'neck': 'muscle.neck',
-  'chest': 'muscle.chest',
+  'pectoralis_major_upper': 'muscle.pectoralisMajorUpper',
+  'pectoralis_major_sternal': 'muscle.pectoralisMajorSternal',
+  'pectoralis_major_lower': 'muscle.pectoralisMajorLower',
   'pectoralis_minor': 'muscle.pectoralisMinor',
   'serratus_anterior': 'muscle.serratusAnterior',
-  'front_deltoid': 'muscle.frontDeltoid',
-  'lateral_deltoid': 'muscle.lateralDeltoid',
-  'rear_deltoid': 'muscle.rearDeltoid',
-  'trapezius': 'muscle.trapezius',
-  'biceps': 'muscle.biceps',
+  'deltoid_anterior': 'muscle.frontDeltoid',
+  'deltoid_lateral': 'muscle.lateralDeltoid',
+  'deltoid_posterior': 'muscle.rearDeltoid',
+  'rotator_cuff': 'muscle.rotatorCuff',
+  'trapezius_upper': 'muscle.trapeziusUpper',
+  'trapezius_middle': 'muscle.trapeziusMiddle',
+  'trapezius_lower': 'muscle.trapeziusLower',
+  'biceps_long_head': 'muscle.bicepsLongHead',
+  'biceps_short_head': 'muscle.bicepsShortHead',
   'brachialis': 'muscle.brachialis',
-  'triceps': 'muscle.triceps',
-  'brachioradialis': 'muscle.brachioradialis',
-  'forearm': 'muscle.forearm',
-  'forearms': 'muscle.forearms',
-  'forearm_flexor': 'muscle.forearmFlexor',
-  'forearm_extensor': 'muscle.forearmExtensor',
+  'triceps_long_head': 'muscle.tricepsLongHead',
+  'triceps_lateral_head': 'muscle.tricepsLateralHead',
+  'triceps_medial_head': 'muscle.tricepsMedialHead',
+  'forearm_flexors': 'muscle.forearmFlexors',
+  'forearm_extensors': 'muscle.forearmExtensors',
   'rectus_abdominis': 'muscle.rectusAbdominis',
-  'obliques': 'muscle.obliques',
-  'hip_flexor': 'muscle.hipFlexor',
-  'adductors': 'muscle.adductors',
-  'adductor_longus': 'muscle.adductorLongus',
-  'adductor_brevis': 'muscle.adductorBrevis',
-  'adductor_magnus': 'muscle.adductorMagnus',
-  'abductors': 'muscle.abductors',
-  'quadriceps': 'muscle.quadriceps',
+  'external_obliques': 'muscle.externalObliques',
   'rectus_femoris': 'muscle.rectusFemoris',
   'vastus_lateralis': 'muscle.vastusLateralis',
   'vastus_medialis': 'muscle.vastusMedialis',
-  'vastus_intermedius': 'muscle.vastusIntermedius',
-  'hamstrings': 'muscle.hamstrings',
   'biceps_femoris': 'muscle.bicepsFemoris',
   'semitendinosus': 'muscle.semitendinosus',
-  'semimembranosus': 'muscle.semimembranosus',
   'tibialis_anterior': 'muscle.tibialisAnterior',
-  'calves': 'muscle.calves',
   'gastrocnemius': 'muscle.gastrocnemius',
   'soleus': 'muscle.soleus',
-  'glutes': 'muscle.glutes',
   'gluteus_maximus': 'muscle.gluteusMaximus',
   'gluteus_medius': 'muscle.gluteusMedius',
-  'gluteus_minimus': 'muscle.gluteusMinimus',
   'teres_major': 'muscle.teresMajor',
-  'teres_minor': 'muscle.teresMinor',
-  'latissimus': 'muscle.latissimus',
-  'latissimus_lower': 'muscle.latissimusLower',
-  'latissimus_upper': 'muscle.latissimusUpper',
-  'infraspinatus': 'muscle.infraspinatus',
-  'supraspinatus': 'muscle.supraspinatus',
-  'subscapularis': 'muscle.subscapularis',
+  'latissimus_dorsi': 'muscle.latissimus',
   'erector_spinae': 'muscle.erectorSpinae',
-  'lower_back': 'muscle.lowerBack',
+  'rhomboids': 'muscle.rhomboids',
 };
