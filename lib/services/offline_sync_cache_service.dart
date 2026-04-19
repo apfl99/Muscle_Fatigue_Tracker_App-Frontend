@@ -64,7 +64,8 @@ class OfflineSyncCacheService {
   Future<void> enqueueWorkoutDraft(WorkoutLogDraft draft) async {
     final queue = await readWorkoutQueue();
     final draftKey = _draftDedupKey(draft);
-    final duplicated = queue.any((item) => _draftDedupKey(item.draft) == draftKey);
+    final duplicated =
+        queue.any((item) => _draftDedupKey(item.draft) == draftKey);
     if (!duplicated) {
       queue.add(
         QueuedWorkoutDraft(

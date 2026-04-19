@@ -2,8 +2,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 /// ---------------------------------------------------------------------------
 /// 근육 컨디션 특징 계산 함수
 /// 입력: 필터링된 윈도우 간 진동 신호(List<double> data), 샘플링 주파수 fs
@@ -45,7 +43,7 @@ class FatigueFeatures {
 FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
   if (data.isEmpty) {
     if (kDebugMode) {
-      print('⚠️ 데이터가 비어있음');
+      appLog('⚠️ 데이터가 비어있음');
     }
     return FatigueFeatures(
       rms: 0.0,
@@ -60,7 +58,7 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
 
   if (fs <= 0) {
     if (kDebugMode) {
-      print('⚠️ 샘플링 레이트가 유효하지 않음: $fs Hz, 기본값 50Hz 사용');
+      appLog('⚠️ 샘플링 레이트가 유효하지 않음: $fs Hz, 기본값 50Hz 사용');
     }
     fs = 50.0;
   }
@@ -107,7 +105,7 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
     // 안전한 검사 추가
     if (maxFreqBin <= 0) {
       if (kDebugMode) {
-        print('⚠️ DFT 계산 불가: maxFreqBin=$maxFreqBin, n=$n');
+        appLog('⚠️ DFT 계산 불가: maxFreqBin=$maxFreqBin, n=$n');
       }
       return FatigueFeatures(
         rms: rms,
@@ -152,11 +150,11 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
 
     // 디버깅 정보 추가
     if (kDebugMode) {
-      print('🔍 주파수 분석 디버그:');
-      print('   - 샘플 수: $n, 샘플링 레이트: ${fs.toStringAsFixed(1)} Hz');
-      print('   - 최대 magnitude: ${maxMag.toStringAsFixed(4)}');
-      print('   - Peak index: $peakIndex');
-      print('   - Peak frequency: ${peakFreq.toStringAsFixed(2)} Hz');
+      appLog('🔍 주파수 분석 디버그:');
+      appLog('   - 샘플 수: $n, 샘플링 레이트: ${fs.toStringAsFixed(1)} Hz');
+      appLog('   - 최대 magnitude: ${maxMag.toStringAsFixed(4)}');
+      appLog('   - Peak index: $peakIndex');
+      appLog('   - Peak frequency: ${peakFreq.toStringAsFixed(2)} Hz');
     }
 
     // Mean Power Frequency 계산
@@ -197,7 +195,7 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
     );
   } catch (e) {
     if (kDebugMode) {
-      print('❌ 근육 컨디션 계산 오류: $e');
+      appLog('❌ 근육 컨디션 계산 오류: $e');
     }
     return FatigueFeatures(
       rms: 0.0,
@@ -251,7 +249,7 @@ Map<String, double> calculateBasicFeatures(List<double> data) {
     };
   } catch (e) {
     if (kDebugMode) {
-      print('❌ 기본 특징 계산 오류: $e');
+      appLog('❌ 기본 특징 계산 오류: $e');
     }
     return {'rms': 0.0, 'variance': 0.0, 'mean': 0.0, 'stdDev': 0.0};
   }

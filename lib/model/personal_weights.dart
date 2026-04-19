@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 class PersonalWeights {
   PersonalWeights({
     required this.denseWeights,
@@ -64,7 +62,7 @@ class PersonalWeightsStorage {
       final jsonMap = jsonDecode(await file.readAsString());
       return PersonalWeights.fromJson(jsonMap as Map<String, dynamic>);
     } catch (e) {
-      print('❌ 개인화 weight 로드 실패: $e');
+      appLog('❌ 개인화 weight 로드 실패: $e');
       return null;
     }
   }
@@ -73,9 +71,9 @@ class PersonalWeightsStorage {
     try {
       final file = await _getFile();
       await file.writeAsString(jsonEncode(weights.toJson()), flush: true);
-      print('💾 개인화 weight 저장 완료: ${file.path}');
+      appLog('💾 개인화 weight 저장 완료: ${file.path}');
     } catch (e) {
-      print('❌ 개인화 weight 저장 실패: $e');
+      appLog('❌ 개인화 weight 저장 실패: $e');
     }
   }
 }

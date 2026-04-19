@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'const.dart';
-import '../services/supabase_runtime_state.dart';
 
 class AdManager {
   static final AdManager instance = AdManager._internal();
@@ -25,17 +24,11 @@ class AdManager {
 
   VoidCallback? _onInterstitialAdClosed;
   Timer? _interstitialRetryTimer;
-  Duration _interstitialRetryDelay = const Duration(seconds: 20);
+  Duration _interstitialRetryDelay = const Duration(seconds: 4);
   DateTime? _lastNetworkInterstitialErrorAt;
 
   Future<void> initialize() async {
     if (_initialized || _isInitializing) {
-      return;
-    }
-    if (SupabaseRuntimeState.isTemporarilySuspended) {
-      if (kDebugMode) {
-        debugPrint('MobileAds init skipped: network suspension active');
-      }
       return;
     }
 
@@ -187,7 +180,7 @@ class AdManager {
             _isLoadingInterstitial = false;
             _interstitialAd = ad;
             _isInterstitialAdReady = true;
-            _interstitialRetryDelay = const Duration(seconds: 20);
+            _interstitialRetryDelay = const Duration(seconds: 4);
             _interstitialAd?.fullScreenContentCallback =
                 FullScreenContentCallback(
               onAdDismissedFullScreenContent: (ad) {
@@ -265,7 +258,7 @@ class AdManager {
     _interstitialRetryTimer = Timer(_interstitialRetryDelay, () {
       loadInterstitialAd(force: true);
     });
-    final nextSeconds = (_interstitialRetryDelay.inSeconds * 2).clamp(20, 300);
+    final nextSeconds = (_interstitialRetryDelay.inSeconds * 2).clamp(4, 60);
     _interstitialRetryDelay = Duration(seconds: nextSeconds.toInt());
   }
 }

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 /// 측정 세션 모델 (fatigue_dataset 집계 결과에서 변환)
 class MeasureSession {
   final dynamic id; // session_id (String 또는 int)
@@ -98,7 +96,7 @@ class FatigueCalculator {
   }) {
     // 0으로 나누기 방지
     if (rmsBase <= 0 || peakFreq <= 0 || rms.isNaN || peakFreq.isNaN) {
-      print('⚠️ 컨디션 계산 불가: rmsBase=$rmsBase, peakFreq=$peakFreq');
+      appLog('⚠️ 컨디션 계산 불가: rmsBase=$rmsBase, peakFreq=$peakFreq');
       return 1.0;
     }
 
@@ -106,7 +104,7 @@ class FatigueCalculator {
 
     // NaN 체크
     if (fatigue.isNaN || fatigue.isInfinite) {
-      print('⚠️ 컨디션 계산 결과 무효: $fatigue');
+      appLog('⚠️ 컨디션 계산 결과 무효: $fatigue');
       return 1.0;
     }
 

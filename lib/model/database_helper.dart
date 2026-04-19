@@ -8,8 +8,6 @@ import 'dart:async';
 import 'user_stats.dart';
 import 'package:flutter/foundation.dart';
 
-void print(Object? message) => appLog(message);
-
 /// 통합 데이터베이스 헬퍼 클래스
 /// DB_SCHEMA.md (v1.0.0) 기반으로 전체 DB 관리
 class DatabaseHelper {
@@ -59,15 +57,15 @@ class DatabaseHelper {
   Future<Database> _initDB() async {
     try {
       if (kDebugMode) {
-        print('🗄️ 데이터베이스 초기화 시작...');
-        print('📱 플랫폼: ${Platform.operatingSystem}');
+        appLog('🗄️ 데이터베이스 초기화 시작...');
+        appLog('📱 플랫폼: ${Platform.operatingSystem}');
       }
 
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, dbName);
 
       if (kDebugMode) {
-        print('📂 DB 경로: $path');
+        appLog('📂 DB 경로: $path');
       }
 
       // 데이터베이스 열기
@@ -78,19 +76,19 @@ class DatabaseHelper {
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
           if (kDebugMode) {
-            print('✅ 데이터베이스 열림');
+            appLog('✅ 데이터베이스 열림');
           }
         },
       );
 
       if (kDebugMode) {
-        print('✅ 데이터베이스 초기화 완료');
+        appLog('✅ 데이터베이스 초기화 완료');
       }
       return db;
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('❌ DB 초기화 오류: $e');
-        print('스택 트레이스: $stackTrace');
+        appLog('❌ DB 초기화 오류: $e');
+        appLog('스택 트레이스: $stackTrace');
       }
       rethrow;
     }
@@ -98,7 +96,7 @@ class DatabaseHelper {
 
   Future<void> _createDB(Database db, int version) async {
     if (kDebugMode) {
-      print('🔨 테이블 생성 중 (SQLite 스키마)...');
+      appLog('🔨 테이블 생성 중 (SQLite 스키마)...');
     }
 
     // 1. user_state 테이블 (개인화 설정 저장)
@@ -112,7 +110,7 @@ class DatabaseHelper {
       last_sync TEXT
     )
     ''');
-    print('✅ user_state 테이블 생성 완료');
+    appLog('✅ user_state 테이블 생성 완료');
 
     // 초기 user_state 레코드 삽입 (baseline은 미설정 상태 유지)
     final initialUserId = await resolveUserId();
@@ -126,7 +124,7 @@ class DatabaseHelper {
       },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
-    print('✅ user_state 초기 레코드 삽입 완료');
+    appLog('✅ user_state 초기 레코드 삽입 완료');
 
     // 2. fatigue_dataset 테이블 (윈도우 단위 데이터셋)
     await db.execute('''
@@ -178,7 +176,7 @@ class DatabaseHelper {
       PRIMARY KEY (user_id, session_id, window_id)
     )
     ''');
-    print('✅ fatigue_dataset 테이블 생성 완료');
+    appLog('✅ fatigue_dataset 테이블 생성 완료');
 
     // 인덱스 생성
     await db.execute(
@@ -190,7 +188,7 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_dataset_synced ON $tableFatigueDataset(synced)',
     );
-    print('✅ fatigue_dataset 인덱스 생성 완료');
+    appLog('✅ fatigue_dataset 인덱스 생성 완료');
 
     // 3. model_versions 테이블
     await db.execute('''
@@ -201,7 +199,7 @@ class DatabaseHelper {
       updated_at TEXT NOT NULL
     )
     ''');
-    print('✅ model_versions 테이블 생성 완료');
+    appLog('✅ model_versions 테이블 생성 완료');
 
     // 초기 모델 버전 레코드
     final nowIso = DateTime.now().toIso8601String();
@@ -235,7 +233,7 @@ class DatabaseHelper {
       },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
-    print('✅ model_versions 초기 레코드 삽입 완료');
+    appLog('✅ model_versions 초기 레코드 삽입 완료');
 
     // 4. sync_history 테이블
     await db.execute('''
@@ -247,8 +245,8 @@ class DatabaseHelper {
       executed_at TEXT NOT NULL
     )
     ''');
-    print('✅ sync_history 테이블 생성 완료');
-    print('✅ 모든 테이블 생성 완료');
+    appLog('✅ sync_history 테이블 생성 완료');
+    appLog('✅ 모든 테이블 생성 완료');
   }
 
   Future<void> migrateUserId({
@@ -271,14 +269,14 @@ class DatabaseHelper {
         [newUserId, oldUserId],
       );
     });
-    print('ℹ️ 사용자 ID 마이그레이션: $oldUserId → $newUserId');
+    appLog('ℹ️ 사용자 ID 마이그레이션: $oldUserId → $newUserId');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    print('🔄 데이터베이스 업그레이드 중... ($oldVersion → $newVersion)');
+    appLog('🔄 데이터베이스 업그레이드 중... ($oldVersion → $newVersion)');
 
     if (oldVersion < 4) {
-      print('🧹 v4 스키마로 마이그레이션: 기존 fatigue_logs 및 관련 테이블 정리');
+      appLog('🧹 v4 스키마로 마이그레이션: 기존 fatigue_logs 및 관련 테이블 정리');
 
       await db.execute('DROP TABLE IF EXISTS users');
       await db.execute('DROP TABLE IF EXISTS fatigue_logs');
@@ -289,11 +287,11 @@ class DatabaseHelper {
       // 새로운 스키마 생성
       await _createDB(db, newVersion);
 
-      print('✅ v4 스키마 마이그레이션 완료');
+      appLog('✅ v4 스키마 마이그레이션 완료');
     }
 
     if (oldVersion < 5) {
-      print('🧹 v5 스키마로 마이그레이션: fatigue_dataset 기본키 재구성');
+      appLog('🧹 v5 스키마로 마이그레이션: fatigue_dataset 기본키 재구성');
       await db.execute('DROP TABLE IF EXISTS $tableFatigueDataset');
       await db.execute('DROP INDEX IF EXISTS idx_dataset_user');
       await db.execute('DROP INDEX IF EXISTS idx_dataset_session');
@@ -356,7 +354,7 @@ class DatabaseHelper {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_dataset_synced ON $tableFatigueDataset(synced)',
       );
-      print('✅ v5 스키마 마이그레이션 완료 (id 컬럼 제거)');
+      appLog('✅ v5 스키마 마이그레이션 완료 (id 컬럼 제거)');
     }
   }
 
@@ -429,7 +427,7 @@ class DatabaseHelper {
       final embList = jsonDecode(state['user_emb'] as String) as List;
       return embList.map((e) => (e as num).toDouble()).toList();
     } catch (e) {
-      print('⚠️ User Embedding 파싱 실패, 기본값 반환: $e');
+      appLog('⚠️ User Embedding 파싱 실패, 기본값 반환: $e');
       return List.filled(12, 0.0);
     }
   }
@@ -448,7 +446,7 @@ class DatabaseHelper {
     List<double>? userEmbOverride,
   }) async {
     if (windows.isEmpty) {
-      print('⚠️ 저장할 윈도우 데이터가 없습니다 (sessionId: $sessionId)');
+      appLog('⚠️ 저장할 윈도우 데이터가 없습니다 (sessionId: $sessionId)');
       return;
     }
 
@@ -472,7 +470,7 @@ class DatabaseHelper {
       final windowEnd = window['window_end_ms'];
 
       if (windowId == null || windowStart == null || windowEnd == null) {
-        print('⚠️ 윈도우 필수 값이 누락되어 저장을 건너뜁니다: $window');
+        appLog('⚠️ 윈도우 필수 값이 누락되어 저장을 건너뜁니다: $window');
         continue;
       }
 
@@ -529,7 +527,7 @@ class DatabaseHelper {
     }
 
     await batch.commit(noResult: true);
-    print('✅ 컨디션 윈도우 ${windows.length}개 저장 완료 (sessionId: $sessionId)');
+    appLog('✅ 컨디션 윈도우 ${windows.length}개 저장 완료 (sessionId: $sessionId)');
   }
 
   Future<List<Map<String, dynamic>>> getAllFatigueLogs({
@@ -685,7 +683,7 @@ class DatabaseHelper {
         whereArgs: [sessionId, userId],
       );
     }
-    print('✅ ${sessionIds.length}개 로그 동기화 완료 표시');
+    appLog('✅ ${sessionIds.length}개 로그 동기화 완료 표시');
   }
 
   Future<List<Map<String, dynamic>>> getWindowsBySession(
@@ -962,7 +960,7 @@ class DatabaseHelper {
     final logs = await getRecentFatigueLogs(userId: userId, limit: n);
 
     if (logs.isEmpty) {
-      print('⚠️ 컨디션 로그가 없어서 baseline을 재계산할 수 없습니다');
+      appLog('⚠️ 컨디션 로그가 없어서 baseline을 재계산할 수 없습니다');
       return;
     }
 
@@ -978,7 +976,8 @@ class DatabaseHelper {
       freqBase: freqMean,
     );
 
-    print('✅ baseline 재계산 완료: RMS=$rmsMean, Freq=$freqMean (N=${logs.length})');
+    appLog(
+        '✅ baseline 재계산 완료: RMS=$rmsMean, Freq=$freqMean (N=${logs.length})');
   }
 
   /// User Embedding 계산 및 업데이트
@@ -987,13 +986,13 @@ class DatabaseHelper {
   }) async {
     try {
       userId = await resolveUserId(userId);
-      print('🧮 User Embedding 계산 시작...');
+      appLog('🧮 User Embedding 계산 시작...');
 
       // 모든 컨디션 로그 조회
       final allLogs = await getAllFatigueLogs(userId: userId);
 
       if (allLogs.isEmpty) {
-        print('⚠️ 컨디션 로그가 없어서 user_emb를 계산할 수 없습니다');
+        appLog('⚠️ 컨디션 로그가 없어서 user_emb를 계산할 수 없습니다');
         return;
       }
 
@@ -1047,12 +1046,12 @@ class DatabaseHelper {
       // User Embedding 계산
       final userEmb = userStats.toUserEmbedding(rmsMean, freqMean);
 
-      print('📊 User Embedding 계산 완료:');
-      print('   - 측정 횟수: ${allLogs.length}회');
-      print('   - RMS 평균: ${rmsMean.toStringAsFixed(4)}');
-      print('   - 주파수 평균: ${freqMean.toStringAsFixed(2)} Hz');
-      print('   - 컨디션 평균: ${fatigueMean.toStringAsFixed(2)}');
-      print('   - User Embedding: $userEmb');
+      appLog('📊 User Embedding 계산 완료:');
+      appLog('   - 측정 횟수: ${allLogs.length}회');
+      appLog('   - RMS 평균: ${rmsMean.toStringAsFixed(4)}');
+      appLog('   - 주파수 평균: ${freqMean.toStringAsFixed(2)} Hz');
+      appLog('   - 컨디션 평균: ${fatigueMean.toStringAsFixed(2)}');
+      appLog('   - User Embedding: $userEmb');
 
       // SQLite에 저장
       await updateUserState(
@@ -1060,10 +1059,10 @@ class DatabaseHelper {
         userEmb: userEmb,
       );
 
-      print('✅ User Embedding SQLite 저장 완료');
+      appLog('✅ User Embedding SQLite 저장 완료');
     } catch (e) {
-      print('❌ User Embedding 계산 실패: $e');
-      print('스택 트레이스: ${StackTrace.current}');
+      appLog('❌ User Embedding 계산 실패: $e');
+      appLog('스택 트레이스: ${StackTrace.current}');
     }
   }
 
@@ -1107,7 +1106,7 @@ class DatabaseHelper {
       whereArgs: [userId],
     );
 
-    print('✅ 데이터베이스 초기화 완료');
+    appLog('✅ 데이터베이스 초기화 완료');
   }
 
   /// ========================================
@@ -1136,9 +1135,9 @@ class DatabaseHelper {
         where: 'session_id = ? AND user_id = ?',
         whereArgs: [sessionId, userId],
       );
-      print('✅ 동기화 완료 처리: $sessionId');
+      appLog('✅ 동기화 완료 처리: $sessionId');
     } catch (e) {
-      print('❌ 동기화 완료 처리 실패: $e');
+      appLog('❌ 동기화 완료 처리 실패: $e');
     }
   }
 
@@ -1157,7 +1156,7 @@ class DatabaseHelper {
       }
       return false;
     } catch (e) {
-      print('❌ Baseline 존재 여부 확인 실패: $e');
+      appLog('❌ Baseline 존재 여부 확인 실패: $e');
       return false;
     }
   }
@@ -1173,11 +1172,11 @@ class DatabaseHelper {
         freqBase: freqBase,
       );
 
-      print('✅ Baseline 저장 완료: RMS=$rmsBase, Freq=$freqBase');
+      appLog('✅ Baseline 저장 완료: RMS=$rmsBase, Freq=$freqBase');
 
       return true;
     } catch (e) {
-      print('❌ Baseline 저장 실패: $e');
+      appLog('❌ Baseline 저장 실패: $e');
       return false;
     }
   }
@@ -1198,10 +1197,10 @@ class DatabaseHelper {
         whereArgs: [userId],
       );
 
-      print('✅ Baseline 초기화 완료 (DB null 설정)');
+      appLog('✅ Baseline 초기화 완료 (DB null 설정)');
       return true;
     } catch (e) {
-      print('❌ Baseline 초기화 실패: $e');
+      appLog('❌ Baseline 초기화 실패: $e');
       return false;
     }
   }
@@ -1220,7 +1219,7 @@ class DatabaseHelper {
       final count = result.first['count'] as int;
       return count == 0;
     } catch (e) {
-      print('❌ 첫 번째 측정 확인 실패: $e');
+      appLog('❌ 첫 번째 측정 확인 실패: $e');
       return false;
     }
   }

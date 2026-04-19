@@ -24,6 +24,7 @@ import 'screens/splash_screen.dart';
 import 'screens/profile_page.dart';
 import 'theme/app_theme.dart';
 import 'utils/responsive.dart';
+import 'utils/ad_manager.dart';
 import 'worker/worker_manager.dart'; // 워커 매니저를 위해 필요
 import 'worker/model_update_scheduler.dart';
 import 'model/personalization_manager.dart';
@@ -34,15 +35,14 @@ import 'features/heatmap/data/heatmap_api_config.dart';
 import 'features/heatmap/ui/heatmap_bridge_cta_card.dart';
 import 'providers/heatmap_provider.dart';
 
-void print(Object? message) => appLog(message);
-
 void main() async {
   if (kDebugMode) {
-    print('\n🚀 앱 시작...');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    appLog('\n🚀 앱 시작...');
+    appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+  await AdManager.instance.initialize();
   await EasyLocalization.ensureInitialized();
   await UserIdentity.instance.ensureInitialized();
   await _initializeSupabaseClient();
@@ -57,57 +57,57 @@ void main() async {
 
   // 데이터베이스 초기화
   if (kDebugMode) {
-    print('🗄️ 데이터베이스 초기화 중...');
+    appLog('🗄️ 데이터베이스 초기화 중...');
   }
   try {
     final db = await DatabaseHelper.instance.database;
     if (kDebugMode) {
-      print('✅ 통합 DB 초기화 완료');
-      print('   - DB 경로: ${db.path}');
+      appLog('✅ 통합 DB 초기화 완료');
+      appLog('   - DB 경로: ${db.path}');
     }
 
     // Baseline Manager 초기화
     await BaselineManager.instance.initialize();
     if (kDebugMode) {
-      print('✅ Baseline Manager 초기화 완료');
+      appLog('✅ Baseline Manager 초기화 완료');
     }
 
     // ML Manager 초기화
     await MLManager.instance.initialize();
     if (kDebugMode) {
-      print('✅ ML Manager 초기화 완료');
+      appLog('✅ ML Manager 초기화 완료');
     }
 
     // Worker Manager 초기화
     await initializeWorkerManager();
     if (kDebugMode) {
-      print('✅ Worker Manager 초기화 완료');
+      appLog('✅ Worker Manager 초기화 완료');
     }
 
     // User Embedding은 분석 시에만 계산됨
     if (kDebugMode) {
-      print('✅ User Embedding은 분석 시에 자동 계산됩니다');
+      appLog('✅ User Embedding은 분석 시에 자동 계산됩니다');
     }
 
     await ModelUpdateScheduler.instance.start();
     if (kDebugMode) {
-      print('✅ 모델 자동 다운로드 스케줄러 시작');
+      appLog('✅ 모델 자동 다운로드 스케줄러 시작');
     }
 
     await PersonalizationManager.instance.initialize();
     await PersonalizationManager.instance.ensurePersonalization();
     if (kDebugMode) {
-      print('✅ 개인화 매니저 초기화 및 점검 완료');
+      appLog('✅ 개인화 매니저 초기화 및 점검 완료');
     }
   } catch (e, stackTrace) {
     if (kDebugMode) {
-      print('❌ 초기화 실패: $e');
-      print('스택 트레이스: $stackTrace');
+      appLog('❌ 초기화 실패: $e');
+      appLog('스택 트레이스: $stackTrace');
     }
   }
 
   if (kDebugMode) {
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   }
 
   runApp(
@@ -126,7 +126,7 @@ void main() async {
 Future<void> _initializeSupabaseClient() async {
   if (SupabaseRuntimeState.isTemporarilySuspended) {
     if (kDebugMode) {
-      print(
+      appLog(
         '⚠️ Supabase 초기화 일시중지 상태: ${SupabaseRuntimeState.lastReason ?? 'unknown'}',
       );
     }
@@ -136,7 +136,7 @@ Future<void> _initializeSupabaseClient() async {
 
   if (!config.isConfigured) {
     if (kDebugMode) {
-      print('⚠️ Supabase 설정이 비어 있어 초기화를 건너뜁니다.');
+      appLog('⚠️ Supabase 설정이 비어 있어 초기화를 건너뜁니다.');
     }
     return;
   }
@@ -158,7 +158,7 @@ Future<void> _initializeSupabaseClient() async {
       reason: 'init_failed',
     );
     if (kDebugMode) {
-      print('⚠️ Supabase 초기화 실패: $error');
+      appLog('⚠️ Supabase 초기화 실패: $error');
     }
   }
 }
@@ -194,7 +194,7 @@ Future<bool> _ensureAnonymousSupabaseSession(String supabaseUrl) async {
       reason: 'anonymous_session_failed',
     );
     if (kDebugMode) {
-      print('⚠️ Supabase 익명 세션 확보 실패: $error');
+      appLog('⚠️ Supabase 익명 세션 확보 실패: $error');
     }
     return false;
   }
@@ -209,7 +209,7 @@ Future<void> _verifySupabaseUrlCall(
     throw const AuthException('현재 세션 사용자 정보를 불러오지 못했습니다.');
   }
   if (kDebugMode) {
-    print('✅ Supabase URL 호출 성공: $supabaseUrl');
+    appLog('✅ Supabase URL 호출 성공: $supabaseUrl');
   }
 }
 
@@ -299,18 +299,18 @@ class _SensorDataPageState extends State<SensorDataPage>
 
       if (needBaseline) {
         if (kDebugMode) {
-          print(
+          appLog(
             '⚠️ 기준값 설정 필요: (isFirst=$isFirstMeasurement, hasBaseline=$hasBaselineInDb)',
           );
         }
       } else {
         if (kDebugMode) {
-          print('✅ 기준값 사용 가능');
+          appLog('✅ 기준값 사용 가능');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 기준값 상태 확인 실패: $e');
+        appLog('❌ 기준값 상태 확인 실패: $e');
       }
       setState(() {
         _isCheckingBaseline = false;
@@ -373,8 +373,8 @@ class _SensorDataPageState extends State<SensorDataPage>
       };
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('❌ initState 오류: $e');
-        print('스택 트레이스: $stackTrace');
+        appLog('❌ initState 오류: $e');
+        appLog('스택 트레이스: $stackTrace');
       }
     }
   }
@@ -448,8 +448,8 @@ class _SensorDataPageState extends State<SensorDataPage>
       await BaselineManager.instance.syncWithDatabase();
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('❌ Baseline 로드 실패: $e');
-        print('스택 트레이스: $stackTrace');
+        appLog('❌ Baseline 로드 실패: $e');
+        appLog('스택 트레이스: $stackTrace');
       }
     }
   }
@@ -469,6 +469,19 @@ class _SensorDataPageState extends State<SensorDataPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      if (_isCollecting) {
+        unawaited(_stopCollection());
+      } else {
+        unawaited(_sensorStreaming.stopSensor());
+      }
+      _autoStopTimer?.cancel();
+      _baselineTimer?.cancel();
+      return;
+    }
     if (state == AppLifecycleState.resumed) {
       // 앱 복귀 시 DB와 동기화하여 기준값 상태 재평가
       UserStateStore.instance.refreshFromDb();
@@ -676,7 +689,7 @@ class _SensorDataPageState extends State<SensorDataPage>
           // 자동 이동 대신 완료 배너로 선택 유도
           _completedBaseline = result;
           if (kDebugMode) {
-            print('✅ 기준값 설정 완료: _hasBaseline=$_hasBaseline');
+            appLog('✅ 기준값 설정 완료: _hasBaseline=$_hasBaseline');
           }
         } else {
           if (!mounted) return;
@@ -2409,7 +2422,7 @@ class _SensorDataPageState extends State<SensorDataPage>
                             // 동적 분석시간 설정 적용
                             _customMeasurementSeconds = tempWindowSeconds;
                             if (kDebugMode) {
-                              print(
+                              appLog(
                                 '✅ 분석 시간이 ${_customMeasurementSeconds.toStringAsFixed(1)}초로 설정되었습니다.',
                               );
                             }
@@ -2952,6 +2965,7 @@ class _BaselineSetupDialog extends StatefulWidget {
 class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
   final SensorStreaming _sensorStreaming = SensorStreaming();
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  Timer? _collectionTimer;
 
   bool _isCollecting = false;
   bool _isProcessing = false;
@@ -2980,7 +2994,13 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
 
     // 10초간 데이터 수집
     int count = 0;
-    Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    _collectionTimer?.cancel();
+    _collectionTimer =
+        Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       count++;
       final progress = count / 100.0; // 10초 = 100 * 100ms
 
@@ -2993,6 +3013,7 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
 
       if (count >= 100) {
         timer.cancel();
+        _collectionTimer = null;
         _processBaselineData();
       }
     });
@@ -3036,9 +3057,11 @@ class _BaselineSetupDialogState extends State<_BaselineSetupDialog> {
 
   @override
   void dispose() {
+    _collectionTimer?.cancel();
     if (_isCollecting) {
-      _sensorStreaming.stopSensor();
+      unawaited(_sensorStreaming.stopSensor());
     }
+    _sensorStreaming.dispose();
     super.dispose();
   }
 

@@ -6,8 +6,6 @@ import 'dart:convert';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void print(Object? message) => appLog(message);
-
 class ServerConfig {
   static const String _configKey = 'server_config';
 
@@ -40,7 +38,7 @@ class ServerConfig {
         return ServerConfig.fromJson(configMap);
       }
     } catch (e) {
-      print('⚠️ 설정 로드 실패, 기본값 사용: $e');
+      appLog('⚠️ 설정 로드 실패, 기본값 사용: $e');
     }
 
     // 기본 설정 반환
@@ -53,9 +51,9 @@ class ServerConfig {
       final prefs = await SharedPreferences.getInstance();
       final configJson = jsonEncode(toJson());
       await prefs.setString(_configKey, configJson);
-      print('✅ 서버 설정 저장 완료');
+      appLog('✅ 서버 설정 저장 완료');
     } catch (e) {
-      print('❌ 설정 저장 실패: $e');
+      appLog('❌ 설정 저장 실패: $e');
     }
   }
 
@@ -108,13 +106,13 @@ class ServerConfig {
   /// 설정 정보 출력
   void printConfig() {
     if (enableLogging) {
-      print('📡 서버 설정:');
-      print('   API Base URL: $apiBaseUrl');
-      print('   Model Base URL: $modelBaseUrl');
-      print('   API Version: $apiVersion');
-      print('   Timeout: ${timeoutSeconds}s');
-      print('   Max Retries: $maxRetries');
-      print('   Logging: ${enableLogging ? "ON" : "OFF"}');
+      appLog('📡 서버 설정:');
+      appLog('   API Base URL: $apiBaseUrl');
+      appLog('   Model Base URL: $modelBaseUrl');
+      appLog('   API Version: $apiVersion');
+      appLog('   Timeout: ${timeoutSeconds}s');
+      appLog('   Max Retries: $maxRetries');
+      appLog('   Logging: ${enableLogging ? "ON" : "OFF"}');
     }
   }
 

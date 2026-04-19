@@ -13,8 +13,6 @@ import 'config.dart';
 import 'database_helper.dart';
 import 'measure_session.dart';
 
-void print(Object? message) => appLog(message);
-
 class HybridFatiguePayload {
   HybridFatiguePayload({
     required this.rmsAcc,
@@ -128,7 +126,7 @@ class MLManager {
 
   Future<void> _initializeInternal() async {
     try {
-      print('🤖 ML Manager 초기화 시작...');
+      appLog('🤖 ML Manager 초기화 시작...');
 
       final appDir = await getApplicationDocumentsDirectory();
       _hybridModelPath = '${appDir.path}/hybrid_model.tflite';
@@ -140,13 +138,13 @@ class MLManager {
       }
 
       _isInitialized = true;
-      print(
+      appLog(
         '✅ ML Manager 초기화 완료 (E2E 모델: '
         '${_endToEndInterpreter != null ? 'loaded' : 'not loaded'})',
       );
     } catch (e, stackTrace) {
-      print('❌ ML Manager 초기화 오류: $e');
-      print(stackTrace);
+      appLog('❌ ML Manager 초기화 오류: $e');
+      appLog(stackTrace);
       _isInitialized = false;
     }
   }
@@ -158,27 +156,27 @@ class MLManager {
       final version = info?['version'] as String?;
 
       if (modelPath == null || modelPath.isEmpty) {
-        print('⚠️ E2E 모델 경로 정보가 없습니다 (DB).');
+        appLog('⚠️ E2E 모델 경로 정보가 없습니다 (DB).');
         return;
       }
 
       final file = File(modelPath);
       if (!await file.exists()) {
-        print('⚠️ E2E 모델 파일을 찾을 수 없습니다: $modelPath');
+        appLog('⚠️ E2E 모델 파일을 찾을 수 없습니다: $modelPath');
         return;
       }
 
       if (!force &&
           _endToEndInterpreter != null &&
           _loadedE2EModelPath == modelPath) {
-        print('ℹ️ E2E 모델이 이미 로드되어 있습니다 (version: $_loadedE2EVersion)');
+        appLog('ℹ️ E2E 모델이 이미 로드되어 있습니다 (version: $_loadedE2EVersion)');
         return;
       }
 
       await _loadEndToEndModel(file, version: version);
     } catch (e, stackTrace) {
-      print('❌ E2E 모델 로드(DB) 실패: $e');
-      print(stackTrace);
+      appLog('❌ E2E 모델 로드(DB) 실패: $e');
+      appLog(stackTrace);
     }
   }
 
@@ -190,8 +188,8 @@ class MLManager {
       }
       await _loadEndToEndModel(file);
     } catch (e, stackTrace) {
-      print('❌ 레거시 E2E 모델 로드 실패: $e');
-      print(stackTrace);
+      appLog('❌ 레거시 E2E 모델 로드 실패: $e');
+      appLog(stackTrace);
     }
   }
 
@@ -217,8 +215,8 @@ class MLManager {
         }
         _endToEndInterpreter?.allocateTensors();
       } catch (e, stackTrace) {
-        print('⚠️ E2E allocateTensors 실패: $e');
-        print(stackTrace);
+        appLog('⚠️ E2E allocateTensors 실패: $e');
+        appLog(stackTrace);
       }
       final inputTensors = _endToEndInterpreter!.getInputTensors();
       final inputCount = inputTensors.length;
@@ -231,22 +229,22 @@ class MLManager {
       _e2eOutputShape = List<int>.from(outputTensor.shape);
       _loadedE2EModelPath = file.path;
       _loadedE2EVersion = version;
-      print(
+      appLog(
         '✅ End-to-End 모델 로드 성공: ${file.path} '
         '(version: ${version ?? 'unknown'})',
       );
       for (var i = 0; i < inputCount; i++) {
-        print(
+        appLog(
           'ℹ️ E2E 입력[$i] → shape=${_e2eInputShapes![i]} '
           'type=${_e2eInputTypes![i]}',
         );
       }
-      print(
+      appLog(
         'ℹ️ E2E 출력 텐서 → shape=$_e2eOutputShape type=${outputTensor.type}',
       );
     } catch (e, stackTrace) {
-      print('❌ End-to-End 모델 로드 실패: $e');
-      print(stackTrace);
+      appLog('❌ End-to-End 모델 로드 실패: $e');
+      appLog(stackTrace);
       _endToEndInterpreter = null;
       _e2eInputShapes = null;
       _e2eInputTypes = null;
@@ -274,7 +272,7 @@ class MLManager {
     final stopwatch = Stopwatch()..start();
     http.Response? response;
     try {
-      print('🌐 Hybrid API 요청 시작 → mode=${mode.name}');
+      appLog('🌐 Hybrid API 요청 시작 → mode=${mode.name}');
       response = await http
           .post(
             uri,
@@ -284,7 +282,7 @@ class MLManager {
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode != 200) {
-        print('❌ Hybrid API 실패 (status=${response.statusCode})');
+        appLog('❌ Hybrid API 실패 (status=${response.statusCode})');
         return null;
       }
 
@@ -296,13 +294,13 @@ class MLManager {
       try {
         decoded = jsonDecode(body) as Map<String, dynamic>;
       } catch (e) {
-        print('❌ Hybrid API JSON 파싱 실패: $e, body: $body');
+        appLog('❌ Hybrid API JSON 파싱 실패: $e, body: $body');
         return null;
       }
 
       final fatigueRaw = decoded['fatigue'];
       if (fatigueRaw is! num) {
-        print('❌ Hybrid API 응답에 fatigue 값이 없습니다: $body');
+        appLog('❌ Hybrid API 응답에 fatigue 값이 없습니다: $body');
         return null;
       }
 
@@ -312,7 +310,7 @@ class MLManager {
       final version = decoded['model_version']?.toString();
       final latency = stopwatch.elapsedMilliseconds;
 
-      print(
+      appLog(
         '🤖 Hybrid API 결과 → fatigue=${safeFatigue.toStringAsFixed(3)}, '
         'version=$version, latency=${latency}ms',
       );
@@ -323,8 +321,8 @@ class MLManager {
         latencyMs: latency,
       );
     } catch (e, stackTrace) {
-      print('❌ Hybrid API 호출 실패: $e');
-      print(stackTrace);
+      appLog('❌ Hybrid API 호출 실패: $e');
+      appLog(stackTrace);
       return null;
     } finally {
       stopwatch.stop();
@@ -394,14 +392,14 @@ class MLManager {
       if (response != null) {
         // 서버에서 반환된 컨디션 값을 보정값으로 사용
         final correction = response.fatigue;
-        print('🤖 Hybrid 보정값 예측 (서버): $correction');
+        appLog('🤖 Hybrid 보정값 예측 (서버): $correction');
         return correction;
       }
 
-      print('⚠️ Hybrid 서버 API 실패, null 반환');
+      appLog('⚠️ Hybrid 서버 API 실패, null 반환');
       return null;
     } catch (e) {
-      print('❌ Hybrid 보정값 예측 오류: $e');
+      appLog('❌ Hybrid 보정값 예측 오류: $e');
       return null;
     }
   }
@@ -427,23 +425,23 @@ class MLManager {
   }) async {
     final qualityFlag = window['quality_flag'];
     if (qualityFlag is num && qualityFlag.toInt() == 0) {
-      print('⚠️ 품질 미달 윈도우 → E2E 추론 생략');
+      appLog('⚠️ 품질 미달 윈도우 → E2E 추론 생략');
       return null;
     }
     final lowMotionFlag = window['low_motion_flag'];
     if (lowMotionFlag is num && lowMotionFlag.toInt() == 1) {
-      print('ℹ️ 저활동 윈도우 → E2E 추론 생략');
+      appLog('ℹ️ 저활동 윈도우 → E2E 추론 생략');
       return null;
     }
 
     final interpreter = _endToEndInterpreter;
     final metadata = _e2eMetadata;
     if (interpreter == null) {
-      print('⚠️ End-to-End 모델이 로드되지 않았습니다. EMA로 대체합니다.');
+      appLog('⚠️ End-to-End 모델이 로드되지 않았습니다. EMA로 대체합니다.');
       return null;
     }
     if (metadata == null) {
-      print('⚠️ E2E 메타데이터가 없어 EMA로 대체합니다.');
+      appLog('⚠️ E2E 메타데이터가 없어 EMA로 대체합니다.');
       return null;
     }
 
@@ -463,7 +461,7 @@ class MLManager {
         growable: false,
       );
 
-      print(
+      appLog(
         '🧠 E2E 추론 정보 → inputDim=${metadata.inputDim}, '
         'features=${metadata.featureColumns.length}, embedding=${metadata.embeddingDim}',
       );
@@ -472,19 +470,19 @@ class MLManager {
 
       final prediction = outputBuffer[0][0];
       if (prediction.isNaN) {
-        print('⚠️ End-to-End 모델 결과가 NaN입니다.');
+        appLog('⚠️ End-to-End 모델 결과가 NaN입니다.');
         return null;
       }
 
       final fatigue = prediction.clamp(1.0, 3.0).toDouble();
-      print(
+      appLog(
         '🤖 End-to-End 컨디션 예측: ${fatigue.toStringAsFixed(3)} '
         '(version: ${_loadedE2EVersion ?? 'unknown'})',
       );
       return fatigue;
     } catch (e, stackTrace) {
-      print('❌ End-to-End 추론 오류: $e');
-      print(stackTrace);
+      appLog('❌ End-to-End 추론 오류: $e');
+      appLog(stackTrace);
       return null;
     }
   }
@@ -546,7 +544,7 @@ class MLManager {
       final metadataFile =
           File(p.join(dir.path, 'cnn_gru_fatigue_metadata.json'));
       if (!await metadataFile.exists()) {
-        print('⚠️ E2E 메타데이터가 없어 기본 설정을 사용합니다');
+        appLog('⚠️ E2E 메타데이터가 없어 기본 설정을 사용합니다');
         _e2eMetadata = _E2EMetadata.defaultColumns(_defaultFeatureColumns, 12);
         return;
       }
@@ -555,15 +553,15 @@ class MLManager {
           jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
       _e2eMetadata =
           _E2EMetadata.fromJson(json, defaultColumns: _defaultFeatureColumns);
-      print(
+      appLog(
         'ℹ️ E2E 메타데이터 로드 완료 → '
         'features=${_e2eMetadata!.featureColumns.length}, '
         'embedding=${_e2eMetadata!.embeddingDim}, '
         'inputDim=${_e2eMetadata!.inputDim}',
       );
     } catch (e, stackTrace) {
-      print('⚠️ E2E 메타데이터 로드 실패: $e');
-      print(stackTrace);
+      appLog('⚠️ E2E 메타데이터 로드 실패: $e');
+      appLog(stackTrace);
       _e2eMetadata = _E2EMetadata.defaultColumns(_defaultFeatureColumns, 12);
     }
   }
@@ -588,18 +586,18 @@ class MLManager {
 
       if (_hybridModelPath != null && await File(_hybridModelPath!).exists()) {
         await File(_hybridModelPath!).delete();
-        print('🗑️ Hybrid 모델 삭제 완료');
+        appLog('🗑️ Hybrid 모델 삭제 완료');
       }
 
       if (_endToEndModelPath != null &&
           await File(_endToEndModelPath!).exists()) {
         await File(_endToEndModelPath!).delete();
-        print('🗑️ End-to-End 모델 삭제 완료');
+        appLog('🗑️ End-to-End 모델 삭제 완료');
       }
 
-      print('⚠️ 모델 삭제 완료 (인터프리터 초기화)');
+      appLog('⚠️ 모델 삭제 완료 (인터프리터 초기화)');
     } catch (e) {
-      print('❌ 모델 삭제 오류: $e');
+      appLog('❌ 모델 삭제 오류: $e');
     }
   }
 
@@ -619,7 +617,7 @@ class MLManager {
     _e2eMetadata = null;
     _initializingFuture = null;
     _isInitialized = false;
-    print('🧹 ML Manager 리소스 정리 완료');
+    appLog('🧹 ML Manager 리소스 정리 완료');
   }
 }
 
@@ -642,7 +640,7 @@ Future<double> calculateHybridFatigue({
 
   // ML 모델이 없거나 오류 시 EMA만 사용
   if (mlCorrection == null) {
-    print('⚠️ ML 보정 실패, EMA만 사용');
+    appLog('⚠️ ML 보정 실패, EMA만 사용');
     return FatigueCalculator.calculateFatigue(
       rms: rms,
       peakFreq: freq,
@@ -663,11 +661,11 @@ Future<double> calculateHybridFatigue({
     freqBase: freqBase,
   );
 
-  print('🔀 Hybrid 컨디션 계산:');
-  print('   - EMA RMS_base: $rmsBase');
-  print('   - ML 보정값: $mlCorrection');
-  print('   - 조정 RMS_base: $adjRmsBase');
-  print('   - 최종 Fatigue: $fatigue');
+  appLog('🔀 Hybrid 컨디션 계산:');
+  appLog('   - EMA RMS_base: $rmsBase');
+  appLog('   - ML 보정값: $mlCorrection');
+  appLog('   - 조정 RMS_base: $adjRmsBase');
+  appLog('   - 최종 Fatigue: $fatigue');
 
   return fatigue;
 }
@@ -694,13 +692,13 @@ Future<double?> calculateEndToEndFatigue({
   );
 
   if (mlPrediction == null) {
-    print('⚠️ End-to-End 예측 실패, EMA 결과 사용');
+    appLog('⚠️ End-to-End 예측 실패, EMA 결과 사용');
     return fallback;
   }
 
   final blended = (mlPrediction * 0.8) + (fallback * 0.2);
   final result = blended.clamp(1.0, 3.0);
-  print(
+  appLog(
     '🎯 End-to-End 컨디션 최종값: ${result.toStringAsFixed(3)} '
     '(ML=${mlPrediction.toStringAsFixed(3)}, EMA=${fallback.toStringAsFixed(3)})',
   );

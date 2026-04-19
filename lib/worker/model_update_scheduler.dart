@@ -4,8 +4,6 @@ import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/model_downloader.dart';
 import 'worker_manager.dart';
 
-void print(Object? message) => appLog(message);
-
 class ModelUpdateScheduler {
   ModelUpdateScheduler._internal();
 
@@ -56,7 +54,7 @@ class ModelUpdateScheduler {
       });
     });
 
-    print(
+    appLog(
       '🕓 모델 다운로드 백그라운드 스케줄 시작: 첫 실행 ${nextRun.toLocal()} '
       '(매주 일요일 04:00)',
     );
@@ -69,13 +67,13 @@ class ModelUpdateScheduler {
       final manager = await getWorkerManager();
       await manager.addModelDownloadTask(force: force);
     } catch (e, stackTrace) {
-      print('❌ 모델 다운로드 작업 등록 실패: $e');
-      print(stackTrace);
+      appLog('❌ 모델 다운로드 작업 등록 실패: $e');
+      appLog(stackTrace);
       // 즉시 직접 시도 (예: 워커 초기화 전)
       try {
         await ModelDownloader.instance.downloadLatest(force: force);
       } catch (inner) {
-        print('❌ 모델 직접 다운로드 재시도 실패: $inner');
+        appLog('❌ 모델 직접 다운로드 재시도 실패: $inner');
         _scheduleRetry();
       }
     }
@@ -86,6 +84,6 @@ class ModelUpdateScheduler {
     _retryTimer = Timer(_retryDelay, () {
       _enqueueDownload();
     });
-    print('⏳ 모델 다운로드 재시도 예약: ${_retryDelay.inMinutes}분 후');
+    appLog('⏳ 모델 다운로드 재시도 예약: ${_retryDelay.inMinutes}분 후');
   }
 }

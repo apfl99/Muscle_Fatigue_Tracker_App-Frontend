@@ -16,8 +16,6 @@ import '../worker/worker_manager.dart';
 import '../model/personalization_manager.dart';
 import '../utils/user_identity.dart';
 
-void print(Object? message) => appLog(message);
-
 class SensorStreaming {
   // Raw 데이터 버퍼
   List<double> accelX = [];
@@ -97,23 +95,23 @@ class SensorStreaming {
       await stopSensor();
     }
     if (kDebugMode) {
-      print('\n🚀 센서 시작 시도');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      appLog('\n🚀 센서 시작 시도');
+      appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
     _measurementCount = 0;
     if (kDebugMode) {
-      print('📊 측정 횟수 초기화: $_measurementCount회');
+      appLog('📊 측정 횟수 초기화: $_measurementCount회');
     }
     _cachedUserEmbedding = null;
 
     try {
       if (kDebugMode) {
-        print('⚙️ 센서 설정:');
-        print('   - 총 측정 시간: ${SensorConfig.totalSeconds}초');
-        print('   - 윈도우 크기: ${SensorConfig.windowSeconds}초');
-        print('   - Hop 크기: ${SensorConfig.hopSeconds}초');
-        print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
-        print('   - 샘플링 레이트(목표): $targetRate Hz');
+        appLog('⚙️ 센서 설정:');
+        appLog('   - 총 측정 시간: ${SensorConfig.totalSeconds}초');
+        appLog('   - 윈도우 크기: ${SensorConfig.windowSeconds}초');
+        appLog('   - Hop 크기: ${SensorConfig.hopSeconds}초');
+        appLog('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
+        appLog('   - 샘플링 레이트(목표): $targetRate Hz');
       }
 
       _windowBuffer.clear();
@@ -175,37 +173,37 @@ class SensorStreaming {
             _windowBuffer.add(mag);
 
             if (kDebugMode && sensorEventCount <= 10) {
-              print(
+              appLog(
                   '📥 센서 이벤트 #$sensorEventCount: Raw=(${event.x.toStringAsFixed(2)}, ${event.y.toStringAsFixed(2)}, ${event.z.toStringAsFixed(2)}), '
                   'Filtered=${filtered.toStringAsFixed(4)}');
             }
 
             // 필터링된 데이터가 모두 0에 가까운지 확인
             if (kDebugMode && sensorEventCount % 50 == 0) {
-              print('🔍 필터링 상태 체크:');
-              print(
+              appLog('🔍 필터링 상태 체크:');
+              appLog(
                 '   - Raw magnitude: ${sqrt(event.x * event.x + event.y * event.y + event.z * event.z).toStringAsFixed(4)}',
               );
-              print('   - Filtered value: ${filtered.toStringAsFixed(4)}');
-              print('   - Filtered buffer length: ${_filteredBuffer.length}');
+              appLog('   - Filtered value: ${filtered.toStringAsFixed(4)}');
+              appLog('   - Filtered buffer length: ${_filteredBuffer.length}');
               if (_filteredBuffer.isNotEmpty) {
                 final startIndex = _filteredBuffer.length - 5;
                 final recentValues =
                     _filteredBuffer.sublist(startIndex < 0 ? 0 : startIndex);
-                print(
+                appLog(
                   '   - Recent filtered values: ${recentValues.map((v) => v.toStringAsFixed(4)).join(', ')}',
                 );
               }
             }
           } catch (e) {
             if (kDebugMode) {
-              print('❌ 센서 데이터 처리 오류: $e');
+              appLog('❌ 센서 데이터 처리 오류: $e');
             }
           }
         },
         onError: (error) {
           if (kDebugMode && _isCollecting && !_isDisposed) {
-            print('❌ 가속도계 에러: $error');
+            appLog('❌ 가속도계 에러: $error');
           }
         },
       );
@@ -226,22 +224,22 @@ class SensorStreaming {
         },
         onError: (error) {
           if (kDebugMode && _isCollecting && !_isDisposed) {
-            print('❌ 자이로스코프 에러: $error');
+            appLog('❌ 자이로스코프 에러: $error');
           }
         },
       );
 
       _startSlidingWindowAnalysis();
       if (kDebugMode) {
-        print('✅ 센서 측정 시작 성공');
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        appLog('✅ 센서 측정 시작 성공');
+        appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       }
       return true;
     } catch (e, st) {
       if (kDebugMode) {
-        print('❌ 센서 시작 실패: $e');
-        print('스택 트레이스: $st');
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        appLog('❌ 센서 시작 실패: $e');
+        appLog('스택 트레이스: $st');
+        appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       }
       return false;
     }
@@ -250,12 +248,12 @@ class SensorStreaming {
   // 슬라이딩 윈도우 분석
   void _startSlidingWindowAnalysis() {
     if (kDebugMode) {
-      print('📊 슬라이딩 윈도우 분석 시작');
-      print(
+      appLog('📊 슬라이딩 윈도우 분석 시작');
+      appLog(
         '   - 윈도우 크기: ${SensorConfig.windowSeconds}초, Hop 크기: ${SensorConfig.hopSeconds}초',
       );
-      print('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
-      print('   - 타이머 주기: ${(SensorConfig.hopSeconds * 1000).toInt()}ms');
+      appLog('   - 예상 윈도우 수: ${SensorConfig.expectedWindows}개');
+      appLog('   - 타이머 주기: ${(SensorConfig.hopSeconds * 1000).toInt()}ms');
     }
 
     _windowTimer = Timer.periodic(
@@ -267,7 +265,7 @@ class SensorStreaming {
         }
         final shouldDebug = kDebugMode && timer.tick % 10 == 0;
         if (shouldDebug) {
-          print('⏰ 슬라이딩 윈도우 타이머 실행 (${timer.tick}번째)');
+          appLog('⏰ 슬라이딩 윈도우 타이머 실행 (${timer.tick}번째)');
         }
 
         // 실제 샘플링 레이트가 0이면 기본값 사용
@@ -277,17 +275,17 @@ class SensorStreaming {
             SensorConfig.getWindowSamples(effectiveSamplingRate);
 
         if (shouldDebug) {
-          print(
+          appLog(
             '📊 윈도우 요구사항: $windowSamples개 샘플 (${effectiveSamplingRate.toStringAsFixed(1)} Hz)',
           );
-          print('📊 현재 버퍼: ${_filteredBuffer.length}개 샘플');
+          appLog('📊 현재 버퍼: ${_filteredBuffer.length}개 샘플');
         }
 
         // 윈도우 생성 조건 완화: 최소 50% 이상이면 생성
         final minRequiredSamples = (windowSamples * 0.5).round();
         if (_filteredBuffer.length < minRequiredSamples) {
           if (shouldDebug) {
-            print(
+            appLog(
               '⏳ 대기 중: ${_filteredBuffer.length}/$minRequiredSamples (최소 요구량)',
             );
           }
@@ -300,7 +298,7 @@ class SensorStreaming {
             : windowSamples;
 
         if (shouldDebug) {
-          print('📊 실제 사용 샘플: $actualSamples개');
+          appLog('📊 실제 사용 샘플: $actualSamples개');
         }
 
         final windowData = _filteredBuffer.sublist(0, actualSamples);
@@ -310,12 +308,12 @@ class SensorStreaming {
         _filteredBuffer.removeRange(0, actualHopSamples);
 
         if (shouldDebug) {
-          print('📊 Hop 제거: $actualHopSamples개 샘플');
+          appLog('📊 Hop 제거: $actualHopSamples개 샘플');
         }
 
         _windowCount++;
         if (shouldDebug) {
-          print(
+          appLog(
             '✅ 윈도우 추출 완료 (${windowData.length} samples) - 총 $_windowCount개 윈도우',
           );
         }
@@ -358,11 +356,11 @@ class SensorStreaming {
       return;
     }
     if (kDebugMode) {
-      print('\n🔬 데이터 분석 시작');
+      appLog('\n🔬 데이터 분석 시작');
     }
     if (segmentData.isEmpty) {
       if (kDebugMode) {
-        print('❌ 오류: 분석할 데이터 없음');
+        appLog('❌ 오류: 분석할 데이터 없음');
       }
       return;
     }
@@ -370,7 +368,7 @@ class SensorStreaming {
     try {
       final filteredData = segmentData;
       if (kDebugMode) {
-        print(
+        appLog(
           '✅ 데이터 검증 통과 (${filteredData.length} samples @ ${_currentSamplingRate.toStringAsFixed(1)} Hz)',
         );
       }
@@ -381,7 +379,7 @@ class SensorStreaming {
       final variance = _calculateVariance(filteredData, mean);
 
       if (kDebugMode) {
-        print(
+        appLog(
           '📊 필터링된 데이터 통계: RMS=${rms.toStringAsFixed(4)}, VAR=${variance.toStringAsFixed(4)}',
         );
       }
@@ -390,17 +388,17 @@ class SensorStreaming {
       List<double> analysisData = filteredData;
       if (rms < 0.001) {
         if (kDebugMode) {
-          print('⚠️ 필터링된 데이터가 너무 작음, 원시 magnitude 사용');
+          appLog('⚠️ 필터링된 데이터가 너무 작음, 원시 magnitude 사용');
         }
         // 윈도우 크기만큼 원시 magnitude 데이터 추출
         final windowSamples = segmentData.length;
         final startIndex = _windowBuffer.length - windowSamples;
 
         if (kDebugMode) {
-          print('🔍 원시 데이터 추출 디버그:');
-          print('   - windowSamples: $windowSamples');
-          print('   - _windowBuffer.length: ${_windowBuffer.length}');
-          print('   - startIndex: $startIndex');
+          appLog('🔍 원시 데이터 추출 디버그:');
+          appLog('   - windowSamples: $windowSamples');
+          appLog('   - _windowBuffer.length: ${_windowBuffer.length}');
+          appLog('   - startIndex: $startIndex');
         }
 
         if (startIndex >= 0 &&
@@ -412,19 +410,19 @@ class SensorStreaming {
             final rawMean = _calculateMean(analysisData);
             final rawRms = _calculateRMS(analysisData);
             if (kDebugMode) {
-              print(
+              appLog(
                 '📊 원시 magnitude 통계: RMS=${rawRms.toStringAsFixed(4)}, VAR=${_calculateVariance(analysisData, rawMean).toStringAsFixed(4)}',
               );
             }
           } catch (e) {
             if (kDebugMode) {
-              print('❌ 원시 데이터 추출 실패: $e, 필터링된 데이터 사용');
+              appLog('❌ 원시 데이터 추출 실패: $e, 필터링된 데이터 사용');
             }
             analysisData = filteredData;
           }
         } else {
           if (kDebugMode) {
-            print('❌ 원시 데이터 인덱스 오류, 필터링된 데이터 사용');
+            appLog('❌ 원시 데이터 인덱스 오류, 필터링된 데이터 사용');
           }
           analysisData = filteredData;
         }
@@ -434,7 +432,7 @@ class SensorStreaming {
       final effectiveSamplingRate =
           _currentSamplingRate > 0 ? _currentSamplingRate : 50.0;
       if (kDebugMode) {
-        print(
+        appLog(
           '📊 주파수 분석용 샘플링 레이트: ${effectiveSamplingRate.toStringAsFixed(1)} Hz',
         );
       }
@@ -483,12 +481,12 @@ class SensorStreaming {
 
       final fatigueLevel = FatigueCalculator.getFatigueLevel(fatigueScore);
       if (kDebugMode) {
-        print(
+        appLog(
           '💪 근육 컨디션 계산 완료 → 점수: ${fatigueScore.toStringAsFixed(2)} ($fatigueLevel)',
         );
 
         // 🔎 분석 결과 상세 로그 (정확도 확인용)
-        print('🔎 분석 결과 → '
+        appLog('🔎 분석 결과 → '
             'RMS=${fatigueFeatures.rms.toStringAsFixed(4)}, '
             'VAR=${fatigueFeatures.variance.toStringAsFixed(4)}, '
             'FREQ=${fatigueFeatures.peakFrequency.toStringAsFixed(2)} Hz');
@@ -682,7 +680,7 @@ class SensorStreaming {
       windowData['quality_flag'] = isHighQuality ? 1 : 0;
 
       if (!isHighQuality) {
-        print(
+        appLog(
           '⚠️ 품질 미달 윈도우 → 제외 (coverage=${coverage.toStringAsFixed(2)}, '
           'accel=$accelSampleCount, gyro=$gyroSampleCount)',
         );
@@ -724,10 +722,10 @@ class SensorStreaming {
         if (e2eScore != null) {
           fatigueScore = e2eScore;
         } else {
-          print('⚠️ E2E 추론 실패 → EMA fallback 유지');
+          appLog('⚠️ E2E 추론 실패 → EMA fallback 유지');
         }
       } else if (mode == model_config.MLMode.endToEnd && isLowMotion) {
-        print(
+        appLog(
           'ℹ️ 저활동 구간 감지 → EMA 결과 사용 (rms=${fatigueFeatures.rms.toStringAsFixed(3)}, '
           'freq=${fatigueFeatures.peakFrequency.toStringAsFixed(3)})',
         );
@@ -774,8 +772,8 @@ class SensorStreaming {
       };
     } catch (e, st) {
       if (kDebugMode) {
-        print('❌ 분석 중 오류: $e');
-        print(st);
+        appLog('❌ 분석 중 오류: $e');
+        appLog(st);
       }
     }
   }
@@ -859,22 +857,22 @@ class SensorStreaming {
     }
     _isCollecting = false;
     if (kDebugMode) {
-      print('\n🛑 센서 모션 기록 중지');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      appLog('\n🛑 센서 모션 기록 중지');
+      appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
 
     try {
       await _accelSubscription?.cancel();
     } catch (e) {
       if (kDebugMode) {
-        print('⚠️ 가속도계 구독 해제 오류: $e');
+        appLog('⚠️ 가속도계 구독 해제 오류: $e');
       }
     }
     try {
       await _gyroSubscription?.cancel();
     } catch (e) {
       if (kDebugMode) {
-        print('⚠️ 자이로스코프 구독 해제 오류: $e');
+        appLog('⚠️ 자이로스코프 구독 해제 오류: $e');
       }
     }
     _accelSubscription = null;
@@ -885,24 +883,24 @@ class SensorStreaming {
     _currentSamplingRate = 0.0;
 
     if (kDebugMode) {
-      print('📊 최종 통계:');
-      print('   - 총 수집된 샘플: ${accelX.length}개');
-      print('   - 윈도우 버퍼: ${_windowBuffer.length}개');
-      print('   - 필터링된 버퍼: ${_filteredBuffer.length}개');
-      print('   - 최종 샘플링 레이트: ${_currentSamplingRate.toStringAsFixed(1)} Hz');
+      appLog('📊 최종 통계:');
+      appLog('   - 총 수집된 샘플: ${accelX.length}개');
+      appLog('   - 윈도우 버퍼: ${_windowBuffer.length}개');
+      appLog('   - 필터링된 버퍼: ${_filteredBuffer.length}개');
+      appLog('   - 최종 샘플링 레이트: ${_currentSamplingRate.toStringAsFixed(1)} Hz');
     }
 
     // 측정 완료: 세션 데이터를 DB에 저장
     if (_currentSessionWindows.isNotEmpty) {
       if (kDebugMode) {
-        print('🎯 측정 세션 저장 시작...');
-        print('   - 총 윈도우 수: ${_currentSessionWindows.length}개');
+        appLog('🎯 측정 세션 저장 시작...');
+        appLog('   - 총 윈도우 수: ${_currentSessionWindows.length}개');
       }
 
       try {
         if (_excludeFromLogging) {
           if (kDebugMode) {
-            print('⛔️ 이번 세션은 로그/업로드에서 제외됩니다 (baseline 측정 등)');
+            appLog('⛔️ 이번 세션은 로그/업로드에서 제외됩니다 (baseline 측정 등)');
           }
           // 제외 플래그는 1회성으로 사용
           _excludeFromLogging = false;
@@ -942,8 +940,8 @@ class SensorStreaming {
               _prefetchedHybridResponse = aiResponse;
             } catch (e, stackTrace) {
               if (kDebugMode) {
-                print('⚠️ Hybrid 프리페치 대기 중 오류: $e');
-                print(stackTrace);
+                appLog('⚠️ Hybrid 프리페치 대기 중 오류: $e');
+                appLog(stackTrace);
               }
             } finally {
               onAiProcessingEnd?.call();
@@ -958,8 +956,8 @@ class SensorStreaming {
               _prefetchedHybridResponse = aiResponse;
             } catch (e, stackTrace) {
               if (kDebugMode) {
-                print('⚠️ Hybrid 원격 추론 실패: $e');
-                print(stackTrace);
+                appLog('⚠️ Hybrid 원격 추론 실패: $e');
+                appLog(stackTrace);
               }
             } finally {
               onAiProcessingEnd?.call();
@@ -989,7 +987,7 @@ class SensorStreaming {
             );
           } catch (e) {
             if (kDebugMode) {
-              print('⚠️ 모델 버전 업데이트 실패: $e');
+              appLog('⚠️ 모델 버전 업데이트 실패: $e');
             }
           }
         } else {
@@ -1004,9 +1002,9 @@ class SensorStreaming {
         if (isFirstMeasurement && !hasBaseline) {
           // 기준값 미설정 상태의 첫 측정은 기록/업로드 제외 (baseline 전용)
           if (kDebugMode) {
-            print('📊 첫 측정 + 기준값 미설정 → 기록/업로드 제외 (baseline 전용)');
-            print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
-            print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+            appLog('📊 첫 측정 + 기준값 미설정 → 기록/업로드 제외 (baseline 전용)');
+            appLog('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
+            appLog('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
           }
         } else {
           // 일반 측정은 기존대로 저장
@@ -1026,10 +1024,10 @@ class SensorStreaming {
             mode: currentMLMode.name,
           );
           if (kDebugMode) {
-            print('✅ 컨디션 윈도우 저장 완료 (ID: $sessionId)');
-            print('   - 평균 컨디션: ${avgFatigue.toStringAsFixed(2)}');
-            print('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
-            print('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
+            appLog('✅ 컨디션 윈도우 저장 완료 (ID: $sessionId)');
+            appLog('   - 평균 컨디션: ${avgFatigue.toStringAsFixed(2)}');
+            appLog('   - 평균 RMS: ${avgRms.toStringAsFixed(4)}');
+            appLog('   - 평균 Freq: ${avgFreq.toStringAsFixed(2)} Hz');
           }
 
           // Baseline 업데이트 (EMA 방식) - 세션당 1회만 수행
@@ -1038,14 +1036,14 @@ class SensorStreaming {
             await baselineManager.updateBaseline(avgRms, avgFreq);
             _baselineUpdatedThisStop = true;
             if (kDebugMode) {
-              print('✅ Baseline 업데이트 완료');
+              appLog('✅ Baseline 업데이트 완료');
             }
           }
 
           // User Embedding 계산 및 업데이트
           await DatabaseHelper.instance.calculateAndUpdateUserEmbedding();
           if (kDebugMode) {
-            print('✅ User Embedding 계산 및 저장 완료');
+            appLog('✅ User Embedding 계산 및 저장 완료');
           }
 
           // 현재 측정 데이터 업로드 작업 추가
@@ -1077,11 +1075,11 @@ class SensorStreaming {
               priority: 1,
             );
             if (kDebugMode) {
-              print('✅ 현재 측정 데이터 업로드 작업 큐에 추가 완료');
+              appLog('✅ 현재 측정 데이터 업로드 작업 큐에 추가 완료');
             }
           } catch (e) {
             if (kDebugMode) {
-              print('⚠️ upload_logs 작업 추가 실패: $e');
+              appLog('⚠️ upload_logs 작업 추가 실패: $e');
             }
           }
 
@@ -1114,17 +1112,17 @@ class SensorStreaming {
         // 측정 횟수 증가
         _measurementCount++;
         if (kDebugMode) {
-          print('📊 측정 완료: $_measurementCount회');
+          appLog('📊 측정 완료: $_measurementCount회');
         }
       } catch (e, stackTrace) {
         if (kDebugMode) {
-          print('❌ 측정 세션 저장 실패: $e');
-          print('스택 트레이스: $stackTrace');
+          appLog('❌ 측정 세션 저장 실패: $e');
+          appLog('스택 트레이스: $stackTrace');
         }
       }
     } else {
       if (kDebugMode) {
-        print('⚠️ 저장할 측정 데이터가 없습니다');
+        appLog('⚠️ 저장할 측정 데이터가 없습니다');
       }
       // 모든 윈도우가 품질 미달로 제외된 경우라도, 마지막 윈도우 기반의 참고 지표가 있으면 표시
       final last = _lastWindowResult;
@@ -1143,7 +1141,7 @@ class SensorStreaming {
     }
 
     if (kDebugMode) {
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      appLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
     // 다음 세션 대비 플래그 초기화
     _baselineUpdatedThisStop = false;
@@ -1166,9 +1164,9 @@ class SensorStreaming {
       }
     }).catchError((e, stackTrace) {
       if (kDebugMode) {
-        print('⚠️ Hybrid 프리페치 실패: $e');
+        appLog('⚠️ Hybrid 프리페치 실패: $e');
         if (stackTrace != null) {
-          print(stackTrace);
+          appLog(stackTrace);
         }
       }
     }).whenComplete(() {
@@ -1236,7 +1234,7 @@ class SensorStreaming {
       final value = entry.value;
       if (value is double && (!value.isFinite || value.isNaN)) {
         if (kDebugMode) {
-          print('⚠️ 비정상 피처 감지 → ${entry.key}=$value');
+          appLog('⚠️ 비정상 피처 감지 → ${entry.key}=$value');
         }
         return false;
       }
@@ -1280,6 +1278,7 @@ class SensorStreaming {
   }
 
   void dispose() {
+    unawaited(stopSensor());
     _isDisposed = true;
     _isCollecting = false;
     _accelSubscription?.cancel();
@@ -1288,6 +1287,10 @@ class SensorStreaming {
     _gyroSubscription = null;
     _windowTimer?.cancel();
     _windowTimer = null;
+    onAnalysisResult = null;
+    onAiProcessingStart = null;
+    onAiProcessingEnd = null;
+    MLManager.instance.dispose();
     clearData();
   }
 }

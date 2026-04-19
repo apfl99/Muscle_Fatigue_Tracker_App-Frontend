@@ -6,8 +6,6 @@ import 'database_helper.dart';
 import 'config.dart';
 import '../utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 class BaselineManager {
   static final BaselineManager instance = BaselineManager._init();
 
@@ -32,7 +30,7 @@ class BaselineManager {
   /// 초기화 및 DB에서 로드
   Future<void> initialize() async {
     try {
-      print('📊 Baseline 초기화...');
+      appLog('📊 Baseline 초기화...');
       final userState = await DatabaseHelper.instance.getUserState();
 
       if (userState != null) {
@@ -50,17 +48,17 @@ class BaselineManager {
         _alpha = 0.05;
         _beta = 0.05;
 
-        print('✅ User State 로드 완료:');
-        print('   - RMS Base: ${_currentRmsBase.toStringAsFixed(4)}');
-        print('   - Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz');
+        appLog('✅ User State 로드 완료:');
+        appLog('   - RMS Base: ${_currentRmsBase.toStringAsFixed(4)}');
+        appLog('   - Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz');
       } else {
-        print('⚠️ User State 레코드 없음, 기본값 사용');
+        appLog('⚠️ User State 레코드 없음, 기본값 사용');
       }
 
       // 측정 카운트 동기화
       await syncWithDatabase();
     } catch (e) {
-      print('❌ Baseline 초기화 오류: $e');
+      appLog('❌ Baseline 초기화 오류: $e');
     }
   }
 
@@ -101,9 +99,9 @@ class BaselineManager {
   /// 새로운 측정값으로 baseline 업데이트 (EMA 방식)
   Future<void> updateBaseline(double newRms, double newFreq) async {
     try {
-      print('\n📈 Baseline 업데이트 시도...');
-      print('   - 새 RMS: ${newRms.toStringAsFixed(4)}');
-      print('   - 새 Freq: ${newFreq.toStringAsFixed(2)} Hz');
+      appLog('\n📈 Baseline 업데이트 시도...');
+      appLog('   - 새 RMS: ${newRms.toStringAsFixed(4)}');
+      appLog('   - 새 Freq: ${newFreq.toStringAsFixed(2)} Hz');
 
       final oldRmsBase = _currentRmsBase;
       final oldFreqBase = _currentFreqBase;
@@ -113,7 +111,7 @@ class BaselineManager {
         _calibrationRms.add(newRms);
         _calibrationFreq.add(newFreq);
 
-        print(
+        appLog(
           '🎯 캘리브레이션 중... (${_calibrationRms.length}/${BaselineConstants.calibrationWindows})',
         );
 
@@ -125,9 +123,10 @@ class BaselineManager {
               _calibrationFreq.length;
           _isCalibrating = false;
 
-          print('✅ 캘리브레이션 완료!');
-          print('   - 초기 RMS Base: ${_currentRmsBase.toStringAsFixed(4)}');
-          print('   - 초기 Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz');
+          appLog('✅ 캘리브레이션 완료!');
+          appLog('   - 초기 RMS Base: ${_currentRmsBase.toStringAsFixed(4)}');
+          appLog(
+              '   - 초기 Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz');
         }
       } else {
         // EMA 업데이트
@@ -136,11 +135,11 @@ class BaselineManager {
         _currentFreqBase = BaselineConstants.alphaFreq * newFreq +
             (1 - BaselineConstants.alphaFreq) * _currentFreqBase;
 
-        print('✅ EMA 업데이트 완료:');
-        print(
+        appLog('✅ EMA 업데이트 완료:');
+        appLog(
           '   - 이전 RMS Base: ${oldRmsBase.toStringAsFixed(4)} → 새 RMS Base: ${_currentRmsBase.toStringAsFixed(4)}',
         );
-        print(
+        appLog(
           '   - 이전 Freq Base: ${oldFreqBase.toStringAsFixed(2)} Hz → 새 Freq Base: ${_currentFreqBase.toStringAsFixed(2)} Hz',
         );
       }
@@ -153,11 +152,11 @@ class BaselineManager {
         freqBase: _currentFreqBase,
       );
 
-      print('💾 User State 저장 완료');
-      print('   - 업데이트 횟수: $_updateCount회');
-      print('   - 현재 모드: ${getCurrentMLMode().displayName}');
+      appLog('💾 User State 저장 완료');
+      appLog('   - 업데이트 횟수: $_updateCount회');
+      appLog('   - 현재 모드: ${getCurrentMLMode().displayName}');
     } catch (e) {
-      print('❌ Baseline 업데이트 오류: $e');
+      appLog('❌ Baseline 업데이트 오류: $e');
     }
   }
 
@@ -179,16 +178,16 @@ class BaselineManager {
         freqBase: null,
       );
 
-      print('🗑️ Baseline 초기화 완료 (DB 기준값 제거)');
+      appLog('🗑️ Baseline 초기화 완료 (DB 기준값 제거)');
     } catch (e) {
-      print('❌ Baseline 초기화 오류: $e');
+      appLog('❌ Baseline 초기화 오류: $e');
     }
   }
 
   /// DB 기록과 카운트 동기화
   Future<void> syncWithDatabase() async {
     try {
-      print('\n🔄 DB와 Baseline 카운트 동기화 시도...');
+      appLog('\n🔄 DB와 Baseline 카운트 동기화 시도...');
 
       // 총 측정 로그 수 가져오기 (fatigue_dataset 집계)
       final logs = await DatabaseHelper.instance.getAllFatigueLogs();
@@ -200,12 +199,12 @@ class BaselineManager {
         (sum, log) => sum + (log['window_count'] as int? ?? 0),
       );
 
-      print('✅ 카운트 동기화 완료');
-      print('   - 총 측정 로그: $_totalMeasurementCount회');
-      print('   - 총 윈도우: $_totalWindowCount개');
-      print('   - 현재 ML 모드: ${getCurrentMLMode().displayName}');
+      appLog('✅ 카운트 동기화 완료');
+      appLog('   - 총 측정 로그: $_totalMeasurementCount회');
+      appLog('   - 총 윈도우: $_totalWindowCount개');
+      appLog('   - 현재 ML 모드: ${getCurrentMLMode().displayName}');
     } catch (e) {
-      print('❌ 카운트 동기화 실패: $e');
+      appLog('❌ 카운트 동기화 실패: $e');
     }
   }
 

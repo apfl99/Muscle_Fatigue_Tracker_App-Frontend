@@ -10,8 +10,6 @@ import 'server_config.dart';
 import 'http_worker.dart';
 import '../model/database_helper.dart';
 
-void print(Object? message) => appLog(message);
-
 class WorkerManager {
   final QueueManager _queueManager;
   final ServerConfig _serverConfig;
@@ -34,11 +32,11 @@ class WorkerManager {
   /// 워커 매니저 시작
   Future<void> start() async {
     if (_isRunning) {
-      print('⚠️ Worker Manager가 이미 실행 중입니다');
+      appLog('⚠️ Worker Manager가 이미 실행 중입니다');
       return;
     }
 
-    print('🚀 Worker Manager 시작');
+    appLog('🚀 Worker Manager 시작');
     _isRunning = true;
 
     // 기존 워커들 정리
@@ -72,14 +70,14 @@ class WorkerManager {
     // 정리 작업 시작
     _startCleanup();
 
-    print('✅ Worker Manager 시작 완료 (워커 ${_workers.length}개)');
+    appLog('✅ Worker Manager 시작 완료 (워커 ${_workers.length}개)');
   }
 
   /// 워커 매니저 중지
   Future<void> stop() async {
     if (!_isRunning) return;
 
-    print('🛑 Worker Manager 중지 중');
+    appLog('🛑 Worker Manager 중지 중');
     _isRunning = false;
 
     // 모니터링 중지
@@ -98,7 +96,7 @@ class WorkerManager {
     // 큐 상태 저장
     await _queueManager.saveQueueState();
 
-    print('✅ Worker Manager 중지 완료');
+    appLog('✅ Worker Manager 중지 완료');
   }
 
   /// 데이터셋 업로드 작업을 큐에 추가
@@ -113,12 +111,12 @@ class WorkerManager {
       userId: userId,
     );
     if (!hasPendingWindows) {
-      print('ℹ️ 이미 업로드된 세션이므로 큐에 추가하지 않습니다: $sessionId');
+      appLog('ℹ️ 이미 업로드된 세션이므로 큐에 추가하지 않습니다: $sessionId');
       return;
     }
 
     if (_queueManager.hasTask(sessionId: sessionId, userId: userId)) {
-      print('⚠️ 세션 $sessionId 작업이 이미 큐에 존재합니다 (중복 방지)');
+      appLog('⚠️ 세션 $sessionId 작업이 이미 큐에 존재합니다 (중복 방지)');
       return;
     }
 
@@ -138,11 +136,11 @@ class WorkerManager {
     );
 
     await _queueManager.addTask(task);
-    print('📝 데이터셋 업로드 작업 추가됨: $taskId');
+    appLog('📝 데이터셋 업로드 작업 추가됨: $taskId');
 
     // 큐 상태 확인
     final stats = _queueManager.getQueueStats();
-    print(
+    appLog(
       '📊 현재 큐 상태: Pending=${stats['pending']}, Processing=${stats['processing']}',
     );
   }
@@ -175,7 +173,7 @@ class WorkerManager {
         // 큐 상태 로깅 (대기 중이거나 처리 중인 작업이 있을 때만)
         final stats = _queueManager.getQueueStats();
         if (stats['pending'] > 0 || stats['processing'] > 0) {
-          print(
+          appLog(
             '📊 큐 상태: Pending=${stats['pending']}, Processing=${stats['processing']}, Completed=${stats['completed']}, Failed=${stats['failed']}',
           );
         }
@@ -183,10 +181,10 @@ class WorkerManager {
         // 서버 상태 확인 (문제가 있을 때만 로그)
         final isHealthy = await checkServerHealth();
         if (!isHealthy) {
-          print('⚠️ 서버 연결 상태 불량');
+          appLog('⚠️ 서버 연결 상태 불량');
         }
       } catch (e) {
-        print('❌ 모니터링 오류: $e');
+        appLog('❌ 모니터링 오류: $e');
       }
     });
   }
@@ -198,9 +196,9 @@ class WorkerManager {
         // 완료된 작업들 정리
         await _queueManager.cleanupCompletedTasks(keepCount: 50);
 
-        print('🧹 정기 정리 작업 완료');
+        appLog('🧹 정기 정리 작업 완료');
       } catch (e) {
-        print('❌ 정리 작업 오류: $e');
+        appLog('❌ 정리 작업 오류: $e');
       }
     });
   }
@@ -231,16 +229,16 @@ class WorkerManager {
   /// 큐 상태 출력
   void printStatus() {
     final status = getQueueStatus();
-    print('📊 Worker Manager 상태:');
-    print('   매니저 실행 중: ${status['manager_running']}');
-    print('   워커 수: ${status['worker_count']}');
+    appLog('📊 Worker Manager 상태:');
+    appLog('   매니저 실행 중: ${status['manager_running']}');
+    appLog('   워커 수: ${status['worker_count']}');
 
     final queueStats = status['queue_stats'] as Map<String, dynamic>;
-    print('   큐 상태:');
-    print('     대기 중: ${queueStats['pending']}');
-    print('     처리 중: ${queueStats['processing']}');
-    print('     완료: ${queueStats['completed']}');
-    print('     실패: ${queueStats['failed']}');
+    appLog('   큐 상태:');
+    appLog('     대기 중: ${queueStats['pending']}');
+    appLog('     처리 중: ${queueStats['processing']}');
+    appLog('     완료: ${queueStats['completed']}');
+    appLog('     실패: ${queueStats['failed']}');
   }
 }
 

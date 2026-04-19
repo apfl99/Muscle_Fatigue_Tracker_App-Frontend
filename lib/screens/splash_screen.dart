@@ -45,7 +45,7 @@ class SplashScreen extends StatefulWidget {
   const SplashScreen({
     super.key,
     this.minimumSplashDuration = const Duration(milliseconds: 2500),
-    this.adLoadTimeout = const Duration(seconds: 3),
+    this.adLoadTimeout = const Duration(seconds: 12),
     this.adDisplayTimeout = const Duration(seconds: 6),
     this.adCooldown = const Duration(minutes: 30),
     this.homeBuilder,
@@ -119,6 +119,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _waitUntilInterstitialReady({
     required SplashAdController adController,
   }) async {
+    await adController.initialize();
     if (adController.isInterstitialReady) {
       return;
     }

@@ -12,8 +12,6 @@ import '../utils/responsive.dart';
 import '../utils/user_identity.dart';
 import '../widgets/banner_ad_widget.dart';
 
-void print(Object? message) => appLog(message);
-
 /// 내 정보 페이지 (Baseline, Phase, 개인 통계)
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -77,7 +75,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         _supabaseUserId = supabaseUser?.id ?? '-';
       });
     } catch (e) {
-      print('⚠️ 사용자 식별자 로드 실패: $e');
+      appLog('⚠️ 사용자 식별자 로드 실패: $e');
     }
   }
 
@@ -86,12 +84,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       final baselineManager = BaselineManager.instance;
       final has = await DatabaseHelper.instance.hasBaseline();
 
-      print('📊 ProfilePage Baseline 로드:');
-      print(
+      appLog('📊 ProfilePage Baseline 로드:');
+      appLog(
         '   - totalMeasurementCount: ${baselineManager.totalMeasurementCount}',
       );
-      print('   - totalWindowCount: ${baselineManager.totalWindowCount}');
-      print('   - updateCount: ${baselineManager.updateCount}');
+      appLog('   - totalWindowCount: ${baselineManager.totalWindowCount}');
+      appLog('   - updateCount: ${baselineManager.updateCount}');
 
       if (mounted) {
         setState(() {
@@ -103,12 +101,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           _currentMLMode = baselineManager.getCurrentMLMode();
         });
 
-        print('📊 ProfilePage 상태 업데이트 완료:');
-        print('   - _totalMeasurementCount: $_totalMeasurementCount');
-        print('   - _totalWindowCount: $_totalWindowCount');
+        appLog('📊 ProfilePage 상태 업데이트 완료:');
+        appLog('   - _totalMeasurementCount: $_totalMeasurementCount');
+        appLog('   - _totalWindowCount: $_totalWindowCount');
       }
     } catch (e) {
-      print('❌ Baseline 로드 실패: $e');
+      appLog('❌ Baseline 로드 실패: $e');
     }
   }
 
@@ -121,7 +119,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      print('❌ 통계 로드 실패: $e');
+      appLog('❌ 통계 로드 실패: $e');
     }
   }
 

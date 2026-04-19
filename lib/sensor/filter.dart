@@ -2,8 +2,6 @@ import 'dart:math';
 import 'dart:io' show Platform;
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 /// ---------------------------------------------------------------------------
 /// Adaptive Motion Filter
 /// - iOS / Android 모두 사용 가능
@@ -68,22 +66,22 @@ class MotionFilterAdaptive {
     // 디버깅 정보 (처음 몇 번만)
     if (_debugCount < 5) {
       _debugCount++;
-      print('🔍 필터 디버그 #$_debugCount:');
-      print(
+      appLog('🔍 필터 디버그 #$_debugCount:');
+      appLog(
         '   - Raw: ax=${ax.toStringAsFixed(3)}, ay=${ay.toStringAsFixed(3)}, az=${az.toStringAsFixed(3)}',
       );
-      print(
+      appLog(
         '   - Gravity: gx=${gx.toStringAsFixed(3)}, gy=${gy.toStringAsFixed(3)}, gz=${gz.toStringAsFixed(3)}',
       );
-      print(
+      appLog(
         '   - Linear: lx=${lx.toStringAsFixed(3)}, ly=${ly.toStringAsFixed(3)}, lz=${lz.toStringAsFixed(3)}',
       );
-      print('   - Magnitude: ${mag.toStringAsFixed(3)}');
-      print(
+      appLog('   - Magnitude: ${mag.toStringAsFixed(3)}');
+      appLog(
         '   - HP: ${hp.toStringAsFixed(3)}, HP2: ${hp2.toStringAsFixed(3)}',
       );
-      print('   - BP (band-passed): ${bp.toStringAsFixed(3)}');
-      print(
+      appLog('   - BP (band-passed): ${bp.toStringAsFixed(3)}');
+      appLog(
         '   - Sampling: ${_fs.toStringAsFixed(1)}Hz, dt=${_dt.toStringAsFixed(4)}s',
       );
     }

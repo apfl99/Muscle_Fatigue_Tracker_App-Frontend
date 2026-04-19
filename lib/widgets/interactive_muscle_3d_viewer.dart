@@ -6,7 +6,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../features/heatmap/model/heatmap_models.dart';
@@ -88,6 +87,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     with WidgetsBindingObserver {
   static const String _localSegmentedModelSrc =
       'assets/models/human_muscular_system_segmented.glb';
+  static const String _localModelViewerJsSrc = 'assets/js/model-viewer.min.js';
   static const String _viewerId = 'musclecare-anatomy-viewer';
   static const String _defaultOrbit = '0deg 90deg 112%';
   static const Duration _modelLoadTimeout = Duration(milliseconds: 10000);
@@ -95,6 +95,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
       '네트워크 문제로 로딩이 지연되고 있습니다. 다시 시도해주세요';
   static const String _genericLoadFailureMessage =
       '3D 모델 로딩에 실패했습니다. 다시 시도해주세요';
+  static final Map<String, String> _offlineHtmlCache = <String, String>{};
 
   WebViewController? _webViewController;
   Timer? _runtimeSyncTimer;
@@ -127,6 +128,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     widget.controller?.bindCameraOrbit(_setCameraOrbitFromController);
     _applyInitialAutoFocus();
     _startModelLoadTimeoutWatchdog();
+    _setupOfflineWebView();
   }
 
   @override
@@ -141,8 +143,8 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
 
     final previousPayload = _buildRuntimePayloadJson(fromWidget: oldWidget);
     final nextPayload = _buildRuntimePayloadJson();
-    final entriesChanged =
-        _buildEntriesDigest(oldWidget.entries) != _buildEntriesDigest(widget.entries);
+    final entriesChanged = _buildEntriesDigest(oldWidget.entries) !=
+        _buildEntriesDigest(widget.entries);
     if (entriesChanged || previousPayload != nextPayload) {
       _queueRuntimeSync(forcedPayloadJson: nextPayload, force: true);
     }
@@ -154,6 +156,11 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     if (oldTarget != nextTarget ||
         oldWidget.enableAutoFocusIntro != widget.enableAutoFocusIntro) {
       _applyInitialAutoFocus();
+    }
+
+    if (oldWidget.interactive != widget.interactive ||
+        oldWidget.autoRotate != widget.autoRotate) {
+      unawaited(_loadOfflineViewerHtml(forceRebuild: true));
     }
   }
 
@@ -222,6 +229,7 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     setState(() {
       _cameraOrbit = orbit;
     });
+    unawaited(_syncCameraOrbitToViewer());
   }
 
   void _handleWebViewCreated(WebViewController controller) {
@@ -243,6 +251,164 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
     }
     _startModelLoadTimeoutWatchdog();
     _scheduleWebViewReadyProbe();
+  }
+
+  Future<void> _setupOfflineWebView() async {
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
+      ..addJavaScriptChannel(
+        'ModelReady',
+        onMessageReceived: (message) =>
+            _handleModelReadyMessage(message.message),
+      )
+      ..addJavaScriptChannel(
+        'TapChannel',
+        onMessageReceived: (message) => _handleTapMessage(message.message),
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            return _isOfflineSafeRequest(request.url)
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
+        ),
+      );
+    _handleWebViewCreated(controller);
+    if (!mounted) {
+      return;
+    }
+    await _loadOfflineViewerHtml(forceRebuild: true);
+  }
+
+  bool _isOfflineSafeRequest(String url) {
+    final normalized = url.trim().toLowerCase();
+    if (normalized.isEmpty ||
+        normalized == 'about:blank' ||
+        normalized.startsWith('data:') ||
+        normalized.startsWith('blob:') ||
+        normalized.startsWith('javascript:') ||
+        normalized.startsWith('file:') ||
+        normalized.startsWith('flutter-assets:')) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _loadOfflineViewerHtml({bool forceRebuild = false}) async {
+    final controller = _webViewController;
+    if (controller == null || !mounted) {
+      return;
+    }
+    final cacheKey = _activeModelSrc;
+    final cachedHtml = !forceRebuild ? _offlineHtmlCache[cacheKey] : null;
+    if (cachedHtml != null) {
+      await controller.loadHtmlString(cachedHtml);
+      return;
+    }
+    try {
+      final html = _buildOfflineViewerHtml(
+        modelAssetSrc: 'flutter-assets/$_activeModelSrc',
+      );
+      _offlineHtmlCache[cacheKey] = html;
+      if (!mounted) {
+        return;
+      }
+      await controller.loadHtmlString(html);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _setBlockingErrorMessage(_genericLoadFailureMessage);
+    } finally {}
+  }
+
+  String _buildOfflineViewerHtml({
+    required String modelAssetSrc,
+  }) {
+    const htmlEscape = HtmlEscape(HtmlEscapeMode.element);
+    final escapedId = htmlEscape.convert(_viewerId);
+    final escapedModelAssetSrc = htmlEscape.convert(modelAssetSrc);
+    final escapedCameraOrbit = htmlEscape.convert(_cameraOrbit);
+    final escapedRotation =
+        htmlEscape.convert(widget.autoRotate ? '20deg' : '0deg');
+    final escapedDisableTap = widget.interactive ? '' : 'disable-tap';
+    const escapedDisableZoom = 'disable-zoom';
+    const escapedDisablePan = 'disable-pan';
+    final escapedTouchAction = widget.interactive ? 'none' : 'auto';
+    final escapedAutoRotate = widget.interactive && widget.autoRotate
+        ? 'auto-rotate auto-rotate-delay="1400"'
+        : '';
+    final escapedCss = _buildViewerCss();
+    final escapedRuntimeJs = _buildViewerJs();
+    return '''
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: data: flutter-assets: file:; style-src 'unsafe-inline'; img-src data: blob: flutter-assets: file:; media-src data: blob: flutter-assets: file:; connect-src blob: data: flutter-assets: file:; worker-src blob: data:;">
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      touch-action: $escapedTouchAction;
+    }
+    $escapedCss
+  </style>
+  <script type="module" src="flutter-assets/$_localModelViewerJsSrc"></script>
+</head>
+<body>
+  <model-viewer
+    id="$escapedId"
+    src="$escapedModelAssetSrc"
+    background-color="transparent"
+    camera-controls
+    loading="eager"
+    reveal="auto"
+    interaction-prompt="none"
+    camera-orbit="$escapedCameraOrbit"
+    camera-target="0m 0.9m 0m"
+    field-of-view="28deg"
+    min-camera-orbit="-360deg 55deg 102%"
+    max-camera-orbit="360deg 125deg 132%"
+    rotation-per-second="$escapedRotation"
+    interpolation-decay="96"
+    exposure="1.2"
+    shadow-intensity="4.4"
+    shadow-softness="0.8"
+    $escapedDisableTap
+    $escapedDisableZoom
+    $escapedDisablePan
+    $escapedAutoRotate>
+  </model-viewer>
+  <script>
+$escapedRuntimeJs
+  </script>
+</body>
+</html>
+''';
+  }
+
+  Future<void> _syncCameraOrbitToViewer() async {
+    if (!_modelReady || _webViewController == null) {
+      return;
+    }
+    final escapedOrbit = jsonEncode(_cameraOrbit);
+    try {
+      await _webViewController!.runJavaScript(
+        '''(() => {
+  const viewer = document.querySelector('#$_viewerId') || document.querySelector('model-viewer');
+  if (!viewer) return;
+  viewer.cameraOrbit = JSON.parse($escapedOrbit);
+  viewer.setAttribute('camera-orbit', JSON.parse($escapedOrbit));
+})();''',
+      );
+    } catch (_) {}
   }
 
   void _applyInitialAutoFocus() {
@@ -481,6 +647,11 @@ return 'present';
     _startModelLoadTimeoutWatchdog(
       preserveTimeoutWindow: preserveTimeoutWindow,
     );
+    unawaited(
+      _loadOfflineViewerHtml(
+        forceRebuild: resetAttempt || advanceSource,
+      ),
+    );
   }
 
   String _buildRuntimePayloadJson({InteractiveMuscle3DViewer? fromWidget}) {
@@ -547,12 +718,10 @@ return 'present';
   }
 
   String _buildEntriesDigest(List<MuscleHeatmapEntry> entries) {
-    final signatures = entries
-        .map((entry) {
-          final code = _canonicalizeMuscleCode(entry.muscleCode) ?? '';
-          return '$code:${entry.status.rawValue}:${entry.fatigueScore.toStringAsFixed(4)}';
-        })
-        .toList()
+    final signatures = entries.map((entry) {
+      final code = _canonicalizeMuscleCode(entry.muscleCode) ?? '';
+      return '$code:${entry.status.rawValue}:${entry.fatigueScore.toStringAsFixed(4)}';
+    }).toList()
       ..sort();
     return signatures.join('|');
   }
@@ -595,6 +764,7 @@ return 'present';
         _blockingErrorMessage = null;
       });
       _queueRuntimeSync(force: true);
+      unawaited(_syncCameraOrbitToViewer());
       return;
     }
     if (message.startsWith('retry:')) {
@@ -655,57 +825,17 @@ return 'present';
   }
 
   Widget _buildLiveViewer(BuildContext context) {
-    final modelViewer = ModelViewer(
-      key: ValueKey(
-        'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
-      ),
-      src: _activeModelSrc,
-      id: _viewerId,
-      backgroundColor: Colors.transparent,
-      cameraControls: widget.interactive,
-      disablePan: true,
-      disableZoom: true,
-      disableTap: !widget.interactive,
-      touchAction: TouchAction.none,
-      autoRotate: widget.interactive ? widget.autoRotate : false,
-      autoRotateDelay: 1400,
-      rotationPerSecond: '20deg',
-      cameraOrbit: _cameraOrbit,
-      cameraTarget: '0m 0.9m 0m',
-      fieldOfView: '28deg',
-      minCameraOrbit: '-360deg 55deg 102%',
-      maxCameraOrbit: '360deg 125deg 132%',
-      interpolationDecay: 96,
-      environmentImage: 'neutral',
-      exposure: 1.2,
-      shadowIntensity: 4.4,
-      shadowSoftness: 0.8,
-      loading: Loading.eager,
-      reveal: Reveal.auto,
-      interactionPrompt: InteractionPrompt.none,
-      debugLogging: false,
-      relatedCss: _buildViewerCss(),
-      relatedJs: _buildViewerJs(),
-      javascriptChannels: {
-        JavascriptChannel(
-          'ModelReady',
-          onMessageReceived: (message) =>
-              _handleModelReadyMessage(message.message),
-        ),
-        JavascriptChannel(
-          'TapChannel',
-          onMessageReceived: (message) => _handleTapMessage(message.message),
-        ),
-      },
-      onWebViewCreated: (controller) {
-        _handleWebViewCreated(controller);
-      },
-    );
-
+    final controller = _webViewController;
     return Stack(
       fit: StackFit.expand,
       children: [
-        modelViewer,
+        if (controller != null)
+          WebViewWidget(
+            key: ValueKey(
+              'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
+            ),
+            controller: controller,
+          ),
         if (!_modelReady && _blockingErrorMessage == null)
           _buildLoadingOverlay(context),
         if (_blockingErrorMessage != null) _buildLoadFailureOverlay(context),
@@ -728,7 +858,8 @@ return 'present';
                 decoration: BoxDecoration(
                   color: AppTheme.surface1.withValues(alpha: 0.86),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -767,8 +898,7 @@ return 'present';
                       OutlinedButton.icon(
                         onPressed: () {
                           _retryModelLoad(
-                            advanceSource:
-                                _modelSourceIndex <
+                            advanceSource: _modelSourceIndex <
                                 _modelSourceCandidates.length - 1,
                           );
                         },
@@ -803,7 +933,8 @@ return 'present';
                 decoration: BoxDecoration(
                   color: AppTheme.surface1.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.12)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -1128,7 +1259,7 @@ return 'present';
           viewer.setAttribute('shadow-intensity', '4.4');
           viewer.setAttribute('shadow-softness', '0.8');
           viewer.setAttribute('exposure', '1.2');
-          viewer.setAttribute('environment-image', 'neutral');
+          viewer.removeAttribute('environment-image');
         };
 
         const colors = {

@@ -6,8 +6,6 @@ import 'model_downloader.dart';
 import 'personal_trainer.dart';
 import 'personal_weights.dart';
 
-void print(Object? message) => appLog(message);
-
 class PersonalizationManager {
   PersonalizationManager._();
 
@@ -32,30 +30,30 @@ class PersonalizationManager {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    print('🤖 PersonalizationManager 초기화 시작');
+    appLog('🤖 PersonalizationManager 초기화 시작');
     try {
       await ModelDownloader.instance.downloadLatest();
     } catch (error, stackTrace) {
-      print('⚠️ Personalization 모델 다운로드 건너뜀: $error');
-      print(stackTrace);
+      appLog('⚠️ Personalization 모델 다운로드 건너뜀: $error');
+      appLog(stackTrace);
     }
     _cachedWeights = await PersonalWeightsStorage.load();
     _lastTrainingTime = _cachedWeights?.lastUpdate;
     _initialized = true;
-    print('✅ PersonalizationManager 초기화 완료');
+    appLog('✅ PersonalizationManager 초기화 완료');
   }
 
   Future<void> ensurePersonalization({bool force = false}) async {
     final count = await DatabaseHelper.instance.getValidWindowCount();
-    print('📊 개인화 데이터 개수: $count');
+    appLog('📊 개인화 데이터 개수: $count');
 
     if (count < _activationThreshold) {
-      print(
+      appLog(
         'ℹ️ 개인화 활성화 조건 미충족 '
         '($count/$_activationThreshold) → global 모델 유지',
       );
       if (_cachedWeights != null) {
-        print('ℹ️ 개인화 weight 비활성화 (데이터 부족)');
+        appLog('ℹ️ 개인화 weight 비활성화 (데이터 부족)');
       }
       _cachedWeights = null;
       return;
@@ -65,7 +63,7 @@ class PersonalizationManager {
     if (!force &&
         _lastTrainingTime != null &&
         now.difference(_lastTrainingTime!) < _minTrainingInterval) {
-      print('⏳ 최근 학습됨 → 다음 학습까지 대기 (${_lastTrainingTime!.toLocal()})');
+      appLog('⏳ 최근 학습됨 → 다음 학습까지 대기 (${_lastTrainingTime!.toLocal()})');
       return;
     }
 
@@ -74,7 +72,7 @@ class PersonalizationManager {
       limit: max(count, 500),
     );
     if (windows.isEmpty) {
-      print('⚠️ 학습할 윈도우 데이터가 없습니다');
+      appLog('⚠️ 학습할 윈도우 데이터가 없습니다');
       return;
     }
 
@@ -86,7 +84,7 @@ class PersonalizationManager {
     _cachedWeights = weights;
     _lastTrainingTime = weights.lastUpdate;
 
-    print(
+    appLog(
       '✅ 개인화 weight 업데이트 완료 '
       '(데이터 $count개, lastUpdate=${weights.lastUpdate.toLocal()})',
     );
@@ -113,7 +111,7 @@ class PersonalizationManager {
     final biasOutOfRange =
         bias == null || bias.isNaN || bias < 0.9 || bias > 2.6;
     if (hasOutlierWeight || biasOutOfRange) {
-      print(
+      appLog(
         '⚠️ 개인화 weight가 허용 범위를 벗어났습니다. '
         '(outlierWeight=$hasOutlierWeight, bias=$bias) → fallback 사용',
       );
@@ -133,7 +131,7 @@ class PersonalizationManager {
     );
 
     if (!identical(prediction, cappedPrediction)) {
-      print(
+      appLog(
         'ℹ️ 개인화 prediction 조정: raw=${prediction.toStringAsFixed(3)} '
         '→ capped=${cappedPrediction.toStringAsFixed(3)} '
         '(fallback=${fallback.toStringAsFixed(3)})',
@@ -143,7 +141,7 @@ class PersonalizationManager {
     final blended =
         fallback * (1.0 - _blendFactor) + cappedPrediction * _blendFactor;
     final double clamped = blended.clamp(1.0, 3.0).toDouble();
-    print(
+    appLog(
       '🎯 개인화 적용: base=${fallback.toStringAsFixed(3)} '
       '→ personal=${clamped.toStringAsFixed(3)} '
       '(prediction=${prediction.toStringAsFixed(3)})',

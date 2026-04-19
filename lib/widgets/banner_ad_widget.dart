@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-import '../services/supabase_runtime_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/ad_manager.dart';
 
@@ -39,7 +38,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
   static DateTime? _lastNetworkBannerErrorAt;
   static DateTime? _bannerRetryCooldownUntil;
   int _retryCount = 0;
-  static const int _maxRetryCount = 1;
+  static const int _maxRetryCount = 8;
 
   @override
   void initState() {
@@ -85,10 +84,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
     if (!AdManager.instance.isSupportedPlatform) {
       return;
     }
-    if (SupabaseRuntimeState.isTemporarilySuspended) {
-      return;
-    }
-
     final loadToken = ++_loadToken;
     await AdManager.instance.initialize();
     if (!mounted || loadToken != _loadToken) {
@@ -128,12 +123,14 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
             _retryTimer = Timer(_retryDelay, () {
               unawaited(_loadBannerAd());
             });
-            final nextSeconds = (_retryDelay.inSeconds * 2).clamp(8, 120);
+            final nextSeconds = (_retryDelay.inSeconds * 2).clamp(4, 45);
             _retryDelay = Duration(seconds: nextSeconds.toInt());
           } else {
             _bannerRetryCooldownUntil = DateTime.now().add(
-              const Duration(minutes: 10),
+              const Duration(minutes: 1),
             );
+            _retryCount = 0;
+            _retryDelay = const Duration(seconds: 4);
           }
         },
       ),
@@ -147,13 +144,16 @@ class _BannerAdWidgetState extends State<BannerAdWidget>
   Widget build(BuildContext context) {
     if (_isLoaded && _bannerAd != null) {
       final ad = _bannerAd!;
+      final adWidth = ad.size.width.toDouble();
+      final adHeight = ad.size.height.toDouble();
       return Container(
         alignment: Alignment.center,
-        padding: widget.padding,
+        width: adWidth,
+        height: adHeight,
         color: widget.backgroundColor,
         child: SizedBox(
-          width: ad.size.width.toDouble(),
-          height: ad.size.height.toDouble(),
+          width: adWidth,
+          height: adHeight,
           child: AdWidget(ad: ad),
         ),
       );

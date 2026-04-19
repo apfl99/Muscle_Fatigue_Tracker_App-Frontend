@@ -5,8 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
-void print(Object? message) => appLog(message);
-
 class UserIdentity {
   UserIdentity._();
 
@@ -63,7 +61,7 @@ class UserIdentity {
         }
       }
     } catch (e) {
-      print('⚠️ 디바이스 ID 조회 실패: $e');
+      appLog('⚠️ 디바이스 ID 조회 실패: $e');
     }
     final uuid = const Uuid().v4().replaceAll('-', '');
     return 'uuid_$uuid';

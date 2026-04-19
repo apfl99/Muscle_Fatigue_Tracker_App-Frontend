@@ -6,8 +6,6 @@ import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 import '../model/database_helper.dart';
 import 'measurement_task.dart';
 
-void print(Object? message) => appLog(message);
-
 class DataConverter {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
@@ -51,7 +49,7 @@ class DataConverter {
 
       return sessions;
     } catch (e) {
-      print('❌ 동기화되지 않은 fatigue_dataset 조회 실패: $e');
+      appLog('❌ 동기화되지 않은 fatigue_dataset 조회 실패: $e');
       return [];
     }
   }
@@ -75,7 +73,7 @@ class DataConverter {
         'last_sync': userState['last_sync'],
       };
     } catch (e) {
-      print('❌ 사용자 상태 조회 실패: $e');
+      appLog('❌ 사용자 상태 조회 실패: $e');
       return null;
     }
   }
@@ -114,7 +112,7 @@ class DataConverter {
 
       return tasks;
     } catch (e) {
-      print('❌ 측정 작업 변환 실패: $e');
+      appLog('❌ 측정 작업 변환 실패: $e');
       return [];
     }
   }
@@ -146,7 +144,7 @@ class DataConverter {
         priority: priority,
       );
     } catch (e) {
-      print('❌ 사용자 상태 작업 변환 실패: $e');
+      appLog('❌ 사용자 상태 작업 변환 실패: $e');
       return null;
     }
   }
@@ -186,7 +184,7 @@ class DataConverter {
 
       return batchTasks;
     } catch (e) {
-      print('❌ 배치 작업 변환 실패: $e');
+      appLog('❌ 배치 작업 변환 실패: $e');
       return [];
     }
   }
@@ -197,9 +195,9 @@ class DataConverter {
       for (final sessionId in sessionIds) {
         await _dbHelper.markFatigueLogAsSynced(sessionId);
       }
-      print('✅ 동기화 완료 처리: ${sessionIds.length}개');
+      appLog('✅ 동기화 완료 처리: ${sessionIds.length}개');
     } catch (e) {
-      print('❌ 동기화 완료 처리 실패: $e');
+      appLog('❌ 동기화 완료 처리 실패: $e');
     }
   }
 
@@ -237,7 +235,7 @@ class DataConverter {
 
       return {'total': 0, 'unsynced': 0, 'synced': 0};
     } catch (e) {
-      print('❌ 동기화 통계 조회 실패: $e');
+      appLog('❌ 동기화 통계 조회 실패: $e');
       return {'total': 0, 'unsynced': 0, 'synced': 0};
     }
   }

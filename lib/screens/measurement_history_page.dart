@@ -872,12 +872,11 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
 
   String _manualSubtitle(WorkoutLogRecord log) {
     if (log.exerciseType == ExerciseType.cardio) {
-      final duration =
-          log.durationMinutes == null
-              ? '-'
-              : 'history.unit.minute'.tr(
-                  namedArgs: {'value': '${log.durationMinutes}'},
-                );
+      final duration = log.durationMinutes == null
+          ? '-'
+          : 'history.unit.minute'.tr(
+              namedArgs: {'value': '${log.durationMinutes}'},
+            );
       final distance = log.distanceKm == null
           ? ''
           : ' · ${log.distanceKm!.toStringAsFixed(1)}km';
@@ -926,10 +925,9 @@ class _MeasurementHistoryPageState extends State<MeasurementHistoryPage>
   }
 
   String _filterSummary() {
-    final typeLabel =
-        _timelineFilter == _TimelineFilter.manual
-            ? 'history.timelineType.manual'.tr()
-            : 'history.timelineType.analysis'.tr();
+    final typeLabel = _timelineFilter == _TimelineFilter.manual
+        ? 'history.timelineType.manual'.tr()
+        : 'history.timelineType.analysis'.tr();
     if (_dashboardMode == _DashboardMode.trend) {
       if (_trendRangeDays == null) {
         return 'history.filter.trendAll'.tr(args: [typeLabel]);

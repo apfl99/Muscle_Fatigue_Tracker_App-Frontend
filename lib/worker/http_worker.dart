@@ -12,8 +12,6 @@ import 'server_config.dart';
 import '../model/database_helper.dart';
 import '../model/model_downloader.dart';
 
-void print(Object? message) => appLog(message);
-
 class HttpWorker {
   final QueueManager _queueManager;
   final ServerConfig _serverConfig;
@@ -31,7 +29,7 @@ class HttpWorker {
     }
     _isRunning = true;
     _stoppedCompleter = Completer<void>();
-    print('🚀 HTTP Worker $_workerId 시작');
+    appLog('🚀 HTTP Worker $_workerId 시작');
 
     while (_isRunning) {
       try {
@@ -44,16 +42,16 @@ class HttpWorker {
           continue;
         }
 
-        print('🔧 Worker $_workerId 작업 처리 시작: ${task.taskId}');
+        appLog('🔧 Worker $_workerId 작업 처리 시작: ${task.taskId}');
         // 작업 처리
         await _processTask(task);
       } catch (e) {
-        print('❌ Worker $_workerId 오류: $e');
+        appLog('❌ Worker $_workerId 오류: $e');
         await Future.delayed(const Duration(seconds: 5));
       }
     }
 
-    print('🛑 HTTP Worker $_workerId 종료');
+    appLog('🛑 HTTP Worker $_workerId 종료');
     if (!(_stoppedCompleter?.isCompleted ?? true)) {
       _stoppedCompleter?.complete();
     }
@@ -65,7 +63,7 @@ class HttpWorker {
       return;
     }
     _isRunning = false;
-    print('⏹️ HTTP Worker $_workerId 중지 요청');
+    appLog('⏹️ HTTP Worker $_workerId 중지 요청');
     final completer = _stoppedCompleter;
     if (completer != null && !completer.isCompleted) {
       await completer.future.timeout(
@@ -77,7 +75,7 @@ class HttpWorker {
 
   /// 작업 처리
   Future<void> _processTask(MeasurementTask task) async {
-    print('🔧 작업 처리 시작: ${task.taskId}');
+    appLog('🔧 작업 처리 시작: ${task.taskId}');
 
     try {
       // 작업 타입에 따른 처리
@@ -98,7 +96,7 @@ class HttpWorker {
       }
     } catch (e) {
       final errorMessage = e.toString();
-      print('❌ 작업 처리 실패: ${task.taskId} - $errorMessage');
+      appLog('❌ 작업 처리 실패: ${task.taskId} - $errorMessage');
       await _queueManager.failTask(task.taskId, errorMessage);
     }
   }
@@ -139,7 +137,7 @@ class HttpWorker {
     }
 
     if (windows.isEmpty) {
-      print('ℹ️ 이미 업로드된 세션이거나 전송할 윈도우가 없습니다: $sessionId');
+      appLog('ℹ️ 이미 업로드된 세션이거나 전송할 윈도우가 없습니다: $sessionId');
       await _queueManager.completeTask(
         task.taskId,
         result: {
@@ -284,7 +282,7 @@ class HttpWorker {
   ) async {
     try {
       final url = Uri.parse(_serverConfig.uploadDatasetUrl);
-      print('🌐 서버 전송 URL: $url');
+      appLog('🌐 서버 전송 URL: $url');
 
       final response = await http
           .post(
@@ -296,8 +294,8 @@ class HttpWorker {
           )
           .timeout(Duration(seconds: _serverConfig.timeoutSeconds));
 
-      print('📡 서버 응답: ${response.statusCode}');
-      print('📄 응답 내용: ${response.body}');
+      appLog('📡 서버 응답: ${response.statusCode}');
+      appLog('📄 응답 내용: ${response.body}');
 
       if (response.statusCode == 200) {
         try {
@@ -308,7 +306,7 @@ class HttpWorker {
             'data': responseData,
           };
         } catch (e) {
-          print('❌ JSON 파싱 에러: $e');
+          appLog('❌ JSON 파싱 에러: $e');
           return {
             'success': false,
             'error': 'JSON 파싱 실패: ${e.toString()}',
@@ -321,7 +319,7 @@ class HttpWorker {
         };
       }
     } catch (e) {
-      print('❌ 네트워크 에러: $e');
+      appLog('❌ 네트워크 에러: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -331,7 +329,7 @@ class HttpWorker {
 
   /// 사용자 상태 업로드 처리
   Future<void> _processUploadState(MeasurementTask task) async {
-    print('📤 사용자 상태 업로드 처리 시작: ${task.taskId}');
+    appLog('📤 사용자 상태 업로드 처리 시작: ${task.taskId}');
 
     try {
       // SQLite에서 사용자 상태 조회
@@ -367,12 +365,12 @@ class HttpWorker {
         );
 
         await _queueManager.completeTask(task.taskId, result: result);
-        print('✅ 사용자 상태 업로드 완료: ${task.taskId}');
+        appLog('✅ 사용자 상태 업로드 완료: ${task.taskId}');
       } else {
         throw Exception(result['error'] ?? '업로드 실패');
       }
     } catch (e) {
-      print('❌ 사용자 상태 업로드 실패: $e');
+      appLog('❌ 사용자 상태 업로드 실패: $e');
 
       // 실패 이력 기록
       await DatabaseHelper.instance.insertSyncHistory(
@@ -391,7 +389,7 @@ class HttpWorker {
   ) async {
     try {
       final url = Uri.parse(_serverConfig.getApiUrl('/upload_state'));
-      print('🌐 사용자 상태 전송 URL: $url');
+      appLog('🌐 사용자 상태 전송 URL: $url');
 
       final response = await http
           .post(
@@ -403,8 +401,8 @@ class HttpWorker {
           )
           .timeout(Duration(seconds: _serverConfig.timeoutSeconds));
 
-      print('📡 서버 응답: ${response.statusCode}');
-      print('📄 응답 내용: ${response.body}');
+      appLog('📡 서버 응답: ${response.statusCode}');
+      appLog('📄 응답 내용: ${response.body}');
 
       if (response.statusCode == 200) {
         try {
@@ -415,7 +413,7 @@ class HttpWorker {
             'data': responseData,
           };
         } catch (e) {
-          print('❌ JSON 파싱 에러: $e');
+          appLog('❌ JSON 파싱 에러: $e');
           return {
             'success': false,
             'error': 'JSON 파싱 실패: ${e.toString()}',
@@ -428,7 +426,7 @@ class HttpWorker {
         };
       }
     } catch (e) {
-      print('❌ 네트워크 에러: $e');
+      appLog('❌ 네트워크 에러: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -437,7 +435,7 @@ class HttpWorker {
   }
 
   Future<void> _processModelDownload(MeasurementTask task) async {
-    print('🧠 모델 다운로드 작업 처리 시작: ${task.taskId}');
+    appLog('🧠 모델 다운로드 작업 처리 시작: ${task.taskId}');
     final force = task.data['force'] == true;
     final version = (task.data['version'] as num?)?.toInt();
 
@@ -449,7 +447,7 @@ class HttpWorker {
         task.taskId,
         result: {'success': true},
       );
-      print('✅ 모델 다운로드 작업 완료: ${task.taskId}');
+      appLog('✅ 모델 다운로드 작업 완료: ${task.taskId}');
     } on ModelDownloadException catch (error) {
       if (!error.retryable) {
         await _queueManager.completeTask(
@@ -460,16 +458,16 @@ class HttpWorker {
             'reason': error.message,
           },
         );
-        print(
+        appLog(
           '⚠️ 모델 다운로드 비재시도 종료: ${task.taskId} '
           '(reason=${error.message})',
         );
         return;
       }
-      print('❌ 모델 다운로드 작업 실패: ${task.taskId} - $error');
+      appLog('❌ 모델 다운로드 작업 실패: ${task.taskId} - $error');
       await _queueManager.failTask(task.taskId, error.toString());
     } catch (e) {
-      print('❌ 모델 다운로드 작업 실패: ${task.taskId} - $e');
+      appLog('❌ 모델 다운로드 작업 실패: ${task.taskId} - $e');
       await _queueManager.failTask(task.taskId, e.toString());
     }
   }
@@ -485,9 +483,9 @@ class HttpWorker {
         [sessionId],
         userId: userId,
       );
-      print('✅ 세션 데이터 synced 상태로 업데이트 완료: $sessionId');
+      appLog('✅ 세션 데이터 synced 상태로 업데이트 완료: $sessionId');
     } catch (e) {
-      print('⚠️ synced 상태 업데이트 실패: $e');
+      appLog('⚠️ synced 상태 업데이트 실패: $e');
     }
   }
 
@@ -508,7 +506,7 @@ class HttpWorker {
       return false;
     } catch (e) {
       if (_serverConfig.enableLogging) {
-        print('❌ 서버 연결 확인 실패: $e');
+        appLog('❌ 서버 연결 확인 실패: $e');
       }
       return false;
     }
