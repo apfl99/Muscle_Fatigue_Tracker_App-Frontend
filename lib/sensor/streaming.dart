@@ -64,6 +64,8 @@ class SensorStreaming {
   HybridFatigueResponse? _prefetchedHybridResponse;
   Future<HybridFatigueResponse?>? _inFlightHybridRequest;
   bool _isHybridPrefetching = false;
+  bool _isCollecting = false;
+  bool _isDisposed = false;
 
   static const int _hybridPrefetchWindowThreshold = 4;
 
@@ -88,6 +90,12 @@ class SensorStreaming {
 
   // 센서 시작
   Future<bool> startSensor() async {
+    if (_isDisposed) {
+      return false;
+    }
+    if (_isCollecting) {
+      await stopSensor();
+    }
     if (kDebugMode) {
       print('\n🚀 센서 시작 시도');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -116,6 +124,8 @@ class SensorStreaming {
       _windowCount = 0;
       _measurementStartMs = DateTime.now().millisecondsSinceEpoch;
       _prevWindowFatigue = null;
+      _isCollecting = true;
+      _isDisposed = false;
 
       int sensorEventCount = 0;
 
@@ -124,6 +134,9 @@ class SensorStreaming {
           .throttleTime(const Duration(milliseconds: 20))
           .listen(
         (event) {
+          if (!_isCollecting || _isDisposed) {
+            return;
+          }
           try {
             sensorEventCount++;
             final now = DateTime.now().microsecondsSinceEpoch;
@@ -191,7 +204,7 @@ class SensorStreaming {
           }
         },
         onError: (error) {
-          if (kDebugMode) {
+          if (kDebugMode && _isCollecting && !_isDisposed) {
             print('❌ 가속도계 에러: $error');
           }
         },
@@ -201,6 +214,9 @@ class SensorStreaming {
           .throttleTime(const Duration(milliseconds: 20))
           .listen(
         (event) {
+          if (!_isCollecting || _isDisposed) {
+            return;
+          }
           gyroX.add(event.x);
           gyroY.add(event.y);
           gyroZ.add(event.z);
@@ -209,7 +225,7 @@ class SensorStreaming {
           _gyroBufferZ.add(event.z);
         },
         onError: (error) {
-          if (kDebugMode) {
+          if (kDebugMode && _isCollecting && !_isDisposed) {
             print('❌ 자이로스코프 에러: $error');
           }
         },
@@ -245,6 +261,10 @@ class SensorStreaming {
     _windowTimer = Timer.periodic(
       Duration(milliseconds: (SensorConfig.hopSeconds * 1000).toInt()),
       (timer) {
+        if (!_isCollecting || _isDisposed) {
+          timer.cancel();
+          return;
+        }
         final shouldDebug = kDebugMode && timer.tick % 10 == 0;
         if (shouldDebug) {
           print('⏰ 슬라이딩 윈도우 타이머 실행 (${timer.tick}번째)');
@@ -334,6 +354,9 @@ class SensorStreaming {
 
   // 윈도우 분석
   Future<void> _processSegment(List<double> segmentData) async {
+    if (!_isCollecting || _isDisposed) {
+      return;
+    }
     if (kDebugMode) {
       print('\n🔬 데이터 분석 시작');
     }
@@ -831,6 +854,10 @@ class SensorStreaming {
 
   // 센서 중지
   Future<void> stopSensor() async {
+    if (_isDisposed && !_isCollecting) {
+      return;
+    }
+    _isCollecting = false;
     if (kDebugMode) {
       print('\n🛑 센서 모션 기록 중지');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -850,7 +877,12 @@ class SensorStreaming {
         print('⚠️ 자이로스코프 구독 해제 오류: $e');
       }
     }
+    _accelSubscription = null;
+    _gyroSubscription = null;
     _windowTimer?.cancel();
+    _windowTimer = null;
+    _lastSampleTime = null;
+    _currentSamplingRate = 0.0;
 
     if (kDebugMode) {
       print('📊 최종 통계:');
@@ -1203,7 +1235,9 @@ class SensorStreaming {
     for (final entry in window.entries) {
       final value = entry.value;
       if (value is double && (!value.isFinite || value.isNaN)) {
-        print('⚠️ 비정상 피처 감지 → ${entry.key}=$value');
+        if (kDebugMode) {
+          print('⚠️ 비정상 피처 감지 → ${entry.key}=$value');
+        }
         return false;
       }
     }
@@ -1246,9 +1280,14 @@ class SensorStreaming {
   }
 
   void dispose() {
+    _isDisposed = true;
+    _isCollecting = false;
     _accelSubscription?.cancel();
     _gyroSubscription?.cancel();
+    _accelSubscription = null;
+    _gyroSubscription = null;
     _windowTimer?.cancel();
+    _windowTimer = null;
     clearData();
   }
 }

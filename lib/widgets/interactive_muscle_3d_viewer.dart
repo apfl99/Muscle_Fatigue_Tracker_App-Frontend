@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
@@ -142,8 +141,10 @@ class _InteractiveMuscle3DViewerState extends State<InteractiveMuscle3DViewer>
 
     final previousPayload = _buildRuntimePayloadJson(fromWidget: oldWidget);
     final nextPayload = _buildRuntimePayloadJson();
-    if (previousPayload != nextPayload) {
-      _queueRuntimeSync(force: true);
+    final entriesChanged =
+        _buildEntriesDigest(oldWidget.entries) != _buildEntriesDigest(widget.entries);
+    if (entriesChanged || previousPayload != nextPayload) {
+      _queueRuntimeSync(forcedPayloadJson: nextPayload, force: true);
     }
 
     final oldTarget =
@@ -390,17 +391,7 @@ return 'present';
               '[3DViewerProbe] attempt=$_webViewReadyProbeAttempt result=$probe source=$_activeModelSrc',
             );
           }
-          final shouldFailOpen =
-              _webViewReadyProbeAttempt >= 6 &&
-              (probe == 'present' ||
-                  probe == 'missing' ||
-                  probe.startsWith('progress:'));
-          if (probe == 'ready' || shouldFailOpen) {
-            if (kDebugMode && shouldFailOpen) {
-              debugPrint(
-                '[3DViewerProbe] fail-open ready after attempt=$_webViewReadyProbeAttempt result=$probe',
-              );
-            }
+          if (probe == 'ready') {
             _cancelWebViewReadyProbe();
             _handleModelReadyMessage('ready');
             return;
@@ -410,8 +401,9 @@ return 'present';
         } finally {
           _webViewReadyProbeBusy = false;
         }
-        if (_webViewReadyProbeAttempt >= 12) {
+        if (_webViewReadyProbeAttempt >= 18) {
           _cancelWebViewReadyProbe();
+          _handleModelReadyMessage('error:viewer_not_ready');
         }
       },
     );
@@ -554,6 +546,17 @@ return 'present';
     return states;
   }
 
+  String _buildEntriesDigest(List<MuscleHeatmapEntry> entries) {
+    final signatures = entries
+        .map((entry) {
+          final code = _canonicalizeMuscleCode(entry.muscleCode) ?? '';
+          return '$code:${entry.status.rawValue}:${entry.fatigueScore.toStringAsFixed(4)}';
+        })
+        .toList()
+      ..sort();
+    return signatures.join('|');
+  }
+
   List<String> _expandMuscleCode(String canonicalCode) {
     final resolved = _muscleAliases[canonicalCode] ?? canonicalCode;
     final mapped = _entryToDetailedMuscles[resolved];
@@ -656,7 +659,7 @@ return 'present';
       key: ValueKey(
         'interactive_muscle_3d_viewer_${_modelSourceIndex}_$_reloadNonce',
       ),
-      src: 'assets/models/human_muscular_system_segmented.glb',
+      src: _activeModelSrc,
       id: _viewerId,
       backgroundColor: Colors.transparent,
       cameraControls: widget.interactive,
@@ -668,14 +671,15 @@ return 'present';
       autoRotateDelay: 1400,
       rotationPerSecond: '20deg',
       cameraOrbit: _cameraOrbit,
-      cameraTarget: 'auto auto auto',
+      cameraTarget: '0m 0.9m 0m',
       fieldOfView: '28deg',
-      minCameraOrbit: '-180deg 90deg 106%',
-      maxCameraOrbit: '180deg 90deg 122%',
-      interpolationDecay: 180,
+      minCameraOrbit: '-360deg 55deg 102%',
+      maxCameraOrbit: '360deg 125deg 132%',
+      interpolationDecay: 96,
       environmentImage: 'neutral',
       exposure: 1.2,
-      shadowSoftness: 1.0,
+      shadowIntensity: 4.4,
+      shadowSoftness: 0.8,
       loading: Loading.eager,
       reveal: Reveal.auto,
       interactionPrompt: InteractionPrompt.none,
@@ -698,24 +702,10 @@ return 'present';
       },
     );
 
-    final viewerWidget = widget.interactive
-        ? RawGestureDetector(
-            behavior: HitTestBehavior.opaque,
-            gestures: {
-              EagerGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
-                EagerGestureRecognizer.new,
-                (_) {},
-              ),
-            },
-            child: modelViewer,
-          )
-        : modelViewer;
-
     return Stack(
       fit: StackFit.expand,
       children: [
-        viewerWidget,
+        modelViewer,
         if (!_modelReady && _blockingErrorMessage == null)
           _buildLoadingOverlay(context),
         if (_blockingErrorMessage != null) _buildLoadFailureOverlay(context),
@@ -1129,10 +1119,14 @@ return 'present';
         };
 
         const enforceViewerConstraints = () => {
+          if (!viewer) {
+            return;
+          }
           viewer.setAttribute('disable-zoom', '');
           viewer.setAttribute('disable-pan', '');
-          viewer.setAttribute('shadow-intensity', '3.0');
-          viewer.setAttribute('shadow-softness', '1.0');
+          viewer.setAttribute('camera-target', '0m 0.9m 0m');
+          viewer.setAttribute('shadow-intensity', '4.4');
+          viewer.setAttribute('shadow-softness', '0.8');
           viewer.setAttribute('exposure', '1.2');
           viewer.setAttribute('environment-image', 'neutral');
         };
@@ -1194,21 +1188,24 @@ return 'present';
           if (!isTarget) {
             return {
               mixBoost: 0.0,
-              roughness: 0.42,
-              metallic: 0.2,
+              roughness: 0.66,
+              metallic: 0.08,
               emissiveMultiplier: state.focused ? 0.44 : state.recommended ? 0.22 : 0.0,
             };
           }
           return {
             // 매핑된 전 근육에 고선명 분리 프로파일 적용.
             mixBoost: 0.10 + (clampedIntensity * 0.08),
-            roughness: 0.34,
-            metallic: 0.14,
+            roughness: 0.26 + (clampedIntensity * 0.10),
+            metallic: 0.06 + (clampedIntensity * 0.10),
             emissiveMultiplier: state.focused ? 0.54 : state.recommended ? 0.28 : 0.06,
           };
         };
 
         const applyAppearance = (material, muscleCode) => {
+          if (!material || !material.pbrMetallicRoughness) {
+            return;
+          }
           const state = resolveMaterialState(muscleCode);
           const profile = resolveDefinitionProfile(muscleCode, state);
           let base = colors.neutral;
@@ -1257,16 +1254,19 @@ return 'present';
         };
 
         const applyNeutralAppearance = (material) => {
+          if (!material || !material.pbrMetallicRoughness) {
+            return;
+          }
           material.pbrMetallicRoughness.setBaseColorFactor([
             colors.neutral[0],
             colors.neutral[1],
             colors.neutral[2],
             1.0,
           ]);
-          material.pbrMetallicRoughness.setRoughnessFactor(0.84);
-          material.pbrMetallicRoughness.setMetallicFactor(0.05);
+          material.pbrMetallicRoughness.setRoughnessFactor(0.58);
+          material.pbrMetallicRoughness.setMetallicFactor(0.12);
           if (material.setEmissiveFactor) {
-            material.setEmissiveFactor([0.0, 0.0, 0.0]);
+            material.setEmissiveFactor([0.01, 0.01, 0.01]);
           }
         };
 
@@ -1748,6 +1748,9 @@ const Map<String, String> _muscleAliases = {
   'pecs': 'chest',
   'pectoralis_major': 'chest',
   'pectoral': 'chest',
+  'pectorals': 'chest',
+  'pectoralis': 'chest',
+  'pectoralismajor': 'chest',
   'abs': 'rectus_abdominis',
   'abdominals': 'rectus_abdominis',
   'core': 'rectus_abdominis',
@@ -1755,6 +1758,7 @@ const Map<String, String> _muscleAliases = {
   'front_delts': 'front_deltoid',
   'anterior_deltoid': 'front_deltoid',
   'deltoid_anterior': 'front_deltoid',
+  'deltoid': 'lateral_deltoid',
   'lateral_delts': 'lateral_deltoid',
   'side_deltoid': 'lateral_deltoid',
   'deltoid_lateral': 'lateral_deltoid',
@@ -1771,7 +1775,9 @@ const Map<String, String> _muscleAliases = {
   'lower_trap': 'trapezius',
   'rhomboid': 'rhomboids',
   'biceps_brachii': 'biceps',
+  'bicepsbrachii': 'biceps',
   'triceps_brachii': 'triceps',
+  'tricepsbrachii': 'triceps',
   'forearm': 'forearm_flexor',
   'forearms': 'forearm_flexor',
   'wrist_flexor': 'forearm_flexor',
@@ -1807,6 +1813,7 @@ const Map<String, List<String>> _entryToDetailedMuscles = {
   'front_deltoid': ['deltoid_anterior'],
   'lateral_deltoid': ['deltoid_lateral'],
   'rear_deltoid': ['deltoid_posterior'],
+  'deltoid': ['deltoid_anterior', 'deltoid_lateral', 'deltoid_posterior'],
   'trapezius': [
     'trapezius_descending',
     'trapezius_transverse',
@@ -2005,18 +2012,51 @@ const Map<String, String> _orbitByMuscle = {
 
 const Map<String, List<String>> _muscleMeshNodeMap = {
   'pectoralis_major_clavicular': [
+    // GLB node/material (human_muscular_system_segmented.glb): 05_Chest, Material_Chest
+    '05_chest',
+    'material_chest',
+    'chest',
     'clavicular_head_of_pectoralis_major_muscle',
+    'clavicular_head_of_pectoralis_major',
+    'pectoralis_major_clavicular',
+    'pectoralis_major_clavicular_head',
+    'pectoralis_major_clavicular',
+    'chest_upper',
   ],
   'pectoralis_major_sternocostal': [
+    '05_chest',
+    'material_chest',
+    'chest',
     'sternocostal_head_of_pectoralis_major_muscle',
+    'sternocostal_head_of_pectoralis_major',
+    'pectoralis_major_sternocostal',
+    'pectoralis_major_sternal',
+    'pectoralis_major',
+    'pectoralis_major_muscle',
+    'chest_middle',
   ],
   'pectoralis_major_abdominal': [
+    '05_chest',
+    'material_chest',
+    'chest',
     'abdominal_part_of_pectoralis_major_muscle',
+    'abdominal_part_of_pectoralis_major',
+    'pectoralis_major_abdominal',
+    'pectoralis_major_lower',
+    'chest_lower',
   ],
   'pectoralis_minor': [
+    '05_chest',
+    'material_chest',
+    'chest',
     'pectoralis_minor_muscle',
+    'pectoralis_minor',
   ],
   'serratus_anterior': [
+    '05_chest',
+    'material_chest',
+    '06_abdomen',
+    '07_lower_abdomen',
     'serratus_anterior_muscle',
   ],
   'serratus_posterior_superior': [
@@ -2029,32 +2069,100 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'subclavius_muscle',
   ],
   'deltoid_anterior': [
+    // GLB node/material: 04_Shoulders, 10_Upper_arms, Material_Shoulders, Material_UpperArms
+    '04_shoulders',
+    '10_upper_arms',
+    'material_shoulders',
+    'material_upperarms',
+    'shoulders',
+    'upper_arms',
     'clavicular_part_of_deltoid_muscle',
+    'anterior_deltoid',
+    'deltoid_anterior',
+    'deltoid_front',
   ],
   'deltoid_lateral': [
+    '04_shoulders',
+    '10_upper_arms',
+    'material_shoulders',
+    'material_upperarms',
+    'shoulders',
+    'upper_arms',
     'acromial_part_of_deltoid_muscle',
+    'middle_deltoid',
+    'lateral_deltoid',
+    'deltoid_lateral',
+    'deltoid_side',
+    'deltoid',
   ],
   'deltoid_posterior': [
+    '04_shoulders',
+    '10_upper_arms',
+    '20_back',
+    'material_shoulders',
+    'material_upperarms',
+    'material_lats',
+    'shoulders',
+    'upper_arms',
+    'back',
     'scapular_part_of_deltoid_uscle',
     'scapular_part_of_deltoid_muscle',
+    'posterior_deltoid',
+    'rear_deltoid',
+    'deltoid_posterior',
   ],
   'trapezius_descending': [
+    // GLB node/material: 03_Neck, 20_Back, Material_Neck, Material_Lats
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'material_lats',
+    'neck',
+    'back',
     'descending_part_of_trapezius_muscle',
   ],
   'trapezius_transverse': [
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'material_lats',
+    'neck',
+    'back',
     'transverse_part_of_trapezius_muscle',
   ],
   'trapezius_ascending': [
+    '03_neck',
+    '20_back',
+    'material_neck',
+    'material_lats',
+    'neck',
+    'back',
     'ascending_part_of_trapezius_muscle',
   ],
   'rhomboid_major': [
+    '20_back',
+    'material_lats',
+    'back',
     'rhomboid_major_muscle',
   ],
   'rhomboid_minor': [
+    '20_back',
+    'material_lats',
+    'back',
     'rhomboid_minor_muscle',
   ],
   'latissimus_dorsi': [
+    // GLB node/material: 20_Back, 21_Lower_back, Material_Lats, Material_LowerBack
+    '20_back',
+    '21_lower_back',
+    'material_lats',
+    'material_lowerback',
+    'back',
+    'lower_back',
     'latissimus_dorsi_muscle',
+    'latissimus_dorsi',
+    'latissimus',
+    'lats',
   ],
   'teres_major': [
     'teres_major_muscle',
@@ -2075,82 +2183,177 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'levator_scapulae_muscle',
   ],
   'biceps_brachii_long_head': [
+    // GLB node/material: 10_Upper_arms, 11_Elbows, Material_UpperArms
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
+    'upper_arms',
+    'elbows',
     'long_head_of_biceps_brachii_muscle',
     'long_head_of_biceps_brachii',
+    'biceps_brachii_long_head',
+    'biceps_long_head',
+    'biceps_brachii',
+    'biceps',
   ],
   'biceps_brachii_short_head': [
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
+    'upper_arms',
+    'elbows',
     'short_head_of_biceps_brachii',
+    'short_head_of_biceps_brachii_muscle',
+    'biceps_brachii_short_head',
+    'biceps_short_head',
   ],
   'brachialis': [
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
     'brachialis_muscle',
   ],
   'brachioradialis': [
+    // GLB node/material: 12_Fore_arms, Material_Forearms
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'brachioradialis_muscle',
   ],
   'coracobrachialis': [
     'coracobrachialis_muscle',
   ],
   'triceps_brachii_long_head': [
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
+    'upper_arms',
+    'elbows',
     'long_head_of_triceps_brachii_muscle',
     'triceps_long_head',
+    'long_head_of_triceps_brachii',
+    'triceps_brachii_long_head',
+    'triceps',
   ],
   'triceps_brachii_lateral_head': [
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
+    'upper_arms',
+    'elbows',
     'lateral_head_of_triceps_brachii_muscle',
     'triceps_lateral_head',
+    'lateral_head_of_triceps_brachii',
+    'triceps_brachii_lateral_head',
   ],
   'triceps_brachii_medial_head': [
+    '10_upper_arms',
+    '11_elbows',
+    'material_upperarms',
+    'upper_arms',
+    'elbows',
     'medial_head_of_triceps_brachii_muscle',
+    'medial_head_of_triceps_brachii',
+    'triceps_brachii_medial_head',
     'medial_head_of_biceps_brachii_muscle',
   ],
   'anconeus': [
     'anconeus_muscle',
   ],
   'pronator_teres_superficial': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'superficial_head_of_pronator_teres_muscle',
   ],
   'pronator_teres_deep': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'deep_head_of_pronator_teres_muscle',
     'deep_head_of_prontaor_teres_muscle',
   ],
   'supinator': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'supinator_muscle',
   ],
   'flexor_carpi_radialis': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'flexor_carpi_radialis_muscle',
   ],
   'flexor_carpi_ulnaris': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'flexor_carpi_ulnaris_muscle',
   ],
   'palmaris_longus': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'palmaris_longus_muscle',
   ],
   'extensor_carpi_radialis_longus': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'extensor_carpi_radialis_longus_muscle',
   ],
   'extensor_carpi_radialis_brevis': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'extensor_carpi_radialis_brevis_muscle',
   ],
   'extensor_carpi_ulnaris': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'extensor_carpi_ulnaris_muscle',
   ],
   'extensor_digitorum': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'extensor_digitorum_muscle',
   ],
   'extensor_digiti_minimi': [
+    '12_fore_arms',
+    'material_forearms',
+    'fore_arms',
     'extensor_digiti_minimi_muscle',
   ],
   'rectus_abdominis': [
+    // GLB node/material: 06_Abdomen, 07_Lower_abdomen, Material_Abs
+    '06_abdomen',
+    '07_lower_abdomen',
+    'material_abs',
+    'abdomen',
+    'lower_abdomen',
     'rectus_abdominis_muscle',
   ],
   'external_oblique': [
+    '06_abdomen',
+    '07_lower_abdomen',
+    'material_abs',
     'external_abdominal_oblique',
     'external_oblique_muscle',
   ],
   'internal_oblique': [
+    '06_abdomen',
+    '07_lower_abdomen',
+    'material_abs',
     'internal_abdominal_oblique',
     'internal_oblique_muscle',
   ],
   'transversus_abdominis': [
+    '06_abdomen',
+    '07_lower_abdomen',
+    'material_abs',
     'transversus_abdominis_muscle',
   ],
   'psoas_major': [
@@ -2161,17 +2364,32 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'iliacus_muscle',
   ],
   'quadratus_lumborum': [
+    '21_lower_back',
+    'material_lowerback',
+    'lower_back',
     'quadratus_lumborum_muscle',
   ],
   'multifidus': [
+    '21_lower_back',
+    '20_back',
+    'material_lowerback',
+    'material_lats',
+    'lower_back',
+    'back',
     'multifidus_lumborum',
     'multifidus_thoracis',
     'multifidus_colli_muscle',
   ],
   'iliocostalis_lumborum': [
+    '21_lower_back',
+    'material_lowerback',
+    'lower_back',
     'iliocostalis_lumborum_muscle',
   ],
   'iliocostalis_thoracis': [
+    '20_back',
+    'material_lats',
+    'back',
     'iliocostalis_thoracis_muscle',
   ],
   'iliocostalis_cervicis': [
@@ -2179,18 +2397,36 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'iliocostalis_cervicis_muscle',
   ],
   'longissimus_thoracis': [
+    '20_back',
+    'material_lats',
+    'back',
     'longissimus_thoracis_muscle',
   ],
   'spinalis_thoracis': [
+    '20_back',
+    'material_lats',
+    'back',
     'spinalis_thoracis_muscle',
   ],
   'gluteus_maximus': [
+    '22_buttocks',
+    'material_glutes',
+    'glutes',
+    'buttocks',
     'gluteus_maximus_muscle',
   ],
   'gluteus_medius': [
+    '22_buttocks',
+    'material_glutes',
+    'glutes',
+    'buttocks',
     'gluteus_medius_muscle',
   ],
   'gluteus_minimus': [
+    '22_buttocks',
+    'material_glutes',
+    'glutes',
+    'buttocks',
     'gluteus_minimus_muscle',
   ],
   'piriformis': [
@@ -2227,54 +2463,121 @@ const Map<String, List<String>> _muscleMeshNodeMap = {
     'gracilis_muscle',
   ],
   'rectus_femoris': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
+    'quads',
     'rectus_femoris_muscle',
   ],
   'vastus_lateralis': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
+    'quads',
     'vastus_lateralis_muscle',
   ],
   'vastus_medialis': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
+    'quads',
     'vastus_medialis_muscle',
   ],
   'vastus_intermedius': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
+    'quads',
     'vastus_intermedius_muscle',
   ],
   'biceps_femoris_long_head': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
     'long_head_of_biceps_femoris_muscle',
   ],
   'biceps_femoris_short_head': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
     'short_head_of_biceps_femoris_muscle',
   ],
   'semitendinosus': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
     'semitendinosus_muscle',
   ],
   'semimembranosus': [
+    '15_thighs',
+    'material_quads',
+    'thighs',
     'semimembranosus_muscle',
   ],
   'tibialis_anterior': [
+    '17_legs',
+    'legs',
+    '16_knees',
     'tibialis_anterior_muscle',
   ],
   'tibialis_posterior': [
+    '17_legs',
+    'legs',
+    '16_knees',
     'tibialis_posterior_muscle',
   ],
   'gastrocnemius_lateral_head': [
+    '18_ankles',
+    '17_legs',
+    'material_calves',
+    'ankles',
+    'legs',
+    'calves',
     'lateral_head_of_gastrocnemius',
   ],
   'gastrocnemius_medial_head': [
+    '18_ankles',
+    '17_legs',
+    'material_calves',
+    'ankles',
+    'legs',
+    'calves',
     'medial_head_of_gastrocnemius',
   ],
   'soleus': [
+    '18_ankles',
+    '17_legs',
+    'material_calves',
+    'ankles',
+    'legs',
+    'calves',
     'soleus_muscle',
   ],
   'plantaris': [
+    '18_ankles',
+    '17_legs',
+    'material_calves',
+    'ankles',
+    'legs',
+    'calves',
     'plantaris_muscle',
   ],
   'sternocleidomastoid': [
+    '03_neck',
+    'material_neck',
+    'neck',
     'sternocleidomastoid_muscle',
   ],
   'splenius_capitis': [
+    '03_neck',
+    'material_neck',
+    'neck',
     'splenius_capitis_muscle',
   ],
   'splenius_cervicis': [
+    '03_neck',
+    'material_neck',
+    'neck',
     'splenius_colli_muscle',
     'splenius_cervicis_muscle',
   ],

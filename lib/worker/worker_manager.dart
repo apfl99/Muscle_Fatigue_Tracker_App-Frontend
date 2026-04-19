@@ -43,7 +43,7 @@ class WorkerManager {
 
     // 기존 워커들 정리
     for (final worker in _workers) {
-      worker.stop();
+      await worker.stop();
     }
     _workers.clear();
 
@@ -59,9 +59,11 @@ class WorkerManager {
       _workers.add(worker);
 
       // 워커를 백그라운드에서 실행
-      Future.microtask(() async {
-        await worker.start();
-      });
+      unawaited(
+        Future.microtask(() async {
+          await worker.start();
+        }),
+      );
     }
 
     // 모니터링 시작
@@ -83,10 +85,12 @@ class WorkerManager {
     // 모니터링 중지
     _monitorTimer?.cancel();
     _cleanupTimer?.cancel();
+    _monitorTimer = null;
+    _cleanupTimer = null;
 
     // 워커들 중지
     for (final worker in _workers) {
-      worker.stop();
+      await worker.stop();
     }
 
     _workers.clear();

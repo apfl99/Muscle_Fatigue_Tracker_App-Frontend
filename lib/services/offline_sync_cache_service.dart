@@ -8,6 +8,7 @@ import 'supabase_service.dart';
 class OfflineSyncCacheService {
   static const String _snapshotKey = 'offline_heatmap_snapshot_v1';
   static const String _queueKey = 'offline_workout_queue_v1';
+  static const int _maxQueueSize = 300;
 
   Future<void> saveSnapshot({
     required List<MuscleHeatmapEntry> heatmapEntries,
@@ -62,13 +63,20 @@ class OfflineSyncCacheService {
 
   Future<void> enqueueWorkoutDraft(WorkoutLogDraft draft) async {
     final queue = await readWorkoutQueue();
-    queue.add(
-      QueuedWorkoutDraft(
-        id: _buildQueueId(),
-        queuedAt: DateTime.now(),
-        draft: draft,
-      ),
-    );
+    final draftKey = _draftDedupKey(draft);
+    final duplicated = queue.any((item) => _draftDedupKey(item.draft) == draftKey);
+    if (!duplicated) {
+      queue.add(
+        QueuedWorkoutDraft(
+          id: _buildQueueId(),
+          queuedAt: DateTime.now(),
+          draft: draft,
+        ),
+      );
+    }
+    if (queue.length > _maxQueueSize) {
+      queue.removeRange(0, queue.length - _maxQueueSize);
+    }
     await _saveWorkoutQueue(queue);
   }
 
@@ -100,7 +108,25 @@ class OfflineSyncCacheService {
   Future<void> _saveWorkoutQueue(List<QueuedWorkoutDraft> queue) async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = queue.map(_encodeQueuedWorkoutDraft).toList();
-    await prefs.setString(_queueKey, jsonEncode(encoded));
+    try {
+      await prefs.setString(_queueKey, jsonEncode(encoded));
+    } catch (_) {
+      // SharedPreferences 저장 실패 시에도 앱 플로우는 유지한다.
+    }
+  }
+
+  String _draftDedupKey(WorkoutLogDraft draft) {
+    final performedAt = draft.performedAt?.toIso8601String() ?? 'null';
+    return [
+      draft.exerciseId.trim(),
+      (draft.sets ?? -1).toString(),
+      (draft.reps ?? -1).toString(),
+      (draft.weightKg ?? -1).toStringAsFixed(3),
+      (draft.durationMinutes ?? -1).toString(),
+      (draft.distanceKm ?? -1).toStringAsFixed(3),
+      draft.note?.trim() ?? '',
+      performedAt,
+    ].join('|');
   }
 
   String _buildQueueId() {

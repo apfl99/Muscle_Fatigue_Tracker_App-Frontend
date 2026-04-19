@@ -2,6 +2,7 @@
 /// 큐에서 작업을 가져와서 서버로 전송하는 워커입니다.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
@@ -18,13 +19,18 @@ class HttpWorker {
   final ServerConfig _serverConfig;
   bool _isRunning = false;
   final int _workerId;
+  Completer<void>? _stoppedCompleter;
 
   HttpWorker(this._queueManager, this._serverConfig, {int? workerId})
       : _workerId = workerId ?? DateTime.now().millisecondsSinceEpoch;
 
   /// 워커 시작
   Future<void> start() async {
+    if (_isRunning) {
+      return;
+    }
     _isRunning = true;
+    _stoppedCompleter = Completer<void>();
     print('🚀 HTTP Worker $_workerId 시작');
 
     while (_isRunning) {
@@ -48,12 +54,25 @@ class HttpWorker {
     }
 
     print('🛑 HTTP Worker $_workerId 종료');
+    if (!(_stoppedCompleter?.isCompleted ?? true)) {
+      _stoppedCompleter?.complete();
+    }
   }
 
   /// 워커 중지
-  void stop() {
+  Future<void> stop() async {
+    if (!_isRunning) {
+      return;
+    }
     _isRunning = false;
     print('⏹️ HTTP Worker $_workerId 중지 요청');
+    final completer = _stoppedCompleter;
+    if (completer != null && !completer.isCompleted) {
+      await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {},
+      );
+    }
   }
 
   /// 작업 처리

@@ -189,48 +189,58 @@ class _SplashScreenState extends State<SplashScreen> {
     return Scaffold(
       backgroundColor: AppTheme.darkBackground,
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/images/icon.png',
-                width: 110,
-                height: 110,
-                fit: BoxFit.cover,
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'Muscle Care',
-                style: GoogleFonts.inter(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textHigh,
-                  letterSpacing: -1.0,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _resolvedTagline(context),
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: AppTheme.textMedium,
-                  letterSpacing: 0.0,
-                ),
-              ),
-              const SizedBox(height: 48),
-              const SizedBox(
-                width: 38,
-                height: 38,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppTheme.primaryGreen,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/images/icon.png',
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                      ),
+                      const SizedBox(height: 32),
+                      Text(
+                        'Muscle Care',
+                        style: GoogleFonts.inter(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textHigh,
+                          letterSpacing: -1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _resolvedTagline(context),
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textMedium,
+                          letterSpacing: 0.0,
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                      const SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppTheme.primaryGreen,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

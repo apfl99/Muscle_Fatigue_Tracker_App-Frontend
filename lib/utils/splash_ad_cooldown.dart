@@ -15,6 +15,9 @@ class SplashAdCooldownStore {
   Future<bool> canShow({
     required Duration cooldown,
   }) async {
+    if (cooldown <= Duration.zero) {
+      return true;
+    }
     final prefs = await _prefs();
     final lastShownAtMs = prefs.getInt(_lastShownAtKey);
     if (lastShownAtMs == null) {
@@ -22,7 +25,13 @@ class SplashAdCooldownStore {
     }
 
     final lastShownAt = DateTime.fromMillisecondsSinceEpoch(lastShownAtMs);
-    final elapsed = _clock().difference(lastShownAt);
+    final now = _clock();
+    if (lastShownAt.isAfter(now)) {
+      // 디바이스 시간 변경 등 비정상 값은 즉시 보정한다.
+      await prefs.setInt(_lastShownAtKey, now.millisecondsSinceEpoch);
+      return true;
+    }
+    final elapsed = now.difference(lastShownAt);
     return elapsed >= cooldown;
   }
 

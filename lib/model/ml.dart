@@ -103,14 +103,30 @@ class MLManager {
 
   // 초기화 상태
   bool _isInitialized = false;
+  Future<void>? _initializingFuture;
   bool get isInitialized => _isInitialized;
 
   /// ========================================
   /// 초기화: 로컬 모델 파일 확인 및 로드
   /// ========================================
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    if (_isInitialized) {
+      return;
+    }
+    final inFlight = _initializingFuture;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+    _initializingFuture = _initializeInternal();
+    try {
+      await _initializingFuture;
+    } finally {
+      _initializingFuture = null;
+    }
+  }
 
+  Future<void> _initializeInternal() async {
     try {
       print('🤖 ML Manager 초기화 시작...');
 
@@ -131,6 +147,7 @@ class MLManager {
     } catch (e, stackTrace) {
       print('❌ ML Manager 초기화 오류: $e');
       print(stackTrace);
+      _isInitialized = false;
     }
   }
 
@@ -231,6 +248,10 @@ class MLManager {
       print('❌ End-to-End 모델 로드 실패: $e');
       print(stackTrace);
       _endToEndInterpreter = null;
+      _e2eInputShapes = null;
+      _e2eInputTypes = null;
+      _e2eOutputShape = null;
+      _e2eMetadata = null;
     }
   }
 
@@ -590,6 +611,13 @@ class MLManager {
     _hybridInterpreter = null;
     _endToEndInterpreter?.close();
     _endToEndInterpreter = null;
+    _loadedE2EModelPath = null;
+    _loadedE2EVersion = null;
+    _e2eInputShapes = null;
+    _e2eInputTypes = null;
+    _e2eOutputShape = null;
+    _e2eMetadata = null;
+    _initializingFuture = null;
     _isInitialized = false;
     print('🧹 ML Manager 리소스 정리 완료');
   }

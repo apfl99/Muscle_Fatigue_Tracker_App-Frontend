@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:muscle_fatigue_tracker/utils/app_log.dart';
 
 void print(Object? message) => appLog(message);
@@ -43,7 +44,9 @@ class FatigueFeatures {
 /// 근육 컨디션 특징 계산
 FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
   if (data.isEmpty) {
-    print('⚠️ 데이터가 비어있음');
+    if (kDebugMode) {
+      print('⚠️ 데이터가 비어있음');
+    }
     return FatigueFeatures(
       rms: 0.0,
       variance: 0.0,
@@ -56,7 +59,9 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
   }
 
   if (fs <= 0) {
-    print('⚠️ 샘플링 레이트가 유효하지 않음: $fs Hz, 기본값 50Hz 사용');
+    if (kDebugMode) {
+      print('⚠️ 샘플링 레이트가 유효하지 않음: $fs Hz, 기본값 50Hz 사용');
+    }
     fs = 50.0;
   }
 
@@ -83,7 +88,7 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
       final diff = value - mean;
       sumSquaredDiff += diff * diff;
     }
-    final variance = sumSquaredDiff / (n - 1);
+    final variance = n > 1 ? (sumSquaredDiff / (n - 1)) : 0.0;
     final stdDev = sqrt(variance);
 
     // ④ Zero Crossing Rate 계산 (주파수 추정에 사용)
@@ -94,14 +99,16 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
         zeroCrossings++;
       }
     }
-    final zeroCrossingRate = zeroCrossings / (n - 1);
+    final zeroCrossingRate = n > 1 ? (zeroCrossings / (n - 1)) : 0.0;
 
     // ⑤ 간단한 DFT로 주파수 특징 계산 (부분적으로만 계산)
     final maxFreqBin = min(100, n ~/ 2); // 최대 100개 주파수 빈만 계산
 
     // 안전한 검사 추가
     if (maxFreqBin <= 0) {
-      print('⚠️ DFT 계산 불가: maxFreqBin=$maxFreqBin, n=$n');
+      if (kDebugMode) {
+        print('⚠️ DFT 계산 불가: maxFreqBin=$maxFreqBin, n=$n');
+      }
       return FatigueFeatures(
         rms: rms,
         variance: variance,
@@ -144,11 +151,13 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
     final peakFreq = peakIndex * fs / n;
 
     // 디버깅 정보 추가
-    print('🔍 주파수 분석 디버그:');
-    print('   - 샘플 수: $n, 샘플링 레이트: ${fs.toStringAsFixed(1)} Hz');
-    print('   - 최대 magnitude: ${maxMag.toStringAsFixed(4)}');
-    print('   - Peak index: $peakIndex');
-    print('   - Peak frequency: ${peakFreq.toStringAsFixed(2)} Hz');
+    if (kDebugMode) {
+      print('🔍 주파수 분석 디버그:');
+      print('   - 샘플 수: $n, 샘플링 레이트: ${fs.toStringAsFixed(1)} Hz');
+      print('   - 최대 magnitude: ${maxMag.toStringAsFixed(4)}');
+      print('   - Peak index: $peakIndex');
+      print('   - Peak frequency: ${peakFreq.toStringAsFixed(2)} Hz');
+    }
 
     // Mean Power Frequency 계산
     double sumFreqPower = 0.0;
@@ -187,7 +196,9 @@ FatigueFeatures calculateFatigueFeatures(List<double> data, double fs) {
       zeroCrossing: zeroCrossingRate * fs / 2, // Hz로 변환
     );
   } catch (e) {
-    print('❌ 근육 컨디션 계산 오류: $e');
+    if (kDebugMode) {
+      print('❌ 근육 컨디션 계산 오류: $e');
+    }
     return FatigueFeatures(
       rms: 0.0,
       variance: 0.0,
@@ -229,7 +240,7 @@ Map<String, double> calculateBasicFeatures(List<double> data) {
       final diff = value - mean;
       sumSquaredDiff += diff * diff;
     }
-    final variance = sumSquaredDiff / (n - 1);
+    final variance = n > 1 ? (sumSquaredDiff / (n - 1)) : 0.0;
     final stdDev = sqrt(variance);
 
     return {
@@ -239,7 +250,9 @@ Map<String, double> calculateBasicFeatures(List<double> data) {
       'stdDev': stdDev,
     };
   } catch (e) {
-    print('❌ 기본 특징 계산 오류: $e');
+    if (kDebugMode) {
+      print('❌ 기본 특징 계산 오류: $e');
+    }
     return {'rms': 0.0, 'variance': 0.0, 'mean': 0.0, 'stdDev': 0.0};
   }
 }

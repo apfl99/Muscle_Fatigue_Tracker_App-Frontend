@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart' hide UserIdentity;
 
 import '../features/heatmap/model/heatmap_models.dart';
@@ -118,6 +120,7 @@ class SupabaseService {
   final SupabaseClient? _clientOverride;
 
   SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
+  static const Duration _requestTimeout = Duration(seconds: 12);
 
   Future<String> getCurrentUserId() async {
     final user = await _requireAuthenticatedUser();
@@ -125,16 +128,20 @@ class SupabaseService {
   }
 
   Future<List<MuscleHeatmapEntry>> getMuscleHeatmapStatus() async {
-    final response = await _runWithSessionRetry<dynamic>((user) {
-      return _client.rpc(
-        'get_muscle_heatmap_status',
-        params: {'p_user_id': user.id},
-      );
-    });
-    return _decodeMapList(response)
-        .map(MuscleHeatmapEntry.fromJson)
-        .where((entry) => entry.muscleCode.isNotEmpty)
-        .toList();
+    try {
+      final response = await _runWithSessionRetry<dynamic>((user) {
+        return _client.rpc(
+          'get_muscle_heatmap_status',
+          params: {'p_user_id': user.id},
+        );
+      });
+      return _decodeMapList(response)
+          .map(MuscleHeatmapEntry.fromJson)
+          .where((entry) => entry.muscleCode.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <MuscleHeatmapEntry>[];
+    }
   }
 
   Future<List<ExerciseSuggestion>> searchExercises({
@@ -144,17 +151,21 @@ class SupabaseService {
       return const [];
     }
 
-    final response = await _runWithSessionRetry<dynamic>((_) {
-      // 사용자 입력 원문(영문/한글/초성)을 그대로 서버에 전달한다.
-      return _client.rpc(
-        'search_exercises',
-        params: {'p_keyword': keyword},
-      );
-    });
-    return _decodeMapList(response)
-        .map(ExerciseSuggestion.fromJson)
-        .where((entry) => entry.id.isNotEmpty && entry.name.isNotEmpty)
-        .toList();
+    try {
+      final response = await _runWithSessionRetry<dynamic>((_) {
+        // 사용자 입력 원문(영문/한글/초성)을 그대로 서버에 전달한다.
+        return _client.rpc(
+          'search_exercises',
+          params: {'p_keyword': keyword},
+        );
+      });
+      return _decodeMapList(response)
+          .map(ExerciseSuggestion.fromJson)
+          .where((entry) => entry.id.isNotEmpty && entry.name.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <ExerciseSuggestion>[];
+    }
   }
 
   Future<void> insertWorkoutLog({
@@ -168,36 +179,45 @@ class SupabaseService {
   }
 
   Future<List<WorkoutLogRecord>> fetchWorkoutLogs({int limit = 30}) async {
-    final response = await _runWithSessionRetry<dynamic>((user) {
-      return _client
-          .from('workout_logs')
-          .select(
-            'id, exercise_id, sets, reps, weight_kg, duration_minutes, distance_km, note, performed_at, exercises(name, category, exercise_type, muscle_size, primary_muscles, secondary_muscles)',
-          )
-          .eq('user_id', user.id)
-          .order('performed_at', ascending: false)
-          .limit(limit);
-    });
+    try {
+      final response = await _runWithSessionRetry<dynamic>((user) {
+        return _client
+            .from('workout_logs')
+            .select(
+              'id, exercise_id, sets, reps, weight_kg, duration_minutes, distance_km, note, performed_at, exercises(name, category, exercise_type, muscle_size, primary_muscles, secondary_muscles)',
+            )
+            .eq('user_id', user.id)
+            .order('performed_at', ascending: false)
+            .limit(limit);
+      });
 
-    return _decodeMapList(response)
-        .map(WorkoutLogRecord.fromJson)
-        .where((entry) => entry.id.isNotEmpty && entry.exerciseId.isNotEmpty)
-        .toList();
+      return _decodeMapList(response)
+          .map(WorkoutLogRecord.fromJson)
+          .where((entry) => entry.id.isNotEmpty && entry.exerciseId.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <WorkoutLogRecord>[];
+    }
   }
 
   Future<List<MuscleRecoverySnapshot>> fetchMuscleRecoverySnapshots({
     int limit = 120,
   }) async {
-    final response = await _runWithSessionRetry<dynamic>((user) {
-      return _client
-          .from('workout_logs')
-          .select(
-            'performed_at, exercises!inner(muscle_size, exercise_muscle_mapping!inner(muscles!inner(code, display_name_ko, display_name)))',
-          )
-          .eq('user_id', user.id)
-          .order('performed_at', ascending: false)
-          .limit(limit);
-    });
+    dynamic response;
+    try {
+      response = await _runWithSessionRetry<dynamic>((user) {
+        return _client
+            .from('workout_logs')
+            .select(
+              'performed_at, exercises!inner(muscle_size, exercise_muscle_mapping!inner(muscles!inner(code, display_name_ko, display_name)))',
+            )
+            .eq('user_id', user.id)
+            .order('performed_at', ascending: false)
+            .limit(limit);
+      });
+    } catch (_) {
+      return const <MuscleRecoverySnapshot>[];
+    }
 
     final snapshotsByCode = <String, MuscleRecoverySnapshot>{};
     for (final row in _decodeMapList(response)) {
@@ -253,22 +273,28 @@ class SupabaseService {
     }
     var user = await _requireAuthenticatedUser();
     try {
-      final result = await action(user);
+      final result = await action(user).timeout(_requestTimeout);
       SupabaseRuntimeState.clearSuspension();
       return result;
     } on PostgrestException catch (error) {
       if (_isUnauthorized(error)) {
         user = await _refreshAnonymousSession();
-        final result = await action(user);
+        final result = await action(user).timeout(_requestTimeout);
         SupabaseRuntimeState.clearSuspension();
         return result;
       }
       rethrow;
     } on AuthException {
       user = await _refreshAnonymousSession();
-      final result = await action(user);
+      final result = await action(user).timeout(_requestTimeout);
       SupabaseRuntimeState.clearSuspension();
       return result;
+    } on TimeoutException {
+      SupabaseRuntimeState.suspendFor(
+        const Duration(minutes: 3),
+        reason: 'request_timeout',
+      );
+      rethrow;
     } catch (error) {
       final raw = error.toString().toLowerCase();
       if (raw.contains('failed host lookup') ||
